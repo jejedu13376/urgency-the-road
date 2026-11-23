@@ -54,7 +54,10 @@ export default function GaragesScreen() {
       setPlaces(res.data);
       setLabel(res.stubLabel);
       setMeta(res.meta ?? null);
-      setSelectedId(res.data[0]?.id ?? null);
+      setSelectedId((prev) => {
+        if (prev && res.data.some((p) => p.id === prev)) return prev;
+        return res.data[0]?.id ?? null;
+      });
     } finally {
       setLoading(false);
     }
@@ -207,6 +210,7 @@ export default function GaragesScreen() {
                           : r.stubLabel ?? 'Note envoyée Firestore',
                       );
                       if (r.ok !== false) {
+                        // Optimistic only — no Overpass reload (avoids Photon/mock swap + selection jump)
                         setPlaces((prev) =>
                           prev.map((g) => {
                             if (g.id !== p.id) return g;
@@ -218,7 +222,7 @@ export default function GaragesScreen() {
                             return { ...g, ratingAvg: avg, ratingCount: count };
                           }),
                         );
-                        void reload();
+                        setSelectedId(p.id);
                       }
                     });
                   }}

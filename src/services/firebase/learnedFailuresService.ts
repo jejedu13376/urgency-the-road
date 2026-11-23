@@ -1,7 +1,7 @@
 /**
  * Module 14 — owner-scoped learned failures (no public VIN dump).
  * Never persist raw VIN; make/model optional; reads filtered by authorUid.
- * Unsigned path: AsyncStorage journal so “Ajouter local” actually sticks.
+ * Unsigned path: AsyncStorage journal. On Auth: merge + upload local then clear.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -13,6 +13,7 @@ import {
   query,
   where,
 } from 'firebase/firestore';
+import type { Firestore } from 'firebase/firestore';
 import { getFirebase, getSignedInUid } from '../../firebase/config';
 import { COLLECTIONS } from '../../types/firestore';
 import { failResult, liveResult, mockResult, ServiceResult } from './result';
@@ -60,9 +61,63 @@ async function writeLocalJournal(rows: LearnedFailure[]): Promise<void> {
   await AsyncStorage.setItem(LOCAL_KEY, JSON.stringify(rows.slice(0, 100)));
 }
 
+async function clearLocalJournal(): Promise<void> {
+  await AsyncStorage.removeItem(LOCAL_KEY);
+}
+
+function fingerprint(row: LearnedFailure): string {
+  return `${row.summary}|${row.createdAt}|${(row.likelyParts ?? []).join(',')}`;
+}
+
+/** Upload unsigned AsyncStorage rows to Firestore; clear local on full success. */
+async function migrateLocalJournal(
+  db: Firestore,
+  uid: string,
+): Promise<{ uploaded: LearnedFailure[]; remaining: LearnedFailure[] }> {
+  const local = await readLocalJournal();
+  if (!local.length) return { uploaded: [], remaining: [] };
+
+  const uploaded: LearnedFailure[] = [];
+  const remaining: LearnedFailure[] = [];
+
+  for (const row of local) {
+    if (!row.summary.trim()) continue;
+    try {
+      const doc: Record<string, unknown> = {
+        authorUid: uid,
+        summary: row.summary,
+        likelyParts: row.likelyParts,
+        createdAt: row.createdAt || new Date().toISOString(),
+        migratedFromLocalId: row.id,
+      };
+      if (row.make) doc.make = row.make;
+      if (row.model) doc.model = row.model;
+      const ref = await addDoc(collection(db, COLLECTIONS.learnedFailures), doc);
+      uploaded.push({ ...row, id: ref.id });
+    } catch {
+      remaining.push(row);
+    }
+  }
+
+  if (remaining.length === 0) {
+    await clearLocalJournal();
+  } else {
+    await writeLocalJournal(remaining);
+  }
+  return { uploaded, remaining };
+}
+
+function mergeByFingerprint(remote: LearnedFailure[], local: LearnedFailure[]): LearnedFailure[] {
+  const seen = new Set(remote.map(fingerprint));
+  const extras = local.filter((r) => r.id !== DEMO_SEED.id && !seen.has(fingerprint(r)));
+  return [...remote, ...extras].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+}
+
 export async function listLearnedFailures(max = 20): Promise<ServiceResult<LearnedFailure[]>> {
   const fb = getFirebase();
   const uid = getSignedInUid();
+  const cap = Math.min(Math.max(max, 1), 50);
+
   if (!fb || !uid) {
     const local = await readLocalJournal();
     const merged = [...local];
@@ -71,18 +126,30 @@ export async function listLearnedFailures(max = 20): Promise<ServiceResult<Learn
     }
     merged.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     return mockResult(
-      merged.slice(0, Math.min(Math.max(max, 1), 50)),
+      merged.slice(0, cap),
       local.length
         ? `Journal local AsyncStorage (${local.length}) — Auth pour sync Firestore`
         : 'MOCK bases — journal local vide · Firebase off / non connecté',
     );
   }
+
+  // Sign-in path: upload local journal first (best-effort), then list + merge leftovers
+  let migrated = 0;
+  let pendingLocal: LearnedFailure[] = [];
+  try {
+    const mig = await migrateLocalJournal(fb.db, uid);
+    migrated = mig.uploaded.length;
+    pendingLocal = mig.remaining;
+  } catch {
+    pendingLocal = await readLocalJournal();
+  }
+
   try {
     const q = query(
       collection(fb.db, COLLECTIONS.learnedFailures),
       where('authorUid', '==', uid),
       orderBy('createdAt', 'desc'),
-      limit(Math.min(Math.max(max, 1), 50)),
+      limit(cap),
     );
     const snap = await getDocs(q);
     const items = snap.docs.map((d) => {
@@ -96,9 +163,25 @@ export async function listLearnedFailures(max = 20): Promise<ServiceResult<Learn
         createdAt: String(data.createdAt ?? ''),
       };
     });
-    return liveResult(items);
+    const merged = mergeByFingerprint(items, pendingLocal).slice(0, cap);
+    const labelBits = [
+      migrated ? `${migrated} local→Firestore` : null,
+      pendingLocal.length ? `${pendingLocal.length} local restant(s)` : null,
+    ].filter(Boolean);
+    return liveResult(
+      merged,
+      labelBits.length ? `Bases Firestore LIVE · ${labelBits.join(' · ')}` : undefined,
+    );
   } catch (e) {
-    return failResult([], e instanceof Error ? e.message : 'Lecture bases refusée');
+    // Rules/network fail — still show local journal so unsigned entries aren't hidden
+    const local = pendingLocal.length ? pendingLocal : await readLocalJournal();
+    const merged = [...local];
+    if (!merged.some((r) => r.id === DEMO_SEED.id)) merged.push(DEMO_SEED);
+    merged.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    return failResult(
+      merged.slice(0, cap),
+      e instanceof Error ? e.message : 'Lecture bases refusée — journal local affiché',
+    );
   }
 }
 
@@ -129,6 +212,13 @@ export async function recordLearnedFailure(input: {
     return mockResult(payload, 'Journal local AsyncStorage — connectez-vous pour sync Firestore');
   }
 
+  // Flush any pending local rows before writing the new one
+  try {
+    await migrateLocalJournal(fb.db, uid);
+  } catch {
+    // non-fatal
+  }
+
   try {
     const doc: Record<string, unknown> = {
       authorUid: uid,
@@ -142,6 +232,14 @@ export async function recordLearnedFailure(input: {
     const ref = await addDoc(collection(fb.db, COLLECTIONS.learnedFailures), doc);
     return liveResult({ ...payload, id: ref.id });
   } catch (e) {
-    return failResult(null, e instanceof Error ? e.message : 'Écriture bases refusée');
+    // Keep on device so the entry isn't lost when rules reject the write
+    const local = await readLocalJournal();
+    await writeLocalJournal([payload, ...local.filter((r) => r.id !== payload.id)]);
+    return failResult(
+      payload,
+      e instanceof Error
+        ? `${e.message} — gardé en journal local`
+        : 'Écriture bases refusée — gardé en journal local',
+    );
   }
 }
