@@ -78,14 +78,12 @@ export function parseQuoteTextAmounts(text: string): ParsedQuoteAmounts {
     }
   }
 
+  // Unanchored fallback: only when NOTHING was keyword-tied — first two global amounts.
+  // Never fill labor from an unrelated leftover once piece was already keyword-bound.
   if (partPrice == null && laborPrice == null && amounts.length >= 2) {
     partPrice = amounts[0];
     laborPrice = amounts[1];
-  } else if (partPrice != null && laborPrice == null && amounts.length >= 2) {
-    // Piece taken from a combined line with only one local amount — use next global amount for MO.
-    const next = amounts.find((a) => a !== partPrice);
-    if (next != null) laborPrice = next;
-  } else if (partPrice == null && amounts.length === 1) {
+  } else if (partPrice == null && laborPrice == null && amounts.length === 1) {
     partPrice = amounts[0];
   }
 
