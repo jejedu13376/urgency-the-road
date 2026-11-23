@@ -72,7 +72,7 @@ export function analyzeQuoteScan(input: QuoteScanInput): {
       },
     ],
     overchargeRisk,
-    note: `${vehicleBit || 'Véhicule'} · écart ×${delta.toFixed(2)} vs marché adaptable. OCR/IA devis non branchés — heuristique catalogue.`,
+    note: `${vehicleBit || 'Véhicule'} · écart ×${delta.toFixed(2)} vs marché adaptable. Aucun OCR image — heuristique catalogue uniquement.`,
     marketPart: bench.avgAfter,
     marketLabor: bench.avgLabor,
   };

@@ -11,7 +11,8 @@
       "bundleIdentifier": "com.axarel.urgencyroadone",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "Connexion à la valise diagnostic OBD (ELM327 / J1939).",
-        "NSBluetoothPeripheralUsageDescription": "Connexion à la valise diagnostic OBD (ELM327 / J1939)."
+        "NSBluetoothPeripheralUsageDescription": "Connexion à la valise diagnostic OBD (ELM327 / J1939).",
+        "NSLocationWhenInUseUsageDescription": "Urgence Mécanique utilise votre position pour garages, balances et SOS."
       }
     },
     "android": {
@@ -40,12 +41,19 @@
       "expo-router",
       "expo-status-bar",
       "expo-sharing",
+<<<<<<< HEAD
       "expo-dev-client",
       [
         "react-native-ble-plx",
         {
           "isBackgroundEnabled": false,
           "neverForLocation": true
+=======
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Urgence Mécanique utilise votre position pour garages, balances et SOS."
+>>>>>>> 196148c (Deepen stub modules with live free APIs (honest failures))
         }
       ]
     ],

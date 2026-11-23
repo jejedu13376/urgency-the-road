@@ -1,9 +1,16 @@
 import { collection, getDocs, limit, query } from 'firebase/firestore';
 import { MOCK_PLACES } from '../../data/mocks';
 import { getFirebase } from '../../firebase/config';
-import type { WeighStationDoc } from '../../types/firestore';
+import type { GarageDoc, WeighStationDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
-import { liveResult, mockResult, ServiceResult } from './result';
+import { FALLBACK_LAT, FALLBACK_LON, getDeviceCoords } from '../geo/deviceLocation';
+import {
+  fetchNearbyTruckDepots,
+  fetchNearbyWeighStations,
+  withDistance,
+} from '../osm/overpassPlaces';
+import { fetchPhotonWeighHints } from '../osm/photonPlaces';
+import { externalLiveResult, liveResult, mockResult, ServiceResult } from './result';
 
 function mockStations(): WeighStationDoc[] {
   return MOCK_PLACES.filter((p) => p.kind === 'pesage').map((p) => ({
@@ -21,14 +28,99 @@ function mockStations(): WeighStationDoc[] {
   }));
 }
 
-/** Module 8 — weigh stations (litUp / open clearly signaled) */
-export async function listWeighStations(): Promise<ServiceResult<WeighStationDoc[]>> {
-  const fb = getFirebase();
-  if (!fb) return mockResult(mockStations(), 'MOCK weigh stations');
+export type WeighListMeta = {
+  lat: number;
+  lon: number;
+  gpsLabel: string;
+  depots: Array<GarageDoc & { distanceKm: number; etaMin: number }>;
+  depotLabel: string;
+};
 
-  const snap = await getDocs(query(collection(fb.db, COLLECTIONS.weighStations), limit(50)));
-  if (snap.empty) return mockResult(mockStations(), 'MOCK weigh — Firestore vide');
-  return liveResult(
-    snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<WeighStationDoc, 'id'>) })),
+/**
+ * Module 8 — weigh stations near device GPS via Overpass (amenity=weighbridge).
+ * ON/OFF live feeds do not exist as a free global API — unknown stays unknown (no fake ON).
+ */
+export async function listWeighStations(): Promise<
+  ServiceResult<WeighStationDoc[]> & { meta?: WeighListMeta }
+> {
+  const coordsRes = await getDeviceCoords({ allowFallback: true });
+  const lat = coordsRes.data?.lat ?? FALLBACK_LAT;
+  const lon = coordsRes.data?.lon ?? FALLBACK_LON;
+  const gpsLabel = coordsRes.data?.label ?? 'GPS fallback';
+
+  const [weigh, depotsRes] = await Promise.all([
+    fetchNearbyWeighStations(lat, lon, 100000),
+    fetchNearbyTruckDepots(lat, lon, 30000),
+  ]);
+
+  const depots = withDistance(
+    depotsRes.ok && depotsRes.depots.length
+      ? depotsRes.depots
+      : MOCK_PLACES.filter((p) => p.kind === 'depot_pl' || p.kind === 'pieces').map((p) => ({
+          id: p.id,
+          name: p.name,
+          kind: p.kind as GarageDoc['kind'],
+          address: p.address,
+          phone: p.phone,
+          hours: p.hours,
+          lat: p.lat,
+          lon: p.lon,
+          updatedAt: new Date().toISOString(),
+        })),
+    lat,
+    lon,
   );
+
+  const depotLabel =
+    depotsRes.ok && depotsRes.depots.length
+      ? depotsRes.label
+      : `${depotsRes.label} · dépôts mock`;
+
+  if (weigh.ok && weigh.stations.length) {
+    return {
+      ...externalLiveResult(weigh.stations, `${weigh.label} · ${gpsLabel}`),
+      meta: { lat, lon, gpsLabel, depots, depotLabel },
+    };
+  }
+
+  const photon = await fetchPhotonWeighHints(lat, lon);
+  if (photon.ok && photon.stations.length) {
+    const stations: WeighStationDoc[] = photon.stations.map((s) => ({
+      id: s.id,
+      name: s.name,
+      address: s.address,
+      lat: s.lat,
+      lon: s.lon,
+      region: 'NA',
+      status: 'unknown',
+      litUp: false,
+      updatedAt: new Date().toISOString(),
+    }));
+    return {
+      ...externalLiveResult(stations, `${photon.label} · ${gpsLabel}`),
+      meta: { lat, lon, gpsLabel, depots, depotLabel },
+    };
+  }
+
+  const fb = getFirebase();
+  if (fb) {
+    const snap = await getDocs(query(collection(fb.db, COLLECTIONS.weighStations), limit(50)));
+    if (!snap.empty) {
+      return {
+        ...liveResult(
+          snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<WeighStationDoc, 'id'>) })),
+          `Weigh Firestore LIVE · ${gpsLabel}`,
+        ),
+        meta: { lat, lon, gpsLabel, depots, depotLabel },
+      };
+    }
+  }
+
+  return {
+    ...mockResult(
+      mockStations(),
+      `MOCK weigh — ${weigh.label}${weigh.error ? ` (${weigh.error})` : ''} · ${photon.label} · ${gpsLabel}`,
+    ),
+    meta: { lat, lon, gpsLabel, depots, depotLabel },
+  };
 }

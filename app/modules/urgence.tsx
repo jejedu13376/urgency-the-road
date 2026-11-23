@@ -14,6 +14,12 @@ import {
   scanMedicalPublic,
   upsertMedicalCard,
 } from '../../src/services/firebase';
+import {
+  FALLBACK_LAT,
+  FALLBACK_LON,
+  getDeviceCoords,
+  type DeviceCoords,
+} from '../../src/services/geo/deviceLocation';
 import type {
   MedicalCardDoc,
   MedicalEmergencyView,
@@ -22,8 +28,6 @@ import type {
 import { colors } from '../../src/theme/colors';
 
 const FOUR_H = 4 * 60 * 60;
-const DEMO_LAT = 50.6292;
-const DEMO_LON = 3.0573;
 
 /**
  * Module 13 — SOS, pause 4h, personal printed QR per subscriber,
@@ -52,6 +56,7 @@ export default function UrgenceScreen() {
   const [scanMsg, setScanMsg] = useState<string | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [label, setLabel] = useState<string | undefined>();
+  const [coords, setCoords] = useState<DeviceCoords | null>(null);
 
   const subscriberActive = Boolean(
     profile?.subscriptionActive ||
@@ -68,6 +73,12 @@ export default function UrgenceScreen() {
   useEffect(() => {
     if (seconds >= FOUR_H) setPausedAlert(true);
   }, [seconds]);
+
+  useEffect(() => {
+    void getDeviceCoords({ allowFallback: true }).then((r) => {
+      if (r.data) setCoords(r.data);
+    });
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -190,19 +201,36 @@ export default function UrgenceScreen() {
             Bouton SOS flottant + cet écran. Appel services d’urgence locaux (112 EU).
           </Text>
           <Text style={styles.coords}>
-            GPS mock : {DEMO_LAT.toFixed(4)}° N, {DEMO_LON.toFixed(4)}° E — Lille
+            {coords
+              ? `${coords.label} : ${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}${
+                  coords.accuracyM != null ? ` · ±${Math.round(coords.accuracyM)} m` : ''
+                }`
+              : `GPS… (fallback ${FALLBACK_LAT}, ${FALLBACK_LON})`}
           </Text>
+          <Pressable
+            style={styles.share}
+            onPress={() =>
+              void getDeviceCoords({ allowFallback: true }).then((r) => {
+                if (r.data) setCoords(r.data);
+              })
+            }
+          >
+            <Text style={styles.sosTxt}>Rafraîchir GPS</Text>
+          </Pressable>
           <View style={styles.row}>
             <Pressable style={styles.sos} onPress={() => void Linking.openURL('tel:112')}>
               <Text style={styles.sosTxt}>Appeler 112</Text>
             </Pressable>
             <Pressable
               style={styles.share}
-              onPress={() =>
+              onPress={() => {
+                const lat = coords?.lat ?? FALLBACK_LAT;
+                const lon = coords?.lon ?? FALLBACK_LON;
+                const src = coords?.source === 'device' ? 'GPS appareil' : 'GPS fallback';
                 void Share.share({
-                  message: `URGENCE — Position ${DEMO_LAT}, ${DEMO_LON}. Code QR : ${scanCode || '—'}.`,
-                })
-              }
+                  message: `URGENCE — ${src} ${lat}, ${lon}. Code QR : ${scanCode || '—'}.`,
+                });
+              }}
             >
               <Text style={styles.sosTxt}>SMS / partage</Text>
             </Pressable>

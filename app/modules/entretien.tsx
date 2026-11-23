@@ -7,6 +7,7 @@ import { StubBanner } from '../../src/components/StubBanner';
 import { useFleet } from '../../src/context/FleetContext';
 import { MOCK_MAINTENANCE } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
+import { shareCarnetText } from '../../src/services/carnet/exportCarnet';
 import type { MaintenanceItem } from '../../src/types/modules';
 import { colors } from '../../src/theme/colors';
 
@@ -186,10 +187,14 @@ export default function EntretienScreen() {
     setNewTitle('');
   };
 
-  const exportPdf = () => {
-    setPdfMsg(
-      'Export PDF certifié non branché — aucun fichier généré. Branchez un générateur PDF (carnet + factures) pour activer.',
-    );
+  const exportCarnet = () => {
+    void shareCarnetText({
+      vehicleLabel: active?.label ?? `${active?.make ?? 'Véhicule'} ${active?.model ?? ''}`.trim(),
+      vin: active?.vin,
+      odometerKm: km,
+      entries: carnet,
+      maintenanceDone: items.filter((i) => i.status === 'fait').map((i) => i.title),
+    }).then((r) => setPdfMsg(r.message));
   };
 
   return (
@@ -199,7 +204,7 @@ export default function EntretienScreen() {
         title="Entretien & carnet"
         subtitle={`Module 10 · ${active?.label ?? 'véhicule'} · ${km.toLocaleString('fr-FR')} km`}
       >
-        <StubBanner text="STUB — export PDF certifié non branché ; rappels pays en règles locales mock" />
+        <StubBanner text="Export carnet texte LIVE (share sheet) · PDF certifié / signature serveur non branché" />
 
         <Card title="Maintenance automatique (km)">
           <Text style={styles.meta}>
@@ -290,9 +295,12 @@ export default function EntretienScreen() {
               )}
             </View>
           ))}
-          <Pressable style={styles.export} onPress={exportPdf}>
-            <Text style={styles.exportTxt}>Exporter carnet PDF</Text>
+          <Pressable style={styles.export} onPress={exportCarnet}>
+            <Text style={styles.exportTxt}>Partager carnet (texte)</Text>
           </Pressable>
+          <Text style={styles.meta}>
+            PDF certifié = backend de signature à brancher — aucun faux « PDF certifié généré ».
+          </Text>
           {pdfMsg ? <Text style={styles.pdfMsg}>{pdfMsg}</Text> : null}
         </Card>
       </Screen>

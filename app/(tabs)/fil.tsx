@@ -104,7 +104,7 @@ export default function FilMecaniqueScreen() {
       refreshing={refreshing}
       onRefresh={onRefresh}
     >
-      <StubBanner text="Texte Firestore LIVE si Auth ; upload vidéo / CDN encore stub" />
+      <StubBanner text="Texte Firestore LIVE si Auth · upload vidéo = stub honnête (aucun succès CDN inventé)" />
       {feedLabel ? <Text style={styles.meta}>{feedLabel}</Text> : null}
 
       <Pressable style={styles.refreshBar} onPress={onRefresh}>

@@ -14,6 +14,12 @@ Updated continuously. **Formations: never touched.**
 | Multi-IA router | **Heuristique + optional SERVER proxy only** (no client LLM keys) | `src/services/ai/multiIaRouter.ts` |
 | Recalls NHTSA | **LIVE** (free) | `src/services/recalls/nhtsaRecalls.ts` |
 | Weather banner | **LIVE Open-Meteo** (cache 10 min) | `src/services/weather/openMeteo.ts` |
+| Geocode destination | **LIVE Open-Meteo** | `src/services/geo/openMeteoGeocode.ts` |
+| Device GPS | **LIVE expo-location** (fallback Lille) | `src/services/geo/deviceLocation.ts` |
+| Garages / pièces around me | **LIVE Overpass OSM** (+ Firestore/mock fallback) | `overpassPlaces.ts` + `garagesService.ts` |
+| Weigh / dépôts PL | **LIVE Overpass OSM** (ON/OFF unknown if untagged) | `weighService.ts` |
+| Parts list by VIN | **Local WMI catalogue** (+ Firestore if filled) | `vinPartsCatalog.ts` |
+| Carnet export | **Share texte LIVE** (not certified PDF) | `exportCarnet.ts` |
 | Fil texte | **LIVE Firestore** when Auth | `feedService.ts` |
 | Learned failures | **Owner-only** (no public read; no VIN field) | `learnedFailuresService.ts` |
 | Payments Stripe/RC | **Scaffold** — no fake success | `paymentsService.ts` |
@@ -40,7 +46,10 @@ Updated continuously. **Formations: never touched.**
 | Stripe / PayPal / RC | Checkout / SDK keys |
 | OBD hardware DTC | Dev Client + BLE |
 | Fil video upload | Storage + moderation |
-| GPS graph / weigh live | Maps/traffic APIs |
+| PTAC / bridge routing graph | Commercial truck routing API |
+| Weigh ON/OFF realtime | Jurisdiction feeds (OSM rarely tagged) |
+| Certified PDF carnet | Signed PDF backend |
+| Install URL prod | `EXPO_PUBLIC_INSTALL_URL` |
 
 ## Deploy docs
 
