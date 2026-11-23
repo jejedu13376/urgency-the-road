@@ -18,10 +18,7 @@ import {
   loadMedicalCardByScanCode,
   saveMedicalCardLocal,
 } from '../urgence/medicalLocalStore';
-import {
-  offlinePayloadToEmergencyView,
-  parseScannedQrValue,
-} from '../urgence/offlineQr';
+import { parseScannedQrValue } from '../urgence/offlineQr';
 import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { failResult, flaggedDemoResult, liveResult, mockResult, ServiceResult } from './result';
 
@@ -511,7 +508,7 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
 
 /**
  * Anonymous / public camera scan → limited preview only (no PHI).
- * Accepts offline envelope (UMQR1:) or opaque UM-QR-* — never surfaces PHI.
+ * Accepts opaque UM-QR-* (or legacy UMQR1: → scanCode only) — never surfaces PHI.
  * Works fully offline (static SOS payload).
  */
 export async function scanMedicalPublic(
@@ -531,8 +528,8 @@ export async function scanMedicalPublic(
 
 /**
  * Authorized emergency scan.
- * Offline order: (1) UMQR1 envelope in QR (2) AsyncStorage by scanCode (3) Firestore index.
- * Rules deny list on medicalScanIndex — rescuer cannot dump all cards.
+ * Offline: AsyncStorage by opaque scanCode only — never trusts PHI embedded in a QR.
+ * Online: Firestore medicalScanIndex/{scanCode} (no collection list).
  */
 export async function scanMedicalEmergency(
   scanInput: string,
@@ -550,21 +547,12 @@ export async function scanMedicalEmergency(
   }
 
   const parsed = parseScannedQrValue(scanInput);
-
-  // (1) Self-contained printed envelope — no network.
-  if (parsed.kind === 'offline') {
-    return mockResult(
-      offlinePayloadToEmergencyView(parsed.payload),
-      'LOCAL vue urgence — payload QR hors ligne (appareil)',
-    );
-  }
-
   const code =
     parsed.kind === 'scanCode'
       ? parsed.scanCode
       : scanInput.trim().toUpperCase();
 
-  // (2) On-device store (owner previously saved fiche on this or synced device).
+  // (1) On-device store — authoritative offline source (owner save / prior sync).
   const local = code.startsWith('UM-QR-') ? await loadMedicalCardByScanCode(code) : null;
   if (local) {
     return mockResult(

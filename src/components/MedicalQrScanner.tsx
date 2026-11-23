@@ -34,7 +34,7 @@ export function MedicalQrScanner({ visible, onClose, onScan }: Props) {
   const emit = (raw: string) => {
     const parsed = parseScannedQrValue(raw);
     if (parsed.kind === 'unknown') {
-      setHint('QR non reconnu — cadrez un QR Urgence Mécanique (UM-QR / UMQR1).');
+      setHint('QR non reconnu — cadrez un QR Urgence Mécanique (UM-QR-…).');
       return;
     }
     setLocked(true);
@@ -54,8 +54,7 @@ export function MedicalQrScanner({ visible, onClose, onScan }: Props) {
         {!permission?.granted ? (
           <View style={styles.center}>
             <Text style={styles.msg}>
-              Autorisation caméra requise — ou collez le code / enveloppe ci-dessous (hors ligne
-              OK).
+              Autorisation caméra requise — ou collez le code UM-QR-* ci-dessous (hors ligne OK).
             </Text>
             <Pressable style={styles.btn} onPress={() => void requestPermission()}>
               <Text style={styles.btnTxt}>Autoriser la caméra</Text>
@@ -73,8 +72,8 @@ export function MedicalQrScanner({ visible, onClose, onScan }: Props) {
         <Text style={styles.hint}>
           {hint ??
             (permission?.granted
-              ? 'Cadrez le QR imprimé — lecture locale, pas besoin de réseau.'
-              : 'Collez UM-QR-… ou l’enveloppe UMQR1:…')}
+              ? 'Cadrez le QR imprimé (id opaque) — fiche lue hors ligne depuis l’appareil.'
+              : 'Collez UM-QR-…')}
         </Text>
 
         <Text style={styles.manualLbl}>Saisie / collage manuel</Text>
@@ -86,7 +85,7 @@ export function MedicalQrScanner({ visible, onClose, onScan }: Props) {
           }}
           autoCapitalize="none"
           autoCorrect={false}
-          placeholder="UM-QR-… ou UMQR1:…"
+          placeholder="UM-QR-…"
           placeholderTextColor="#7A8A99"
           style={styles.input}
           accessibilityLabel="Code QR médical manuel"

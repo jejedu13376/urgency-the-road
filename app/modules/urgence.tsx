@@ -36,7 +36,7 @@ import {
   suggestEmergencyNumberId,
 } from '../../src/services/urgence/emergencyNumbers';
 import {
-  encodeOfflineQrFromCard,
+  encodePrintableQrValue,
   extractScanCode,
 } from '../../src/services/urgence/offlineQr';
 import {
@@ -97,7 +97,7 @@ export default function UrgenceScreen() {
   const [label, setLabel] = useState<string | undefined>();
   const [coords, setCoords] = useState<DeviceCoords | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
-  /** Raw scanned value (UMQR1:… or UM-QR-*) kept for offline emergency decode. */
+  /** Raw scanned value (UM-QR-* or legacy UMQR1:) — PHI never taken from QR bytes. */
   const [scanRaw, setScanRaw] = useState('');
 
   // Align with firestore.rules ownerIsActiveSubscriber — flag only, never plan name / !profile.
@@ -105,7 +105,8 @@ export default function UrgenceScreen() {
 
   const qrPrintValue = useMemo(() => {
     if (!card?.scanCode || !subscriberActive) return '';
-    return encodeOfflineQrFromCard(card);
+    // Opaque id only — medical payload stays on-device / cloud, never in the printed QR.
+    return encodePrintableQrValue(card.scanCode);
   }, [card, subscriberActive]);
 
   const suggestedEmergencyId = useMemo(
@@ -393,9 +394,9 @@ export default function UrgenceScreen() {
 
         <Card title="QR personnel (compte abonné)">
           <Text style={styles.meta}>
-            QR généré localement (pas de serveur image) · payload stocké sur l’appareil · scannable
-            hors ligne. Autocollant / carte / porte-clés — distinct de la valise OBD (M5) et de la
-            fiche diagnostique véhicule.
+            QR généré localement (id opaque UM-QR-* uniquement, pas de PHI dans le code) · fiche
+            stockée sur l’appareil · scan hors ligne via store local. Autocollant / carte /
+            porte-clés — distinct de la valise OBD (M5) et de la fiche diagnostique véhicule.
           </Text>
           <MedicalQrCode
             value={qrPrintValue}
@@ -447,7 +448,7 @@ export default function UrgenceScreen() {
               setScanRaw(t);
             }}
             style={styles.input}
-            placeholder="UM-QR-… ou UMQR1:…"
+            placeholder="UM-QR-…"
             placeholderTextColor={colors.muted}
             autoCapitalize="characters"
           />

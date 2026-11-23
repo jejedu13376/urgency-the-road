@@ -1,31 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { MedicalCardDoc } from '../../types/firestore';
 import {
   base64ToUtf8,
-  cardToOfflinePayload,
-  encodeOfflineQrFromCard,
-  encodeOfflineQrValue,
+  encodePrintableQrValue,
   extractScanCode,
-  offlinePayloadToEmergencyView,
+  OFFLINE_QR_PREFIX,
   parseScannedQrValue,
   utf8ToBase64,
 } from './offlineQr';
-
-const SAMPLE: MedicalCardDoc = {
-  id: 'med-u1',
-  ownerUid: 'u1',
-  scanCode: 'UM-QR-ABCDEFGHijklmnop',
-  fullName: 'Alex Test',
-  address: '1 rue Demo',
-  allergies: ['Pénicilline'],
-  conditions: ['Asthme'],
-  medications: ['Ventoline'],
-  emergencyContacts: [{ name: 'Sam', phone: '+33600000000' }],
-  bloodType: 'O+',
-  subscriberActive: true,
-  updatedAt: '2026-11-23T18:00:00.000Z',
-};
 
 describe('offlineQr', () => {
   it('round-trips utf8 base64', () => {
@@ -33,15 +15,16 @@ describe('offlineQr', () => {
     assert.equal(base64ToUtf8(utf8ToBase64(src)), src);
   });
 
-  it('encodes a self-contained offline QR value', () => {
-    const value = encodeOfflineQrFromCard(SAMPLE);
-    assert.match(value, /^UMQR1:/);
-    const parsed = parseScannedQrValue(value);
-    assert.equal(parsed.kind, 'offline');
-    if (parsed.kind !== 'offline') return;
-    assert.equal(parsed.scanCode, 'UM-QR-ABCDEFGHIJKLMNOP');
-    assert.equal(parsed.payload.fullName, 'Alex Test');
-    assert.deepEqual(parsed.payload.allergies, ['Pénicilline']);
+  it('prints only opaque UM-QR-* (never PHI envelope)', () => {
+    assert.equal(
+      encodePrintableQrValue('um-qr-ABCDEFGHijklmnop'),
+      'UM-QR-ABCDEFGHIJKLMNOP',
+    );
+    assert.equal(encodePrintableQrValue(''), '');
+    assert.equal(encodePrintableQrValue('https://evil.example'), '');
+    const printed = encodePrintableQrValue('UM-QR-ABCDEFGHIJKLMNOP');
+    assert.equal(printed.startsWith(OFFLINE_QR_PREFIX), false);
+    assert.match(printed, /^UM-QR-[A-Z0-9]+$/);
   });
 
   it('parses opaque scan codes without network', () => {
@@ -52,21 +35,37 @@ describe('offlineQr', () => {
     });
   });
 
+  it('legacy UMQR1: yields scanCode only — discards embedded PHI', () => {
+    const legacy = {
+      v: 1,
+      scanCode: 'UM-QR-ABCDEFGHIJKLMNOP',
+      fullName: 'Attacker Spoof',
+      allergies: ['Fake'],
+      conditions: [],
+      medications: [],
+      emergencyContacts: [],
+      updatedAt: '2026-11-23T18:00:00.000Z',
+    };
+    const raw = `${OFFLINE_QR_PREFIX}${utf8ToBase64(JSON.stringify(legacy))}`;
+    const parsed = parseScannedQrValue(raw);
+    assert.deepEqual(parsed, {
+      kind: 'scanCode',
+      scanCode: 'UM-QR-ABCDEFGHIJKLMNOP',
+    });
+    // Must not surface PHI fields from the envelope.
+    assert.equal('payload' in parsed, false);
+  });
+
   it('rejects unknown payloads', () => {
     assert.equal(parseScannedQrValue('https://example.com').kind, 'unknown');
     assert.equal(parseScannedQrValue('UMQR1:%%%').kind, 'unknown');
   });
 
-  it('maps offline payload to emergency view', () => {
-    const view = offlinePayloadToEmergencyView(cardToOfflinePayload(SAMPLE));
-    assert.equal(view.kind, 'emergency_full');
-    assert.equal(view.fullName, 'Alex Test');
-    assert.equal(view.emergencyContact?.phone, '+33600000000');
-  });
-
-  it('extractScanCode works for envelope and plain code', () => {
-    const env = encodeOfflineQrValue(cardToOfflinePayload(SAMPLE));
-    assert.equal(extractScanCode(env), 'UM-QR-ABCDEFGHIJKLMNOP');
+  it('extractScanCode works for opaque and legacy envelope', () => {
+    const legacy = `${OFFLINE_QR_PREFIX}${utf8ToBase64(
+      JSON.stringify({ scanCode: 'UM-QR-ABCDEFGHIJKLMNOP', fullName: 'X' }),
+    )}`;
+    assert.equal(extractScanCode(legacy), 'UM-QR-ABCDEFGHIJKLMNOP');
     assert.equal(extractScanCode('UM-QR-ABCDEFGHIJKLMNOP'), 'UM-QR-ABCDEFGHIJKLMNOP');
   });
 });
