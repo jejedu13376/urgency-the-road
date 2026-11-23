@@ -20,6 +20,8 @@ function AppShell() {
       <>
         <StatusBar style="light" />
         <StartupGateScreen />
+        {/* Spinner permanent aussi sur le gate (jamais masqué). */}
+        <PermanentLeftSpinner />
       </>
     );
   }

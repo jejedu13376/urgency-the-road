@@ -17,14 +17,17 @@ Updated continuously. **Formations: never touched.**
 | Fil texte | **LIVE Firestore** when Auth | `feedService.ts` |
 | Learned failures | **Owner-only** (no public read; no VIN field) | `learnedFailuresService.ts` |
 | Payments Stripe/RC | **Scaffold** — no fake success | `paymentsService.ts` |
-| OBD BLE | **Scaffold + Expo Go limit** | `bleScaffold.ts` |
+| OBD BLE | **Live path coded** (ELM327 AT + PID/DTC) — needs Dev Client + dongle | `bleScaffold.ts` + `bleSession.ts` + `elm327Protocol.ts` |
+| Red top-left spinner | Kept (also on gate) | `PermanentLeftSpinner.tsx` |
+| Startup gate | Kept (session-only) | `StartupGate*` |
+| Hosting restore | Docs | `docs/HOSTING-RESTORE.md` |
 
 ## Perf / bundle
 
 | Lever | Status |
 | --- | --- |
-| App icon | Compressed ~393 KB → ~174 KB (`assets/icon.png`) |
-| YouTube | TTL cache + `fields` slim + `relevanceLanguage=fr` |
+| App icon | Compressed (`assets/icon.png`) |
+| YouTube | TTL cache + `fields` slim + `relevanceLanguage=fr` + 6s abort |
 | Firestore | `memoryLocalCache` on init |
 | Weather / recalls | In-memory TTL caches |
 

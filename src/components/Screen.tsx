@@ -1,7 +1,10 @@
 import { ReactNode } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
+
+/** Room below status bar for permanent spinner (36) + margin and weather chip. */
+const CHROME_BELOW_INSET = 48;
 
 export function Screen({
   title,
@@ -18,6 +21,9 @@ export function Screen({
   refreshing?: boolean;
   onRefresh?: () => void;
 }) {
+  const insets = useSafeAreaInsets();
+  const headerPadTop = insets.top + CHROME_BELOW_INSET;
+
   const body = scroll ? (
     <ScrollView
       contentContainerStyle={styles.content}
@@ -36,7 +42,7 @@ export function Screen({
 
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: headerPadTop }]}>
         <Text style={styles.title}>{title}</Text>
         {subtitle ? <Text style={styles.sub}>{subtitle}</Text> : null}
       </View>
@@ -49,7 +55,6 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.paper },
   header: {
     paddingHorizontal: 16,
-    paddingTop: 8,
     paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: colors.line,

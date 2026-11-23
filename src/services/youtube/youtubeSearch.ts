@@ -2,7 +2,7 @@
  * YouTube Data API v3 — search.list utility.
  * Key from EXPO_PUBLIC_YOUTUBE_API_KEY only (never hardcode).
  * Opens watch URLs only — no embedded video files.
- * In-memory TTL cache + slim fields to cut latency / quota.
+ * In-memory TTL cache + slim fields + AbortController timeout.
  */
 
 export type YoutubeVideoHit = {
@@ -34,9 +34,14 @@ export function watchUrlFor(videoId: string): string {
   return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
 }
 
+export function youtubeSearchUrl(keyword: string): string {
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(keyword.trim() || 'réparation automobile')}`;
+}
+
 type CacheEntry = { at: number; result: YoutubeSearchResult };
 const searchCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 15 * 60 * 1000;
+const FETCH_TIMEOUT_MS = 6000;
 
 /**
  * Search top relevant videos for a mechanic problem keyword.
@@ -80,8 +85,11 @@ export async function searchYoutubeVideos(
     'items(id/videoId,snippet(title,channelTitle,thumbnails/default/url))',
   );
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
   try {
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), { signal: controller.signal });
     const httpStatus = res.status;
     const body = (await res.json()) as {
       error?: { message?: string; errors?: { reason?: string }[] };
@@ -118,12 +126,15 @@ export async function searchYoutubeVideos(
     searchCache.set(cacheKey, { at: Date.now(), result });
     return result;
   } catch (e) {
+    const aborted = e instanceof Error && e.name === 'AbortError';
     return {
       ok: false,
       httpStatus: 0,
       items: [],
-      error: e instanceof Error ? e.message : String(e),
+      error: aborted ? `YouTube timeout ${FETCH_TIMEOUT_MS}ms` : e instanceof Error ? e.message : String(e),
       source: 'youtube_api',
     };
+  } finally {
+    clearTimeout(timer);
   }
 }
