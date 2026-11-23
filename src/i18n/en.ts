@@ -57,6 +57,7 @@ export const en: FrDict = {
 
   sos: {
     a11y: 'Medical SOS — open Emergency module',
+    a11yClose: 'Medical SOS — close Emergency module',
   },
 
   weather: {
