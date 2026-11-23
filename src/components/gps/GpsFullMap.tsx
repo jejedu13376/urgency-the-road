@@ -680,6 +680,14 @@ export function GpsFullMap() {
     setSearchHits([]);
   }, []);
 
+  /** Invalidate in-flight autocomplete so stale results cannot reopen the dropdown. */
+  const cancelPendingSuggest = useCallback(() => {
+    skipSuggestRef.current = true;
+    searchReqIdRef.current += 1;
+    setSearchBusy(false);
+    clearSearchHits();
+  }, [clearSearchHits]);
+
   /** Debounced live Google Places suggestions while typing. */
   useEffect(() => {
     if (skipSuggestRef.current) {
@@ -690,9 +698,11 @@ export function GpsFullMap() {
     const reqId = ++searchReqIdRef.current;
     const timer = setTimeout(() => {
       void (async () => {
+        if (reqId !== searchReqIdRef.current) return;
         if (!placesConfigured || q.length < 2) {
           setSearchOpen(false);
           setSearchHits([]);
+          setSearchBusy(false);
           return;
         }
         setSearchBusy(true);
@@ -720,6 +730,7 @@ export function GpsFullMap() {
   const runSearch = useCallback(async () => {
     const q = searchQ.trim();
     if (!q) return;
+    searchReqIdRef.current += 1;
     setSearchBusy(true);
     setSearchOpen(true);
     try {
@@ -733,8 +744,7 @@ export function GpsFullMap() {
           const coords = await resolvePlaceCoords(only.placeId, placesSessionRef.current);
           placesSessionRef.current = newPlacesSessionToken();
           if (coords.ok && coords.lat != null && coords.lon != null) {
-            skipSuggestRef.current = true;
-            clearSearchHits();
+            cancelPendingSuggest();
             setSearchQ(coords.label ?? only.label);
             proposeDestination(coords.lat, coords.lon, coords.label ?? only.label);
             setHudNote(`Destination · ${coords.label ?? only.label}`);
@@ -749,8 +759,7 @@ export function GpsFullMap() {
       const res = await geocodePlace(q, 6);
       if (res.ok && res.hits[0]) {
         const hit = res.hits[0];
-        skipSuggestRef.current = true;
-        clearSearchHits();
+        cancelPendingSuggest();
         setSearchQ(hit.label);
         proposeDestination(hit.lat, hit.lon, hit.label);
         setHudNote(`Destination · ${hit.label} · ${res.source}`);
@@ -764,11 +773,12 @@ export function GpsFullMap() {
     } finally {
       setSearchBusy(false);
     }
-  }, [searchQ, placesConfigured, clearSearchHits, proposeDestination]);
+  }, [searchQ, placesConfigured, cancelPendingSuggest, proposeDestination]);
 
   const pickSearchHit = useCallback(
     (hit: PlacesSuggestion) => {
       void (async () => {
+        cancelPendingSuggest();
         setSearchBusy(true);
         try {
           const coords = await resolvePlaceCoords(hit.placeId, placesSessionRef.current);
@@ -778,6 +788,7 @@ export function GpsFullMap() {
             return;
           }
           skipSuggestRef.current = true;
+          searchReqIdRef.current += 1;
           clearSearchHits();
           setSearchQ(coords.label ?? hit.label);
           proposeDestination(coords.lat, coords.lon, coords.label ?? hit.label);
@@ -787,7 +798,7 @@ export function GpsFullMap() {
         }
       })();
     },
-    [clearSearchHits, proposeDestination],
+    [cancelPendingSuggest, clearSearchHits, proposeDestination],
   );
 
   /** One-tap Police = AsyncStorage local pin only — never auto-upload GPS/uid. */
