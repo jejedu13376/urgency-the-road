@@ -44,6 +44,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 14,
     zIndex: 30,
+    // Avoid accidental full-width hit box if absolute layout stretches on web.
+    alignSelf: 'flex-end',
+    width: 58,
   },
   btn: {
     backgroundColor: colors.danger,

@@ -83,7 +83,8 @@ export default function MenuScreen() {
           const meta = localizedModuleTitle(t, m.id);
           return (
             <Link key={m.id} href={m.href as never} asChild>
-              <Pressable style={[styles.tile, ok && styles.tileDone]}>
+              {/* expo-router Slot (Link asChild) throws in __DEV__ if style is an array */}
+              <Pressable style={StyleSheet.flatten([styles.tile, ok && styles.tileDone])}>
                 <View style={styles.top}>
                   <Text style={styles.id}>M{m.id}</Text>
                   <Text style={styles.check}>{ok ? '✓' : '○'}</Text>

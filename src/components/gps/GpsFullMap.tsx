@@ -361,7 +361,13 @@ export function GpsFullMap() {
           ? await saveGpsNavPrefs({ mode: 'camion' })
           : stored;
 
-      const loc = await getDeviceCoords({ allowFallback: false });
+      // Never block Carte forever on a hung getCurrentPosition (web / Expo Go).
+      const loc = await Promise.race([
+        getDeviceCoords({ allowFallback: false }),
+        new Promise<{ ok: false; error: string }>((resolve) => {
+          setTimeout(() => resolve({ ok: false, error: 'GPS timeout (8s)' }), 8000);
+        }),
+      ]);
       if (cancelled) return;
 
       const deviceOk = loc.ok === true && loc.data?.source === 'device';
