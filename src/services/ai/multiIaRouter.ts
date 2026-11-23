@@ -31,6 +31,8 @@ export type MultiIaResult = {
   heuristicCount: number;
   totalMs: number;
   label: string;
+  /** True when signed in but email not verified — LIVE proxy blocked server-side. */
+  emailVerificationRequired?: boolean;
 };
 
 const ALL: IaEngineId[] = ['Claude', 'Gemini', 'GPT-4o', 'Grok', 'Mistral', 'DeepSeek'];
@@ -106,10 +108,21 @@ async function authBearerForProxy(): Promise<string | undefined> {
     const fb = getFirebase();
     const user = fb?.auth.currentUser;
     if (!user) return undefined;
+    // Server requires email_verified — skip LIVE until verified (avoid useless 401s).
+    if (!user.emailVerified) return undefined;
     const token = await user.getIdToken();
     return token ? `Bearer ${token}` : undefined;
   } catch {
     return undefined;
+  }
+}
+
+function signedInNeedsEmailVerification(): boolean {
+  try {
+    const user = getFirebase()?.auth.currentUser;
+    return Boolean(user && !user.emailVerified);
+  } catch {
+    return false;
   }
 }
 
@@ -301,6 +314,19 @@ export async function runMultiIaDiagnostic(opts: {
   const liveCount = engines.filter((e) => e.source === 'live' && e.ok).length;
   const heuristicCount = engines.filter((e) => e.source === 'heuristic' && e.ok).length;
   const hasProxy = Boolean(proxyUrl());
+  const emailVerificationRequired = signedInNeedsEmailVerification();
+  const ms = Date.now() - t0;
+
+  let label: string;
+  if (liveCount > 0) {
+    label = `Multi-IA LIVE proxy (${liveCount}) + heuristique (${heuristicCount}) · ${ms} ms`;
+  } else if (emailVerificationRequired && hasProxy) {
+    label = `Multi-IA — vérifie ton email pour le LIVE · heuristique ${heuristicCount} · ${ms} ms`;
+  } else if (hasProxy) {
+    label = `Multi-IA — proxy KO · heuristique ${heuristicCount}`;
+  } else {
+    label = `Multi-IA heuristique croisée (${heuristicCount} moteurs) · proxy serveur optionnel · ${ms} ms`;
+  }
 
   return {
     ok: engines.some((e) => e.ok),
@@ -312,13 +338,9 @@ export async function runMultiIaDiagnostic(opts: {
     severity,
     liveCount,
     heuristicCount,
-    totalMs: Date.now() - t0,
-    label:
-      liveCount > 0
-        ? `Multi-IA LIVE proxy (${liveCount}) + heuristique (${heuristicCount}) · ${Date.now() - t0} ms`
-        : hasProxy
-          ? `Multi-IA — proxy KO · heuristique ${heuristicCount}`
-          : `Multi-IA heuristique croisée (${heuristicCount} moteurs) · proxy serveur optionnel · ${Date.now() - t0} ms`,
+    totalMs: ms,
+    label,
+    emailVerificationRequired,
   };
 }
 

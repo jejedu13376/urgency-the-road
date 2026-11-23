@@ -126,7 +126,8 @@ App: Module 15 sign-in → Module 6 Multi-IA → run diagnostic → expect `sour
 ## Security notes
 
 - Provider keys stay on the server; the Expo bundle only gets the proxy URL.
-- POST requires Firebase ID token with **`email_verified`** (set `MULTI_IA_ALLOW_UNVERIFIED_EMAIL=1` only for emulator/dev).
+- POST requires Firebase ID token with **`email_verified`**. Module 15 sends `sendEmailVerification` on signup; Multi-IA surfaces “vérifie ton email” + resend when unverified.
+  - Staging/emulator only: `MULTI_IA_ALLOW_UNVERIFIED_EMAIL=1` (never in production).
 - **App Check required outside the Functions emulator** by default. Until Expo App Check is wired, set `MULTI_IA_REQUIRE_APP_CHECK=0` on the function (temporary). Production should send `X-Firebase-AppCheck`.
 - Prompt/context length capped server-side (~4k chars each).
 - Upstream provider failures → generic `Engine request failed` — **never** echo provider error bodies to clients or logs.
@@ -135,7 +136,7 @@ App: Module 15 sign-in → Module 6 Multi-IA → run diagnostic → expect `sour
   | --- | ---: | --- |
   | Per-UID / window | 30 / 60s | `MULTI_IA_RATE_LIMIT_MAX`, `MULTI_IA_RATE_LIMIT_WINDOW_MS` |
   | Per-UID / UTC day | 200 | `MULTI_IA_DAILY_MAX` |
-  | Per-IP hash / window | 60 / 60s | `MULTI_IA_IP_RATE_LIMIT_MAX` |
+  | Per-IP hash / window | 60 / 60s | `MULTI_IA_IP_RATE_LIMIT_MAX` (uses `req.ip` / **rightmost** XFF hop — never leftmost) |
   | **Global / UTC day** | **2000** | `MULTI_IA_GLOBAL_DAILY_MAX` |
   - One Module 6 diagnostic can fire up to 6 parallel POSTs — keep UID window ≥ ~12.
 - Unauthenticated `GET` returns generic health + engine **names** only — **not** which keys are configured. Authenticated `GET` may include `enginesConfigured`.
