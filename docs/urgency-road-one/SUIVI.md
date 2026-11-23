@@ -1,7 +1,7 @@
 # Urgency Road — suivi
 
-Dernière mise à jour : 2026-11-23 ~13:13 UTC  
-**Tip `main`:** `487204c` (merge #19) · **Formations:** standby (untouched) · **Hearts:** non (secrets Lorenzo)
+Dernière mise à jour : 2026-11-23 ~13:50 UTC  
+**Tip `main`:** `6d1e127` (merge #22) · **#19:** `487204c` · **Formations:** standby (untouched) · **Hearts:** non (secrets Lorenzo)
 
 ---
 
@@ -16,9 +16,13 @@ Déjà sur `main` sans action Lorenzo :
 | Multi-IA **heuristic** + proxy client + Functions source | Coded (#8) — votes LLM **pas** live sans deploy |
 | BLE OBD path + EAS config (`eas.json`, runbooks) | Coded (#4/#9) |
 | Deferred security/crash (#19) | **Mergé** — PHI, fleet, appointments, rate-limit, activeId rematch |
+| Docs sync post-#19 (#22) | **Mergé** `6d1e127` |
 | Docs deploy / secrets / modules sync | À jour (ce fichier + `MODULES-STATUS` / `DEPLOY-CHECKLIST`) |
-| Open PRs (deferred bugs) | **Aucune** — file d’attente deferred bugs vide |
+| Open PRs | **Aucune** |
+| GitHub Actions on `main` | **Aucun workflow** — pas de check runs sur tip |
 
+**Expo local sans tokens deploy:** `npm install` → `npx expo start` (UI + free APIs + heuristic Multi-IA).  
+Client Firebase/YouTube = `EXPO_PUBLIC_*` dans `.env` — **pas** `FIREBASE_TOKEN` / `EXPO_TOKEN`.  
 **Pas de APK téléchargeable** sans Lorenzo (`EXPO_TOKEN` / `eas login`).  
 **Pas de Firebase rules/functions live** sans Lorenzo (`FIREBASE_TOKEN` / `firebase login`).  
 Provisional stand-in : https://github.com/jejedu13376/urgency-the-road/releases (vide jusqu’au 1er APK).
@@ -119,8 +123,9 @@ Détail : `docs/MODULES-STATUS.md`.
 | **#20** | `1dd989c` | Docs sync post-#12–#18/#16 |
 | **#21** | `d210e5c` | Batch E remaining software stubs |
 | **#19** | `487204c` | Deferred security/crash — PHI, fleet, appointments, rate-limit, activeId rematch (tip `703e07e`) |
+| **#22** | `6d1e127` | Docs sync post-#19 (SUIVI / MODULES / GLOBAL) |
 
-**Open PRs (deferred bugs):** aucune.
+**Open PRs:** aucune.
 
 ---
 
@@ -164,4 +169,6 @@ Deploy CLI : `--config firebase/firebase.json` · project `urgency-road`.
 | ~12:20 | PR #20 mergée — docs sync |
 | ~12:xx | PR #21 mergée — Batch E software stubs |
 | ~13:11 | PR #19 mergée `487204c` (tip `703e07e`) — PHI, fleet, appointments, rate-limit, activeId rematch |
-| ~13:13 | Docs sync post-#19 ; open deferred PRs = 0 ; Formations standby. |
+| ~13:13 | Docs sync post-#19 (#22 pending then merged) ; open deferred PRs = 0 ; Formations standby |
+| ~13:15 | PR #22 mergée `6d1e127` — tip `main` |
+| ~13:50 | Status tonight + secrets guide (store) ; CI = no Actions ; Expo local OK sans deploy tokens |
