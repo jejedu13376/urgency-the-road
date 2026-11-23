@@ -24,7 +24,7 @@
 | 2 | `/modules/flotte` | Cascade continent→…→motorisation, multi-flotte | — |
 | 3 | `/modules/pieces` | Liste pièces, comparateur, pose | Catalogue mondial, OCR devis IA |
 | 4 | `/modules/diagnostic-ia` | Questions, politesse, UI photo/son | IA photo/vidéo/micro live |
-| 5 | `/modules/obd` | DTC mock OBD2+J1939, capteurs simulés | BT/Wi-Fi/USB valise |
+| 5 | `/modules/obd` | VIN→prise+valise reco + achat abonné, DTC/BLE UX | BLE hardware Dev Client |
 | 6 | `/modules/multi-ia` | Routeur UI, `expo-speech` + Stop Voix | Claude/GPT/Gemini/Grok/Mistral/DeepSeek, web recalls |
 | 7 | `/modules/gps` | Modes PL/voiture, deep-links Maps/Waze/Apple | Graphe ponts/PTAC live |
 | 8 | `/modules/routiers` | Liste pesage & dépôts PL | Alertes temps réel |

@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { PermanentLeftSpinner } from '../src/components/PermanentLeftSpinner';
 import { SosButton } from '../src/components/SosButton';
 import { StartupGateScreen } from '../src/components/StartupGateScreen';
 import { WeatherBanner } from '../src/components/WeatherBanner';
@@ -32,6 +33,7 @@ function AppShell() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="modules" options={{ headerShown: false, presentation: 'card' }} />
       </Stack>
+      <PermanentLeftSpinner />
       <SosButton />
     </>
   );

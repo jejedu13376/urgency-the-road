@@ -9,14 +9,31 @@ import { fr } from '../../src/i18n/fr';
 import { colors } from '../../src/theme/colors';
 import type { ModuleId } from '../../src/types/modules';
 
+/** Menu — parcours vendeur 17 modules + streak / XP / badges (ProgressHero). */
 export default function MenuScreen() {
-  const { visited } = useProgress();
+  const { visited, streakDays, xp, completionPct, badges } = useProgress();
   const done = new Set(visited);
+  const next = MODULES.find((m) => !done.has(m.id as ModuleId));
 
   return (
     <Screen title={fr.appName} subtitle="Parcours vendeur — 17 modules">
       <BackendStatusBanner />
       <ProgressHero />
+
+      <View style={styles.sellerStrip}>
+        <Text style={styles.sellerTxt}>
+          🔥 {streakDays} j · {xp} XP · {completionPct}% · {badges.length} badge
+          {badges.length > 1 ? 's' : ''}
+        </Text>
+        {next ? (
+          <Text style={styles.sellerHint}>
+            Prochaine étape : M{next.id} {next.title} · +25 XP
+          </Text>
+        ) : (
+          <Text style={styles.sellerHint}>Parcours complet — Maître des 17 débloqué.</Text>
+        )}
+      </View>
+
       <Text style={styles.section}>Continuer le parcours</Text>
       <View style={styles.grid}>
         {MODULES.map((m) => {
@@ -41,6 +58,16 @@ export default function MenuScreen() {
 }
 
 const styles = StyleSheet.create({
+  sellerStrip: {
+    backgroundColor: colors.signalSoft,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.signal,
+    gap: 4,
+  },
+  sellerTxt: { color: colors.ink, fontWeight: '800', fontSize: 13 },
+  sellerHint: { color: colors.slate, fontSize: 12, fontWeight: '600' },
   section: { fontWeight: '800', color: colors.ink, fontSize: 14, marginTop: 4 },
   grid: { gap: 10 },
   tile: {

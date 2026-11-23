@@ -13,6 +13,7 @@ import { getFirebase } from '../../firebase/config';
 import type { VehicleDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
 import type { VehicleProfile } from '../../types/vehicle';
+import { decodeVinNhtsa } from '../vin/nhtsaDecode';
 import { liveResult, mockResult, ServiceResult } from './result';
 
 function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { id?: string } {
@@ -92,13 +93,15 @@ export async function removeVehicle(id: string): Promise<ServiceResult<null>> {
   return liveResult(null);
 }
 
-/** VIN decode: local mock table until a Cloud Function / OEM API is wired. */
+/** VIN decode: NHTSA vPIC (free, no key) first; mock fallback if network fails. */
 export async function decodeVinRemote(vin: string): Promise<ServiceResult<VehicleProfile | null>> {
-  const decoded = mockDecodeVin(vin);
-  const fb = getFirebase();
-  if (!fb) {
-    return mockResult(decoded, 'MOCK VIN — décodage local (pas d’API constructeur)');
+  const nhtsa = await decodeVinNhtsa(vin);
+  if (nhtsa.ok && nhtsa.profile) {
+    return { data: nhtsa.profile, source: 'firebase', stubLabel: 'NHTSA vPIC live' };
   }
-  // Placeholder for future callable; still returns local decode when live Firebase is up
-  return liveResult(decoded);
+  const decoded = mockDecodeVin(vin);
+  if (!decoded) {
+    return mockResult(null, nhtsa.message ?? 'VIN invalide / non décodé');
+  }
+  return mockResult(decoded, `Fallback mock — NHTSA: ${nhtsa.message ?? 'indisponible'}`);
 }

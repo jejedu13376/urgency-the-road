@@ -1,16 +1,35 @@
 import { useState } from 'react';
-import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
+import { StubBanner } from '../../src/components/StubBanner';
 import { MOCK_FEED } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
+import type { FeedPost } from '../../src/types/modules';
 import { colors } from '../../src/theme/colors';
 
-/** Module 12 — Fil mécanique. */
+type LocalComment = { id: string; author: string; text: string; at: string };
+
+/** Module 12 — Fil mécanique (feed + pull refresh + commentaires + upload stub clair). */
 export default function FilMecaniqueScreen() {
   useModuleVisit(12);
-  const [posts, setPosts] = useState(MOCK_FEED);
+  const [posts, setPosts] = useState<FeedPost[]>(MOCK_FEED);
   const [refreshing, setRefreshing] = useState(false);
+  const [commentOpen, setCommentOpen] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [comments, setComments] = useState<Record<string, LocalComment[]>>({
+    fp1: [
+      {
+        id: 'c1',
+        author: 'MécanoPaul',
+        text: 'Couple 25 Nm et pâte neuve — tiens bon.',
+        at: '2026-11-22T11:00:00Z',
+      },
+    ],
+  });
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null);
+  const [liked, setLiked] = useState<Record<string, boolean>>({});
+  const [captionDraft, setCaptionDraft] = useState('');
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -18,9 +37,9 @@ export default function FilMecaniqueScreen() {
       setPosts((p) => [
         {
           id: `fp-${Date.now()}`,
-          author: 'Vous',
+          author: 'Fil live (mock)',
           title: 'Actualisation rapide',
-          caption: 'Nouveau post mock après pull-to-refresh.',
+          caption: 'Nouveau conseil après pull-to-refresh — structure réseau social mécanique.',
           likes: 0,
           comments: 0,
           createdAt: new Date().toISOString(),
@@ -28,32 +47,121 @@ export default function FilMecaniqueScreen() {
         ...p,
       ]);
       setRefreshing(false);
-    }, 600);
+    }, 500);
+  };
+
+  const tryUpload = () => {
+    setUploadMsg(
+      'Publication vidéo non branchée — aucun upload réussi. Branchez stockage / CDN avant d’envoyer des clips. Aucune vidéo stockée dans l’app.',
+    );
+  };
+
+  const toggleLike = (id: string) => {
+    setLiked((prev) => {
+      const next = !prev[id];
+      setPosts((ps) =>
+        ps.map((p) => (p.id === id ? { ...p, likes: Math.max(0, p.likes + (next ? 1 : -1)) } : p)),
+      );
+      return { ...prev, [id]: next };
+    });
+  };
+
+  const addComment = (id: string) => {
+    if (!draft.trim()) return;
+    const entry: LocalComment = {
+      id: `lc-${Date.now()}`,
+      author: 'Vous',
+      text: draft.trim(),
+      at: new Date().toISOString(),
+    };
+    setComments((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), entry] }));
+    setPosts((ps) => ps.map((p) => (p.id === id ? { ...p, comments: p.comments + 1 } : p)));
+    setDraft('');
   };
 
   return (
-    <Screen title="Fil mécanique" subtitle="Module 12 — réseau social vidéo (structure mock)">
+    <Screen
+      title="Fil mécanique"
+      subtitle="Module 12 — réseau social vidéo (structure locale)"
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+    >
+      <StubBanner text="STUB — upload vidéo / CDN non branchés ; commentaires & likes locaux uniquement" />
+
       <Pressable style={styles.refreshBar} onPress={onRefresh}>
-        <Text style={styles.refreshTxt}>↓ Actualiser le fil</Text>
+        <Text style={styles.refreshTxt}>
+          {refreshing ? 'Actualisation…' : '↓ Actualiser le fil (pull ou tap)'}
+        </Text>
       </Pressable>
-      <View>
-        {posts.map((p) => (
-          <Card key={p.id} title={p.title}>
-            <Text style={styles.meta}>
-              {p.author} · {new Date(p.createdAt).toLocaleString('fr-FR')}
-            </Text>
-            <Text style={styles.caption}>{p.caption}</Text>
-            <Text style={styles.stats}>
-              ♥ {p.likes} · 💬 {p.comments} · [vidéo mock]
-            </Text>
-            <Pressable style={styles.comment}>
-              <Text style={styles.commentTxt}>Commentaires d’entraide (local)</Text>
+
+      <Card title="Publier une réparation">
+        <Text style={styles.meta}>
+          Conducteurs et garagistes : partagez pannes, conseils et clips. Aucune vidéo stockée tant
+          que l’upload n’est pas configuré.
+        </Text>
+        <TextInput
+          value={captionDraft}
+          onChangeText={setCaptionDraft}
+          placeholder="Légende (optionnelle)…"
+          placeholderTextColor={colors.muted}
+          style={styles.input}
+        />
+        <Pressable style={styles.upload} onPress={tryUpload}>
+          <Text style={styles.uploadTxt}>Choisir une vidéo (stub)</Text>
+        </Pressable>
+        {uploadMsg ? <Text style={styles.warn}>{uploadMsg}</Text> : null}
+        {captionDraft ? (
+          <Text style={styles.meta}>Légende prête — upload bloqué tant que le CDN n’est pas branché.</Text>
+        ) : null}
+      </Card>
+
+      {posts.map((p) => (
+        <Card key={p.id} title={p.title}>
+          <Text style={styles.meta}>
+            {p.author} · {new Date(p.createdAt).toLocaleString('fr-FR')}
+          </Text>
+          <Text style={styles.caption}>{p.caption}</Text>
+          <View style={styles.videoStub}>
+            <Text style={styles.videoStubTxt}>[aperçu vidéo mock — pas de fichier embarqué]</Text>
+          </View>
+          <View style={styles.statsRow}>
+            <Pressable onPress={() => toggleLike(p.id)}>
+              <Text style={[styles.stats, liked[p.id] && styles.liked]}>
+                ♥ {p.likes} {liked[p.id] ? '· aimé' : ''}
+              </Text>
             </Pressable>
-          </Card>
-        ))}
-      </View>
-      {/* RefreshControl needs ScrollView; Screen already scrolls — trigger via bar above */}
-      <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <Text style={styles.stats}>💬 {p.comments}</Text>
+          </View>
+          <Pressable
+            style={styles.comment}
+            onPress={() => setCommentOpen(commentOpen === p.id ? null : p.id)}
+          >
+            <Text style={styles.commentTxt}>
+              {commentOpen === p.id ? 'Fermer commentaires' : 'Commentaires d’entraide'}
+            </Text>
+          </Pressable>
+          {commentOpen === p.id ? (
+            <View style={styles.commentBox}>
+              {(comments[p.id] ?? []).map((c) => (
+                <View key={c.id} style={styles.commentItem}>
+                  <Text style={styles.commentAuthor}>{c.author}</Text>
+                  <Text style={styles.caption}>{c.text}</Text>
+                </View>
+              ))}
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                placeholder="Écrire un conseil…"
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+              />
+              <Pressable style={styles.send} onPress={() => addComment(p.id)}>
+                <Text style={styles.uploadTxt}>Envoyer</Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </Card>
+      ))}
     </Screen>
   );
 }
@@ -70,7 +178,45 @@ const styles = StyleSheet.create({
   refreshTxt: { color: colors.garage, fontWeight: '800' },
   meta: { color: colors.muted, fontSize: 12 },
   caption: { color: colors.slate },
-  stats: { color: colors.ink, fontSize: 12, fontWeight: '600' },
+  videoStub: {
+    backgroundColor: colors.mist,
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+    marginVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  videoStubTxt: { color: colors.muted, fontSize: 11, fontWeight: '700' },
+  statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center' },
+  stats: { color: colors.ink, fontSize: 12, fontWeight: '700' },
+  liked: { color: colors.danger },
   comment: { paddingTop: 4 },
   commentTxt: { color: colors.signal, fontWeight: '700', fontSize: 13 },
+  commentBox: { gap: 8, marginTop: 6 },
+  commentItem: {
+    backgroundColor: colors.mist,
+    borderRadius: 8,
+    padding: 8,
+    gap: 2,
+  },
+  commentAuthor: { fontWeight: '800', color: colors.ink, fontSize: 12 },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: colors.mist,
+    color: colors.ink,
+  },
+  upload: {
+    backgroundColor: colors.asphalt,
+    borderRadius: 10,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  send: { backgroundColor: colors.signal, borderRadius: 10, padding: 10, alignItems: 'center' },
+  uploadTxt: { color: colors.white, fontWeight: '800' },
+  warn: { color: colors.warn, fontWeight: '700', fontSize: 12, marginTop: 8 },
 });

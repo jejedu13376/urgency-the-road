@@ -1,12 +1,21 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { firebaseStatusLabel, isFirebaseConfigured } from '../firebase/config';
+import { isYoutubeApiConfigured } from '../services/youtube/youtubeSearch';
 import { colors } from '../theme/colors';
 
+/** Shows Firebase + YouTube env readiness (keys from .env only). */
 export function BackendStatusBanner() {
-  const live = isFirebaseConfigured();
+  const fb = isFirebaseConfigured();
+  const yt = isYoutubeApiConfigured();
+  const live = fb;
+  const line = [
+    firebaseStatusLabel(),
+    yt ? 'YouTube API clé OK' : 'YouTube — EXPO_PUBLIC_YOUTUBE_API_KEY manquant',
+  ].join(' · ');
+
   return (
     <View style={[styles.wrap, live ? styles.live : styles.mock]}>
-      <Text style={styles.txt}>{firebaseStatusLabel()}</Text>
+      <Text style={styles.txt}>{line}</Text>
     </View>
   );
 }

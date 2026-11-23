@@ -1,55 +1,159 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Link } from 'expo-router';
+import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
 import { ProgressHero } from '../../src/components/ProgressHero';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
+import { VinCameraScanner } from '../../src/components/VinCameraScanner';
+import { useAuth } from '../../src/context/AuthContext';
 import { useFleet } from '../../src/context/FleetContext';
-import { mockDecodeVin } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { fr } from '../../src/i18n/fr';
-import { stubVinDecodeLabel } from '../../src/services/stubs';
+import { decodeVinRemote, upsertVehicle as upsertVehicleRemote } from '../../src/services/firebase';
 import { colors } from '../../src/theme/colors';
+import type { VehicleProfile } from '../../src/types/vehicle';
 
-/** Module 1 — onglet obligatoire « Mon véhicule ». */
+const POWERTRAIN_FR: Record<string, string> = {
+  essence: 'Essence',
+  diesel: 'Diesel',
+  hybride: 'Hybride',
+  electrique: 'Électrique',
+  gpl: 'GPL',
+  poids_lourd_diesel: 'Diesel poids lourd',
+};
+
+const CLASS_FR: Record<string, string> = {
+  voiture: 'Voiture',
+  suv: 'SUV',
+  pickup: 'Pick-up',
+  poids_lourd: 'Poids lourd',
+};
+
+const CONTINENT_FR: Record<string, string> = {
+  EU: 'Europe',
+  NA: 'Amérique du Nord',
+  AU: 'Australie',
+  AS: 'Asie',
+};
+
+const SEV_FR: Record<string, string> = {
+  faible: 'faible',
+  moyen: 'moyen',
+  eleve: 'élevé',
+};
+
+/** Module 1 — onglet obligatoire « Mon véhicule » (CDC). */
 export default function MonVehiculeScreen() {
   useModuleVisit(1);
-  const { active, upsertVehicle } = useFleet();
+  const { profile } = useAuth();
+  const { active, vehicles, setActive, upsertVehicle } = useFleet();
   const [vin, setVin] = useState(active?.vin ?? '');
   const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [sourceLabel, setSourceLabel] = useState<string | undefined>();
 
-  const onDecode = () => {
-    const decoded = mockDecodeVin(vin);
-    if (!decoded) {
-      setMsg('VIN trop court (mock local).');
-      return;
+  useEffect(() => {
+    if (active?.vin) setVin(active.vin);
+  }, [active?.id, active?.vin]);
+
+  const applyDecoded = async (decoded: VehicleProfile, stub?: string) => {
+    const ownerUid = profile?.uid ?? 'mock-local-user';
+    const merged: VehicleProfile = {
+      ...decoded,
+      label: active?.label && active.vin === decoded.vin ? active.label : decoded.label,
+    };
+    upsertVehicle(merged);
+    const remote = await upsertVehicleRemote(ownerUid, merged);
+    setSourceLabel(remote.stubLabel ?? stub ?? (remote.source === 'firebase' ? 'Firestore' : undefined));
+    setMsg(`Fiche enregistrée : ${merged.make} ${merged.model} ${merged.year}`);
+  };
+
+  const onDecode = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await decodeVinRemote(vin);
+      setSourceLabel(res.stubLabel);
+      if (!res.data) {
+        setMsg(res.stubLabel ?? 'VIN trop court ou non reconnu. Saisissez au moins 11 caractères.');
+        return;
+      }
+      await applyDecoded(res.data, res.stubLabel);
+    } finally {
+      setBusy(false);
     }
-    upsertVehicle({ ...decoded, label: active?.label ?? decoded.label });
-    setMsg(`Fiche mise à jour : ${decoded.make} ${decoded.model} ${decoded.year}`);
+  };
+
+  const onVinFromCamera = async (scanned: string) => {
+    setVin(scanned);
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await decodeVinRemote(scanned);
+      setSourceLabel(res.stubLabel ?? 'Scan caméra + NHTSA');
+      if (res.data) await applyDecoded(res.data, res.stubLabel ?? 'Scan caméra + NHTSA');
+      else setMsg(res.stubLabel ?? 'VIN scanné non décodé');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <Screen title={fr.tabMonVehicule} subtitle="Fiche technique & décodage VIN mondial (mock)">
+    <Screen
+      title={fr.tabMonVehicule}
+      subtitle="Module 1 — décodage VIN mondial & fiche technique"
+    >
+      <BackendStatusBanner />
       <ProgressHero />
-      <StubBanner text={stubVinDecodeLabel()} />
+      <StubBanner
+        text={
+          sourceLabel ??
+          'VIN : NHTSA vPIC live · fallback mock · scan caméra expo-camera.'
+        }
+      />
+      <VinCameraScanner
+        visible={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onVin={(v) => void onVinFromCamera(v)}
+      />
 
-      <Card title="Recherche par numéro de série (VIN)">
+      <Card title="Recherche mondiale par numéro de série (VIN)">
+        <Text style={styles.hint}>
+          Europe · Amérique du Nord · Australie · Asie — voitures, pick-up et poids lourds.
+        </Text>
         <TextInput
           value={vin}
           onChangeText={setVin}
           autoCapitalize="characters"
-          placeholder="Ex. VF1RJA00067000001"
+          autoCorrect={false}
+          placeholder="Saisie manuelle du VIN (ex. VF1RJA00067000001)"
           placeholderTextColor={colors.muted}
           style={styles.input}
+          accessibilityLabel="Numéro de série VIN"
         />
         <View style={styles.row}>
-          <Pressable style={styles.primary} onPress={onDecode}>
-            <Text style={styles.primaryTxt}>Décoder VIN</Text>
+          <Pressable
+            style={[styles.primary, busy && styles.disabled]}
+            onPress={() => void onDecode()}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Décoder VIN"
+          >
+            {busy ? (
+              <ActivityIndicator color={colors.white} />
+            ) : (
+              <Text style={styles.primaryTxt}>Décoder VIN</Text>
+            )}
           </Pressable>
           <Pressable
-            style={styles.secondary}
-            onPress={() => setMsg('STUB caméra — scan VIN non branché (expo-camera à brancher)')}
+            style={[styles.secondary, busy && styles.disabled]}
+            onPress={() => setScannerOpen(true)}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Scanner le VIN avec la caméra"
           >
             <Text style={styles.secondaryTxt}>Scan caméra</Text>
           </Pressable>
@@ -58,47 +162,107 @@ export default function MonVehiculeScreen() {
       </Card>
 
       {active ? (
-        <Card title="Fiche technique">
-          <Text style={styles.line}>
-            <Text style={styles.k}>Véhicule : </Text>
-            {active.label}
-          </Text>
-          <Text style={styles.line}>
-            <Text style={styles.k}>Marque / modèle : </Text>
-            {active.make} {active.model} ({active.year})
-          </Text>
-          <Text style={styles.line}>
-            <Text style={styles.k}>Motorisation : </Text>
-            {active.powertrain} · {active.vehicleClass}
-          </Text>
-          <Text style={styles.line}>
-            <Text style={styles.k}>Zone : </Text>
-            {active.continent}/{active.country} · {active.currency} · {active.unitSystem}
-          </Text>
-          <Text style={styles.line}>
-            <Text style={styles.k}>Fluides : </Text>
-            huile {active.fluids.engineOilL} L · liquide refroid. {active.fluids.coolantL} L
-          </Text>
-          <Text style={styles.section}>Pannes fréquentes</Text>
-          {active.commonFailures.map((f) => (
-            <View key={f.id} style={styles.fail}>
-              <Text style={styles.failTitle}>{f.title}</Text>
-              <Text style={styles.failBody}>{f.symptoms.join(' · ')} — sévérité {f.severity}</Text>
-            </View>
-          ))}
+        <Card title="Fiche technique complète">
+          <Field label="Libellé" value={active.label} />
+          <Field label="VIN" value={active.vin ?? '—'} />
+          <Field label="Marque" value={active.make} />
+          <Field label="Modèle" value={active.model} />
+          <Field label="Année" value={String(active.year)} />
+          <Field
+            label="Motorisation"
+            value={`${POWERTRAIN_FR[active.powertrain] ?? active.powertrain} · ${CLASS_FR[active.vehicleClass] ?? active.vehicleClass}`}
+          />
+          <Field
+            label="Zone"
+            value={`${CONTINENT_FR[active.continent] ?? active.continent} / ${active.country} · ${active.currency} · ${active.unitSystem === 'metric' ? 'métrique' : 'impérial'}`}
+          />
+          <Field label="Kilométrage" value={`${active.odometerKm.toLocaleString('fr-FR')} km`} />
+
+          <Text style={styles.section}>Capacité des fluides</Text>
+          <View style={styles.fluids}>
+            <FluidChip label="Huile moteur" value={`${active.fluids.engineOilL} L`} />
+            <FluidChip label="Liquide refroid." value={`${active.fluids.coolantL} L`} />
+            <FluidChip label="Lave-glace" value={`${active.fluids.washerL} L`} />
+            {active.fluids.fuelL != null ? (
+              <FluidChip label="Réservoir" value={`${active.fluids.fuelL} L`} />
+            ) : null}
+          </View>
+
+          <Text style={styles.section}>Pannes fréquentes (ce modèle)</Text>
+          {active.commonFailures.length === 0 ? (
+            <Text style={styles.hint}>Aucune panne fréquente en base pour ce véhicule.</Text>
+          ) : (
+            active.commonFailures.map((f) => (
+              <View key={f.id} style={styles.fail}>
+                <Text style={styles.failTitle}>{f.title}</Text>
+                <Text style={styles.failBody}>
+                  Symptômes : {f.symptoms.join(' · ')}
+                </Text>
+                <Text style={styles.failSev}>
+                  Sévérité : {SEV_FR[f.severity] ?? f.severity}
+                </Text>
+              </View>
+            ))
+          )}
+        </Card>
+      ) : (
+        <Card title="Aucun véhicule actif">
+          <Text style={styles.hint}>Décodez un VIN ou ouvrez la flotte (Module 2).</Text>
+        </Card>
+      )}
+
+      {vehicles.length > 1 ? (
+        <Card title="Basculer rapidement (flotte)">
+          <View style={styles.chips}>
+            {vehicles.map((v) => (
+              <Pressable
+                key={v.id}
+                style={[styles.chip, active?.id === v.id && styles.chipOn]}
+                onPress={() => setActive(v.id)}
+              >
+                <Text style={[styles.chipTxt, active?.id === v.id && styles.chipTxtOn]}>
+                  {v.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </Card>
       ) : null}
 
       <Link href="/modules/flotte" asChild>
         <Pressable style={styles.linkBtn}>
-          <Text style={styles.linkTxt}>Module 2 — sélecteur cascade & flotte →</Text>
+          <Text style={styles.linkTxt}>Module 2 — sélecteur cascade & multi-flotte →</Text>
+        </Pressable>
+      </Link>
+      <Link href="/modules/pieces" asChild>
+        <Pressable style={styles.linkBtn}>
+          <Text style={styles.linkTxt}>Module 3 — pièces & devis pour ce VIN →</Text>
         </Pressable>
       </Link>
     </Screen>
   );
 }
 
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <Text style={styles.line}>
+      <Text style={styles.k}>{label} : </Text>
+      {value}
+    </Text>
+  );
+}
+
+function FluidChip({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.fluidChip}>
+      <Text style={styles.fluidLabel}>{label}</Text>
+      <Text style={styles.fluidVal}>{value}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  hint: { color: colors.muted, fontSize: 12, lineHeight: 17 },
   input: {
     borderWidth: 1,
     borderColor: colors.line,
@@ -116,6 +280,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
   },
   primaryTxt: { color: colors.white, fontWeight: '800' },
   secondary: {
@@ -128,13 +294,46 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
   },
   secondaryTxt: { color: colors.slate, fontWeight: '700' },
-  msg: { color: colors.garage, fontSize: 13 },
-  line: { color: colors.slate, fontSize: 14, lineHeight: 20 },
+  disabled: { opacity: 0.6 },
+  scanBox: {
+    backgroundColor: colors.asphalt,
+    borderRadius: 10,
+    padding: 12,
+    gap: 4,
+  },
+  scanTitle: { color: colors.white, fontWeight: '800' },
+  scanBody: { color: '#C5D2DE', fontSize: 12, lineHeight: 17 },
+  msg: { color: colors.garage, fontSize: 13, fontWeight: '600' },
+  line: { color: colors.slate, fontSize: 14, lineHeight: 21 },
   k: { fontWeight: '700', color: colors.ink },
-  section: { marginTop: 6, fontWeight: '800', color: colors.ink },
-  fail: { backgroundColor: colors.signalSoft, borderRadius: 8, padding: 8 },
+  section: { marginTop: 8, marginBottom: 4, fontWeight: '800', color: colors.ink },
+  fluids: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  fluidChip: {
+    backgroundColor: colors.garageSoft,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minWidth: '45%',
+    flexGrow: 1,
+  },
+  fluidLabel: { color: colors.muted, fontSize: 11, fontWeight: '600' },
+  fluidVal: { color: colors.ink, fontWeight: '800', fontSize: 15 },
+  fail: { backgroundColor: colors.signalSoft, borderRadius: 8, padding: 10, gap: 2 },
   failTitle: { fontWeight: '700', color: colors.ink },
   failBody: { color: colors.slate, fontSize: 12 },
-  linkBtn: { paddingVertical: 12 },
+  failSev: { color: colors.signal, fontSize: 11, fontWeight: '700' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: colors.mist,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  chipOn: { backgroundColor: colors.asphalt, borderColor: colors.asphalt },
+  chipTxt: { color: colors.slate, fontSize: 12, fontWeight: '600' },
+  chipTxtOn: { color: colors.white },
+  linkBtn: { paddingVertical: 8 },
   linkTxt: { color: colors.signal, fontWeight: '700' },
 });

@@ -85,20 +85,51 @@ export interface GarageDoc {
   updatedAt: string;
 }
 
-/** Medical card — rescuer + active subscription gate (Module 13). */
+/**
+ * Module 13 — medical fiche + personal QR (printed sticker/card per subscriber account).
+ * Access tiers: public_limited | emergency_full (authorized rescuer). No electronic beacon IDs.
+ */
 export interface MedicalCardDoc {
   id: string;
   ownerUid: string;
+  /** Unique personal QR payload / code printed on sticker or card (1 per subscriber). */
   scanCode: string;
   fullName: string;
+  /** Postal / residence address shown on full emergency view. */
+  address?: string;
   allergies: string[];
   conditions: string[];
   medications: string[];
   emergencyContacts: { name: string; phone: string }[];
   bloodType?: string;
   notes?: string;
+  /** Subscriber must have an active paid plan to mint / keep a personal QR. */
+  subscriberActive?: boolean;
   updatedAt: string;
 }
+
+/** Limited public preview after anonymous phone-camera QR scan. */
+export type MedicalPublicPreview = {
+  kind: 'public_limited';
+  scanCode: string;
+  brandLabel: string;
+  sosHint: string;
+  emergencyDial: string;
+};
+
+/** Full emergency view for authorized rescuers. */
+export type MedicalEmergencyView = {
+  kind: 'emergency_full';
+  scanCode: string;
+  fullName: string;
+  address: string;
+  emergencyContact: { name: string; phone: string } | null;
+  bloodType?: string;
+  allergies: string[];
+  conditions: string[];
+  medications: string[];
+  notes?: string;
+};
 
 export interface RoadHazardDoc {
   id: string;
