@@ -61,6 +61,8 @@ export default function CarnetVocalScreen() {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const busyRef = useRef(false);
   const playUriRef = useRef<string | null>(null);
+  /** True once Stop & save owns the take — unmount must not delete that file. */
+  const keepTakeRef = useRef(false);
 
   const audioRecorder = useAudioRecorder({
     ...RecordingPresets.HIGH_QUALITY,
@@ -84,10 +86,11 @@ export default function CarnetVocalScreen() {
     return () => clearTimeout(timer);
   }, [reload]);
 
-  // Stop mic, discard unsaved file, restore audio mode if the user leaves mid-recording.
+  // Stop mic; discard only abandoned takes (not ones owned by stopAndSave).
   useEffect(() => {
     return () => {
       void (async () => {
+        const keep = keepTakeRef.current;
         let orphanUri: string | null = null;
         try {
           const st = audioRecorder.getStatus();
@@ -98,7 +101,7 @@ export default function CarnetVocalScreen() {
         } catch {
           /* unmounted */
         }
-        if (orphanUri) await deleteAudioFile(orphanUri);
+        if (orphanUri && !keep) await deleteAudioFile(orphanUri);
         try {
           await setAudioModeAsync({
             playsInSilentMode: true,
@@ -114,6 +117,7 @@ export default function CarnetVocalScreen() {
   const startRecording = () => {
     if (busyRef.current || phase === 'recording') return;
     busyRef.current = true;
+    keepTakeRef.current = false;
     setPhase('recording');
     setStatusMsg(null);
     void (async () => {
@@ -144,6 +148,7 @@ export default function CarnetVocalScreen() {
   const stopAndSave = () => {
     if (phase !== 'recording' || busyRef.current) return;
     busyRef.current = true;
+    keepTakeRef.current = true;
     setPhase('saving');
     void (async () => {
       try {
@@ -151,12 +156,14 @@ export default function CarnetVocalScreen() {
         const status = audioRecorder.getStatus();
         const uri = audioRecorder.uri ?? status.url;
         if (!uri) {
+          keepTakeRef.current = false;
           setStatusMsg(t('voiceLogbook.noFile'));
           setPhase('idle');
           return;
         }
         const durationMs = status.durationMillis ?? 0;
         if (durationMs < 400) {
+          keepTakeRef.current = false;
           await deleteAudioFile(uri);
           setStatusMsg(t('voiceLogbook.tooShort'));
           setPhase('idle');
