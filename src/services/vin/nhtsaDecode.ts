@@ -3,6 +3,7 @@
  * https://vpic.nhtsa.dot.gov/api/
  */
 import type { ContinentCode, Powertrain, VehicleClass, VehicleProfile } from '../../types/vehicle';
+import { normalizeVin, vinCheckDigitOk } from './vinNormalize';
 
 type NhtsaResult = { Variable: string; Value: string | null };
 
@@ -67,10 +68,11 @@ export type NhtsaDecodeOutcome = {
 };
 
 export async function decodeVinNhtsa(vinRaw: string): Promise<NhtsaDecodeOutcome> {
-  const vin = vinRaw.trim().toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '');
+  const vin = normalizeVin(vinRaw);
   if (vin.length < 11) {
     return { ok: false, profile: null, source: 'error', message: 'VIN trop court (min. 11).' };
   }
+  const check = vinCheckDigitOk(vin);
   const url = `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVin/${encodeURIComponent(vin)}?format=json`;
   try {
     const res = await fetch(url);
@@ -82,7 +84,14 @@ export async function decodeVinNhtsa(vinRaw: string): Promise<NhtsaDecodeOutcome
     const yearStr = pick(results, 'Model Year');
     const errorText = pick(results, 'Error Text');
     if (!make && !model) {
-      return { ok: false, profile: null, source: 'error', message: errorText || 'VIN non reconnu NHTSA' };
+      return {
+        ok: false,
+        profile: null,
+        source: 'error',
+        message:
+          errorText ||
+          (check === false ? 'VIN non reconnu NHTSA (chiffre de contrôle invalide)' : 'VIN non reconnu NHTSA'),
+      };
     }
     const fuel = pick(results, 'Fuel Type - Primary');
     const bodyClass = pick(results, 'Body Class');
@@ -112,8 +121,12 @@ export async function decodeVinNhtsa(vinRaw: string): Promise<NhtsaDecodeOutcome
         {
           id: 'nhtsa-gen',
           title: 'Usure / TSB à vérifier',
-          symptoms: [bodyClass || 'carrosserie NHTSA', plantCountry ? `Usine: ${plantCountry}` : ''].filter(Boolean),
-          severity: 'faible',
+          symptoms: [
+            bodyClass || 'carrosserie NHTSA',
+            plantCountry ? `Usine: ${plantCountry}` : '',
+            check === false ? 'Attention : chiffre de contrôle VIN (pos. 9) invalide' : '',
+          ].filter(Boolean),
+          severity: check === false ? 'moyen' : 'faible',
         },
       ],
       odometerKm: 0,

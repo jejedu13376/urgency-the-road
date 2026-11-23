@@ -115,7 +115,7 @@ export default function MonVehiculeScreen() {
       <StubBanner
         text={
           sourceLabel ??
-          'VIN : NHTSA vPIC live · fallback mock · scan caméra expo-camera.'
+          'VIN : NHTSA vPIC live · fallback WMI · scan caméra + saisie manuelle.'
         }
       />
       <VinCameraScanner

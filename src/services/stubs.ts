@@ -11,7 +11,7 @@ export type StubResult<T> = {
 };
 
 export function stubVinDecodeLabel() {
-  return 'STUB VIN — décodage local mock, pas d’API constructeur live';
+  return 'VIN — NHTSA vPIC live ; fallback WMI local si réseau KO';
 }
 
 export function stubObdConnect(): StubResult<{ connected: false; protocol: string }> {
@@ -40,7 +40,7 @@ export function stubPayment(planId: string): StubResult<{ checkoutUrl: null; pla
     ok: true,
     data: { checkoutUrl: null, planId },
     stub: true,
-    label: 'STUB paiement — Lydia/Stripe/Apple Pay/Google Pay non branchés',
+    label: 'STUB paiement — Stripe/PayPal/wallets (pas de Lydia) ; bases checkout .env',
   };
 }
 
@@ -66,10 +66,10 @@ export function stubQuoteScan(): StubResult<{ overchargeRisk: 'faible' | 'moyen'
     ok: true,
     data: {
       overchargeRisk: 'moyen',
-      note: 'Comparaison mock vs marché local — OCR/IA devis non branchés.',
+      note: 'Heuristique marché local — OCR ML Kit / Document AI à brancher.',
     },
     stub: true,
-    label: 'STUB IA — scanner de devis garage (photo/PDF) non branché',
+    label: 'STUB OCR devis — analyse structurée locale (pas d’OCR image encore)',
   };
 }
 
