@@ -47,7 +47,7 @@ Updated continuously. **Formations: never touched.**
 | Stripe / PayPal / RC | Checkout / SDK keys |
 | OBD hardware DTC | Dev Client + BLE |
 | Fil video upload | Storage + moderation |
-| PTAC / bridge routing graph | Commercial truck routing API |
+| PTAC / legal clearance graph | Commercial truck routing API (free: Valhalla `truck` + OSM maxheight advisory — not a paid PTAC product) |
 | Weigh ON/OFF realtime | Jurisdiction feeds (OSM rarely tagged) |
 | Certified PDF carnet | Signed PDF backend |
 | Install URL prod | `EXPO_PUBLIC_INSTALL_URL` |

@@ -12,6 +12,8 @@ export function WeatherBanner() {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const onModules = pathname?.includes('/modules');
+  /** Carte = plein écran GPS — pas de bandeau météo qui mange la surface carte. */
+  const onCarte = pathname === '/carte' || pathname?.endsWith('/carte');
   const [enabled, setEnabled] = useState(true);
   const [w, setW] = useState<WeatherSnapshot | null>(null);
   const now = new Date();
@@ -30,7 +32,7 @@ export function WeatherBanner() {
   }, [pathname]);
 
   useEffect(() => {
-    if (!enabled || onModules) return;
+    if (!enabled || onModules || onCarte) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -63,9 +65,9 @@ export function WeatherBanner() {
     return () => {
       cancelled = true;
     };
-  }, [enabled, onModules]);
+  }, [enabled, onModules, onCarte]);
 
-  if (!enabled || onModules) return null;
+  if (!enabled || onModules || onCarte) return null;
 
   const temp = w?.tempC ?? '…';
   const road = w?.road ?? 'ouvertes';
