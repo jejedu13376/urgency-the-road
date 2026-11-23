@@ -106,25 +106,32 @@ function heuristicVote(engine: IaEngineId, prompt: string, context: string): IaE
 /**
  * Reload Auth user + force-refresh ID token so emailVerified is fresh after the
  * user clicks the verification link (without requiring full sign-out).
+ * On reload/token failure: keep needsVerification from cached emailVerified so
+ * the verify-email card is not lost.
  */
 async function refreshAuthUserForProxy(): Promise<{
   bearer?: string;
   needsVerification: boolean;
 }> {
+  const fb = getFirebase();
+  const user = fb?.auth.currentUser;
+  if (!user) return { needsVerification: false };
+  const cachedNeedsVerify = !user.emailVerified;
   try {
-    const fb = getFirebase();
-    const user = fb?.auth.currentUser;
-    if (!user) return { needsVerification: false };
     await user.reload();
     const fresh = fb.auth.currentUser;
-    if (!fresh) return { needsVerification: false };
+    if (!fresh) {
+      // Still treat as needing verify if we were signed in unverified before reload.
+      return { needsVerification: cachedNeedsVerify };
+    }
     if (!fresh.emailVerified) return { needsVerification: true };
     const token = await fresh.getIdToken(true);
     return token
       ? { bearer: `Bearer ${token}`, needsVerification: false }
       : { needsVerification: false };
   } catch {
-    return { needsVerification: false };
+    // Network/reload failed — preserve cached unverified state for the UI banner.
+    return { needsVerification: cachedNeedsVerify };
   }
 }
 
