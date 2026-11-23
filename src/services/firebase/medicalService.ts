@@ -215,7 +215,12 @@ export function medicalCardDocId(ownerUid: string): string {
   return `med-${ownerUid}`;
 }
 
-/** Module 13 — owner write. Keeps medicalScanIndex/{scanCode} in sync; scanCode immutable once opaque. */
+/**
+ * Module 13 — owner write.
+ * Safe order: never delete the card before a successful rewrite.
+ * Remint: create new index → write card with new code → delete old index only after.
+ * Always keep medicalScanIndex owned for the card's scanCode (no hijack on inactive save).
+ */
 export async function upsertMedicalCard(
   card: Omit<MedicalCardDoc, 'updatedAt'>,
 ): Promise<ServiceResult<MedicalCardDoc>> {
@@ -243,20 +248,15 @@ export async function upsertMedicalCard(
     const legacyCard = existingCard.exists() ? null : await getDoc(legacyRef);
 
     let previousScanCode: string | null = null;
+    const cardExists = existingCard.exists();
 
-    // Prefer existing opaque scanCode; remint if legacy/uid-derived (rules freeze scanCode on update → recreate)
-    if (existingCard.exists()) {
+    if (cardExists) {
       const prev = existingCard.data() as MedicalCardDoc;
       previousScanCode = prev.scanCode || null;
       if (prev.scanCode && !isUidDerivedScanCode(prev.scanCode, uid)) {
         payload.scanCode = prev.scanCode;
       } else {
         payload.scanCode = mintScanCode();
-        try {
-          await deleteDoc(cardRef);
-        } catch {
-          /* recreate below */
-        }
       }
     } else if (legacyCard?.exists()) {
       const prev = legacyCard.data() as MedicalCardDoc;
@@ -268,21 +268,17 @@ export async function upsertMedicalCard(
       }
     } else {
       payload.scanCode = resolveOpaqueScanCode(payload.scanCode, uid);
-      const indexRef = doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode);
-      const clash = await getDoc(indexRef);
-      if (clash.exists()) {
-        const owner = (clash.data() as { ownerUid?: string })?.ownerUid;
+      const probe = await getDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode));
+      if (probe.exists()) {
+        const owner = (probe.data() as { ownerUid?: string })?.ownerUid;
         if (owner === uid) {
-          const existingCode = (clash.data() as { scanCode?: string }).scanCode ?? payload.scanCode;
+          const existingCode =
+            (probe.data() as { scanCode?: string }).scanCode ?? payload.scanCode;
+          payload.scanCode = isUidDerivedScanCode(existingCode, uid)
+            ? mintScanCode()
+            : existingCode;
           if (isUidDerivedScanCode(existingCode, uid)) {
-            payload.scanCode = mintScanCode();
-            try {
-              await deleteDoc(indexRef);
-            } catch {
-              /* continue with new mint */
-            }
-          } else {
-            payload.scanCode = existingCode;
+            previousScanCode = existingCode;
           }
         } else {
           return failResult(payload, 'scanCode déjà utilisé — collision / hijack bloqué');
@@ -290,23 +286,64 @@ export async function upsertMedicalCard(
       }
     }
 
-    // Drop orphan index if we rotated away from a uid-derived / previous code
-    if (
-      previousScanCode &&
-      previousScanCode !== payload.scanCode &&
-      isUidDerivedScanCode(previousScanCode, uid)
-    ) {
+    const rotating =
+      Boolean(previousScanCode) &&
+      previousScanCode !== payload.scanCode;
+    const indexPayload = indexFromCard({ ...payload, id: cardId, scanCode: payload.scanCode });
+    const newIndexRef = doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode);
+
+    if (rotating && previousScanCode) {
+      // 1) Claim new opaque QR first — card PHI stays until rewrite succeeds
+      const newClash = await getDoc(newIndexRef);
+      if (newClash.exists()) {
+        const owner = (newClash.data() as { ownerUid?: string })?.ownerUid;
+        if (owner && owner !== uid) {
+          return failResult(payload, 'Nouveau scanCode déjà pris — remint annulé');
+        }
+        await setDoc(newIndexRef, indexPayload);
+      } else {
+        await setDoc(newIndexRef, indexPayload);
+      }
+
+      // 2) Rewrite card in place (never delete first) with new scanCode + PHI
+      await setDoc(cardRef, cardWritePayload(payload));
+
+      // 3) Only after card write: drop old uid-derived / previous index
       try {
         await deleteDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, previousScanCode));
       } catch {
-        /* non-fatal */
+        /* non-fatal orphan; ownership already moved */
+      }
+    } else if (cardExists) {
+      // Same opaque code: card first (create rule N/A), then keep/update owned index
+      await setDoc(cardRef, cardWritePayload(payload));
+      const indexSnap = await getDoc(newIndexRef);
+      if (indexSnap.exists()) {
+        const owner = (indexSnap.data() as { ownerUid?: string })?.ownerUid;
+        if (owner && owner !== uid) {
+          return failResult(payload, 'Index scanCode appartient à un autre compte');
+        }
+      }
+      // Always retain index ownership — never delete on inactive save (hijack prevention)
+      await setDoc(newIndexRef, indexPayload);
+    } else {
+      // Brand-new card: rules require index absent at create → card then index
+      const indexSnap = await getDoc(newIndexRef);
+      if (indexSnap.exists()) {
+        const owner = (indexSnap.data() as { ownerUid?: string })?.ownerUid;
+        if (owner && owner !== uid) {
+          return failResult(payload, 'Index scanCode appartient à un autre compte');
+        }
+        // Own leftover index: write card (update/create), keep index
+        await setDoc(cardRef, cardWritePayload(payload));
+        await setDoc(newIndexRef, indexPayload);
+      } else {
+        await setDoc(cardRef, cardWritePayload(payload));
+        await setDoc(newIndexRef, indexPayload);
       }
     }
 
-    // Full set (not merge) so omitted empty PHI keys are removed from the doc
-    await setDoc(cardRef, cardWritePayload(payload));
-
-    // Migrate: drop legacy uid-keyed doc after canonical write
+    // Migrate: drop legacy uid-keyed doc only after canonical write succeeded
     if (legacyCard?.exists() && legacyRef.id !== cardRef.id) {
       try {
         await deleteDoc(legacyRef);
@@ -315,29 +352,10 @@ export async function upsertMedicalCard(
       }
     }
 
-    // Rescue index only for active subscribers with an opaque minted QR — never uid-guessable
-    if (!payload.subscriberActive) {
-      try {
-        await deleteDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode));
-      } catch {
-        /* none or already gone */
-      }
-      return liveResult(payload, 'Fiche enregistrée — index secours après abonnement + QR opaque');
-    }
-
-    const indexRef = doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode);
-    const indexSnap = await getDoc(indexRef);
-    const indexPayload = indexFromCard({ ...payload, id: cardId, scanCode: payload.scanCode });
-    if (indexSnap.exists()) {
-      const owner = (indexSnap.data() as { ownerUid?: string })?.ownerUid;
-      if (owner && owner !== uid) {
-        return failResult(payload, 'Index scanCode appartient à un autre compte');
-      }
-      await setDoc(indexRef, indexPayload); // full replace — clears stale PHI
-    } else {
-      await setDoc(indexRef, indexPayload);
-    }
-    return liveResult(payload);
+    const stub = payload.subscriberActive
+      ? undefined
+      : 'Fiche + QR réservés (index conservé, abonnement inactif)';
+    return liveResult(payload, stub);
   } catch (e) {
     return failResult(
       payload,

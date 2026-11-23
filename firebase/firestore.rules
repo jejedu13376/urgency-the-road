@@ -86,11 +86,20 @@ service cloud.firestore {
         && request.resource.data.scanCode is string
         && request.resource.data.scanCode.size() >= 8
         && !exists(/databases/$(database)/documents/medicalScanIndex/$(request.resource.data.scanCode));
+      // scanCode rotate only after owner already claimed medicalScanIndex/{newCode}
       allow update: if signedIn()
         && (id == uid() || id == ('med-' + uid()))
         && resource.data.ownerUid == uid()
         && request.resource.data.ownerUid == resource.data.ownerUid
-        && request.resource.data.scanCode == resource.data.scanCode; // immutable — no hijack
+        && request.resource.data.scanCode is string
+        && request.resource.data.scanCode.size() >= 8
+        && (
+          request.resource.data.scanCode == resource.data.scanCode
+          || (
+            exists(/databases/$(database)/documents/medicalScanIndex/$(request.resource.data.scanCode))
+            && get(/databases/$(database)/documents/medicalScanIndex/$(request.resource.data.scanCode)).data.ownerUid == uid()
+          )
+        );
       allow delete: if signedIn()
         && (id == uid() || id == ('med-' + uid()))
         && resource.data.ownerUid == uid();
