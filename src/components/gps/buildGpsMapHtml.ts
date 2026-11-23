@@ -1,6 +1,6 @@
 /**
  * Self-contained Leaflet map HTML for WebView.
- * Map-type menu (+): Default roads · Satellite · Terrain · Transit · 3D · AQI.
+ * Map-type menu (+): Default roads · Satellite · Terrain · Transit · Traffic · 3D · AQI.
  * Extends Esri/#47 basemap work (Esri imagery + Carto/OSM roads) with Terrain + overlays.
  * Vehicle DivIcon = LIVE GPS — not a canned polyline demo.
  */
@@ -25,6 +25,45 @@ function mapboxToken(): string {
   return (process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '').trim();
 }
 
+function tomtomKey(): string {
+  return (process.env.EXPO_PUBLIC_TOMTOM_API_KEY ?? '').trim().replace(/[^a-zA-Z0-9_-]/g, '');
+}
+
+/**
+ * Live traffic tile overlay — no free global no-key feed.
+ * Prefer TomTom flow (traffic-only), else Mapbox traffic-day style raster.
+ */
+export function trafficTileConfig(
+  mapbox?: string,
+  tomtom?: string,
+): {
+  url: string;
+  kind: 'tomtom' | 'mapbox' | 'none';
+  opacity: number;
+  tileSize?: number;
+  zoomOffset?: number;
+} | null {
+  const tt = (tomtom ?? tomtomKey()).replace(/[^a-zA-Z0-9_-]/g, '');
+  if (tt) {
+    return {
+      kind: 'tomtom',
+      // relative0 = green/yellow/red flow vs free-flow — traffic-only overlay.
+      url: `https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=${tt}&tileSize=256`,
+      opacity: 0.72,
+    };
+  }
+  const mb = (mapbox ?? mapboxToken()).replace(/[^a-zA-Z0-9._-]/g, '');
+  if (mb) {
+    return {
+      kind: 'mapbox',
+      url: `https://api.mapbox.com/styles/v1/mapbox/traffic-day-v2/tiles/256/{z}/{x}/{y}?access_token=${mb}`,
+      opacity: 0.55,
+      tileSize: 256,
+    };
+  }
+  return null;
+}
+
 export type GpsMapBoot = {
   lat: number;
   lon: number;
@@ -38,26 +77,35 @@ export type GpsMapBoot = {
   padRight: number;
   padBottom: number;
   padLeft: number;
-  /** Optional Mapbox token for 3D buildings (preferred). */
+  /** Optional Mapbox token for 3D buildings + traffic fallback. */
   mapboxToken?: string;
+  /** Optional TomTom key for traffic-only flow overlay (preferred for traffic). */
+  tomtomApiKey?: string;
 };
 
 export function buildGpsMapHtml(boot: GpsMapBoot): string {
   const token = (boot.mapboxToken ?? mapboxToken()).replace(/[^a-zA-Z0-9._-]/g, '');
-  const bootPayload = { ...boot, mapboxToken: token || undefined };
+  const tomtom = (boot.tomtomApiKey ?? tomtomKey()).replace(/[^a-zA-Z0-9_-]/g, '');
+  const traffic = trafficTileConfig(token, tomtom);
+  const bootPayload = {
+    ...boot,
+    mapboxToken: token || undefined,
+    tomtomApiKey: tomtom || undefined,
+  };
   const bootJson = JSON.stringify(bootPayload).replace(/</g, '\\u003c');
   const roads = roadsTileUrl();
   const roadsUrlJson = JSON.stringify(roads.url);
   const mapboxTokenJson = JSON.stringify(token);
+  const trafficJson = JSON.stringify(traffic);
   const hasMapbox = token.length > 0;
 
-  // CSP: allow Esri, Carto, OSM, OpenTopoMap, ÖPNVKarte transit, OSM Buildings / Mapbox GL when used.
+  // CSP: allow Esri, Carto, OSM, OpenTopoMap, ÖPNVKarte transit, TomTom/Mapbox traffic, OSM Buildings.
   const csp = [
     "default-src 'none'",
     "script-src https://unpkg.com/leaflet@1.9.4/ https://cdn.osmbuildings.org https://api.mapbox.com 'unsafe-inline'",
     "style-src https://unpkg.com/leaflet@1.9.4/ https://api.mapbox.com https://cdn.osmbuildings.org 'unsafe-inline'",
-    "img-src https://server.arcgisonline.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://tile.opentopomap.org https://*.tile.opentopomap.org https://tile.memomaps.de https://*.tile.memomaps.de https://a.tiles.mapbox.com https://b.tiles.mapbox.com https://c.tiles.mapbox.com https://d.tiles.mapbox.com https://api.mapbox.com data: blob:",
-    "connect-src https://unpkg.com https://cdn.osmbuildings.org https://data.osmbuildings.org https://api.mapbox.com https://events.mapbox.com",
+    "img-src https://server.arcgisonline.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://tile.opentopomap.org https://*.tile.opentopomap.org https://tile.memomaps.de https://*.tile.memomaps.de https://a.tiles.mapbox.com https://b.tiles.mapbox.com https://c.tiles.mapbox.com https://d.tiles.mapbox.com https://api.mapbox.com https://api.tomtom.com data: blob:",
+    "connect-src https://unpkg.com https://cdn.osmbuildings.org https://data.osmbuildings.org https://api.mapbox.com https://events.mapbox.com https://api.tomtom.com",
     "worker-src blob: 'self'",
     "child-src blob:",
     "font-src data: https://api.mapbox.com",
@@ -212,6 +260,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     <button type="button" data-base="terrain">Terrain</button>
     <div class="sep"></div>
     <button type="button" data-tog="transit">Transport en commun</button>
+    <button type="button" data-tog="traffic" id="btnTraffic">Trafic temps réel</button>
     <button type="button" data-tog="buildings3d">Bâtiments 3D</button>
     <button type="button" data-tog="aqi">Qualité de l’air</button>
     <div class="sep"></div>
@@ -224,6 +273,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   var BOOT = ${bootJson};
   var ROADS_URL = ${roadsUrlJson};
   var MAPBOX_TOKEN = ${mapboxTokenJson};
+  var TRAFFIC_CFG = ${trafficJson};
   var mode = BOOT.mode === 'camion' ? 'camion' : 'voiture';
   var gpsOk = !!BOOT.gpsOk;
   var origin = { lat: BOOT.lat, lon: BOOT.lon };
@@ -245,7 +295,9 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   var satLayer = null;
   var terrainLayer = null;
   var transitLayer = null;
+  var trafficLayer = null;
   var transitOn = false;
+  var trafficOn = false;
   var buildingsOn = false;
   var aqiOn = false;
   var osmBuildings = null;
@@ -350,9 +402,28 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   transitLayer = L.tileLayer('https://tile.memomaps.de/tilegen/{z}/{x}/{y}.png', {
     maxZoom: 18, opacity: 0.85, attribution: ''
   });
+  /* Live traffic — TomTom flow (preferred) or Mapbox traffic-day; no free no-key feed. */
+  if (TRAFFIC_CFG && TRAFFIC_CFG.url) {
+    trafficLayer = L.tileLayer(TRAFFIC_CFG.url, {
+      maxZoom: 19,
+      opacity: TRAFFIC_CFG.opacity != null ? TRAFFIC_CFG.opacity : 0.65,
+      attribution: '',
+      tileSize: TRAFFIC_CFG.tileSize || 256,
+      zoomOffset: TRAFFIC_CFG.zoomOffset || 0,
+    });
+  }
   roadsLayer.addTo(map);
   layerGroup = L.layerGroup().addTo(map);
   aqiGroup = L.layerGroup().addTo(map);
+  (function initTrafficBtn(){
+    var btn = document.getElementById('btnTraffic');
+    if (!btn) return;
+    if (!trafficLayer) {
+      btn.disabled = true;
+      btn.title = 'Clé requise: EXPO_PUBLIC_TOMTOM_API_KEY (préf.) ou EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN';
+      btn.textContent = 'Trafic (clé requise)';
+    }
+  })();
 
   function currentBaseLayer(){
     if (baseKind === 'satellite') return satLayer;
@@ -370,8 +441,12 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       map.removeLayer(transitLayer);
       transitLayer.addTo(map);
     }
+    if (trafficOn && trafficLayer) {
+      map.removeLayer(trafficLayer);
+      trafficLayer.addTo(map);
+    }
     syncMapTypeMenu();
-    post({ type: 'maptype', base: baseKind, transit: transitOn, buildings3d: buildingsOn, aqi: aqiOn });
+    post(maptypePayload());
   }
 
   function syncMapTypeMenu(){
@@ -383,11 +458,17 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       b.classList.toggle('on', b.getAttribute('data-base') === baseKind);
     }
     var togTransit = menu.querySelector('button[data-tog="transit"]');
+    var togTraffic = menu.querySelector('button[data-tog="traffic"]');
     var tog3d = menu.querySelector('button[data-tog="buildings3d"]');
     var togAqi = menu.querySelector('button[data-tog="aqi"]');
     if (togTransit) togTransit.classList.toggle('on', transitOn);
+    if (togTraffic) togTraffic.classList.toggle('on', trafficOn);
     if (tog3d) tog3d.classList.toggle('on', buildingsOn);
     if (togAqi) togAqi.classList.toggle('on', aqiOn);
+  }
+
+  function maptypePayload(){
+    return { type: 'maptype', base: baseKind, transit: transitOn, traffic: trafficOn, buildings3d: buildingsOn, aqi: aqiOn, trafficSource: TRAFFIC_CFG ? TRAFFIC_CFG.kind : 'none' };
   }
 
   function setTransit(on){
@@ -395,7 +476,29 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     if (transitOn) transitLayer.addTo(map);
     else map.removeLayer(transitLayer);
     syncMapTypeMenu();
-    post({ type: 'maptype', base: baseKind, transit: transitOn, buildings3d: buildingsOn, aqi: aqiOn });
+    post(maptypePayload());
+  }
+
+  function setTraffic(on){
+    if (!trafficLayer) {
+      setStatus('Trafic live — clé requise: EXPO_PUBLIC_TOMTOM_API_KEY (préf.) ou EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN. Pas de tuiles gratuites sans clé.');
+      trafficOn = false;
+      syncMapTypeMenu();
+      post(maptypePayload());
+      return;
+    }
+    trafficOn = !!on;
+    if (trafficOn) trafficLayer.addTo(map);
+    else map.removeLayer(trafficLayer);
+    syncMapTypeMenu();
+    if (trafficOn) {
+      setStatus(
+        TRAFFIC_CFG.kind === 'tomtom'
+          ? 'Trafic live · TomTom flow (relative)'
+          : 'Trafic live · Mapbox traffic-day (opacité ~0.55)'
+      );
+    }
+    post(maptypePayload());
   }
 
   function destroyOsmBuildings(){
@@ -505,7 +608,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       destroyMapbox3d();
       destroyOsmBuildings();
       syncMapTypeMenu();
-      post({ type: 'maptype', base: baseKind, transit: transitOn, buildings3d: buildingsOn, aqi: aqiOn });
+      post(maptypePayload());
       return;
     }
     var ok = false;
@@ -520,14 +623,14 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       setStatus('Bâtiments 3D OSM Buildings · opacite ~0.5 (pas de Mapbox token)');
     }
     syncMapTypeMenu();
-    post({ type: 'maptype', base: baseKind, transit: transitOn, buildings3d: buildingsOn, aqi: aqiOn });
+    post(maptypePayload());
   }
 
   function setAqiOverlay(on){
     aqiOn = !!on;
     if (!aqiOn) aqiGroup.clearLayers();
     syncMapTypeMenu();
-    post({ type: 'maptype', base: baseKind, transit: transitOn, buildings3d: buildingsOn, aqi: aqiOn });
+    post(maptypePayload());
     if (aqiOn) post({ type: 'aqi_request', lat: origin.lat, lon: origin.lon });
   }
 
@@ -815,6 +918,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     opts = opts || {};
     if (opts.base) setBaseLayer(opts.base);
     if (typeof opts.transit === 'boolean') setTransit(opts.transit);
+    if (typeof opts.traffic === 'boolean') setTraffic(opts.traffic);
     if (typeof opts.buildings3d === 'boolean') setBuildings3d(opts.buildings3d);
     if (typeof opts.aqi === 'boolean') setAqiOverlay(opts.aqi);
   };
@@ -878,6 +982,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     var act = t.getAttribute('data-act');
     if (base) setBaseLayer(base);
     else if (tog === 'transit') setTransit(!transitOn);
+    else if (tog === 'traffic') setTraffic(!trafficOn);
     else if (tog === 'buildings3d') setBuildings3d(!buildingsOn);
     else if (tog === 'aqi') setAqiOverlay(!aqiOn);
     else if (act === 'streetview') {

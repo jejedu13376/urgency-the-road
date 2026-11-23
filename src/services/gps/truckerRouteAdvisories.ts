@@ -236,9 +236,9 @@ export async function buildTruckerRouteBrief(
     {
       id: 'traffic-honest',
       kind: 'traffic',
-      title: 'Trafic live indisponible',
+      title: 'Trafic carte vs ETA',
       detail:
-        'Pas d’API trafic Waze/Google gratuite — ETA Valhalla sans congestion live. Signalements crowd locaux uniquement.',
+        'Couche Trafic (menu +) = TomTom flow ou Mapbox traffic-day si clé. ETA Valhalla reste sans congestion live — pas d’API Waze/Google gratuite.',
       severity: 'info',
     },
   ];

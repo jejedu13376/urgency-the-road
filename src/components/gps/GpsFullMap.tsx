@@ -144,8 +144,10 @@ type MapMsg =
       type: 'maptype';
       base?: string;
       transit?: boolean;
+      traffic?: boolean;
       buildings3d?: boolean;
       aqi?: boolean;
+      trafficSource?: string;
     };
 
 /** Parse + schema-check map postMessage payloads (reject forged / garbage). */
@@ -587,6 +589,7 @@ export function GpsFullMap() {
       }
       bootedRef.current = true;
       const mapboxToken = (process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '').trim();
+      const tomtomApiKey = (process.env.EXPO_PUBLIC_TOMTOM_API_KEY ?? '').trim();
       setBootHtml(
         buildGpsMapHtml({
           lat: origin.lat,
@@ -597,6 +600,7 @@ export function GpsFullMap() {
           truckPtacT: initial.truckPtacT,
           gpsOk: deviceOk,
           mapboxToken: mapboxToken || undefined,
+          tomtomApiKey: tomtomApiKey || undefined,
           ...chromePads,
         }),
       );

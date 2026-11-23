@@ -50,7 +50,7 @@ type Props = {
 };
 
 const DATA_SOURCES_FR =
-  'Sources : Esri / Carto / OSM / OpenTopoMap (fonds), ÖPNVKarte (transit), Mapbox/OSM Buildings (3D), OpenWeather AQI, Google Street View Static, Open-Meteo, Valhalla, Overpass (ponts / balances CA-US-EU / fuel / rest). Pas de trafic live Google/Waze.';
+  'Sources : Esri / Carto / OSM / OpenTopoMap (fonds), ÖPNVKarte (transit), TomTom flow ou Mapbox traffic-day (trafic — clé), Mapbox/OSM Buildings (3D), OpenWeather AQI, Google Street View Static, Open-Meteo, Valhalla, Overpass (ponts / balances CA-US-EU / fuel / rest). ETA sans congestion Waze/Google.';
 
 export function GpsDestinationMenu({
   visible,
