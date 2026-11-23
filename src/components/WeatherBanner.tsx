@@ -91,9 +91,10 @@ export function WeatherBanner() {
   const temp = w?.tempC ?? '…';
   const road = roadLabel(w?.road, t);
 
+  // Leave room for top-right ConnexionChip (~118px).
   return (
     <View
-      style={[styles.wrap, { top: Math.max(insets.top, 8), right: 10 }]}
+      style={[styles.wrap, { top: Math.max(insets.top, 8), right: 118 }]}
       accessibilityLabel={t('weather.a11y')}
     >
       <Text style={styles.main}>
