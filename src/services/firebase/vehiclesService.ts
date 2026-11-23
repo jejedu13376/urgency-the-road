@@ -29,18 +29,6 @@ function normalizeVin(vin: string | undefined): string {
   return (vin ?? '').trim().toUpperCase();
 }
 
-/** Stable fingerprint for cascade rows without VIN (make+model+year+label). */
-function vehicleFingerprint(v: {
-  make?: string;
-  model?: string;
-  year?: number;
-  label?: string;
-}): string {
-  return [v.make ?? '', v.model ?? '', String(v.year ?? ''), v.label ?? '']
-    .map((s) => s.trim().toLowerCase())
-    .join('|');
-}
-
 /** Strip undefined (Firestore rejects them; no ignoreUndefinedProperties). */
 function omitUndefined<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -147,9 +135,8 @@ type OwnedSnap = Awaited<ReturnType<typeof getDocs>>;
 
 /**
  * Find existing cloud row for a local-temp vehicle.
- * Order: exact VIN → clientLocalId/stale body id → fingerprint (no-VIN only, unique).
- * Never fingerprint-match when either side has a VIN — that would merge distinct cars
- * and overwrite VIN/odometer.
+ * Rematch ONLY via exact VIN or clientLocalId/stale body id — never fingerprint.
+ * Two identical no-VIN cascade trucks must get separate Firestore docs (addDoc).
  */
 function findExistingForTemp(
   owned: OwnedSnap,
@@ -170,19 +157,6 @@ function findExistingForTemp(
   });
   if (byLocal) return { id: byLocal.id };
 
-  // Never fingerprint when local has a VIN — would merge distinct cars / overwrite VIN.
-  if (vin.length >= 8) return null;
-
-  // Fingerprint only for cascade rows with no VIN, and only when unique among no-VIN cloud rows.
-  const fp = vehicleFingerprint(vehicle);
-  if (fp.replace(/\|/g, '').length === 0) return null;
-  const fpHits = owned.docs.filter((d) => {
-    const data = d.data() as VehicleProfile & { vin?: string };
-    if (normalizeVin(data.vin).length >= 8) return false;
-    return vehicleFingerprint(data) === fp;
-  });
-  if (fpHits.length === 1) return { id: fpHits[0]!.id };
-
   return null;
 }
 
@@ -202,7 +176,7 @@ export async function upsertVehicle(
       return liveResult(vehicle);
     }
 
-    // Local temp id: reuse existing cloud row (VIN / clientLocalId / fingerprint) — no orphan addDoc.
+    // Local temp id: reuse existing cloud row (VIN / clientLocalId only) — no orphan addDoc.
     const owned = await getDocs(
       query(collection(fb.db, COLLECTIONS.vehicles), where('ownerUid', '==', uid)),
     );
