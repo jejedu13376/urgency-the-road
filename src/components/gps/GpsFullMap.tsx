@@ -174,10 +174,18 @@ export function GpsFullMap() {
   const bootedRef = useRef(false);
   const fleetKeyRef = useRef<string | null>(null);
   const liveOriginRef = useRef<{ lat: number; lon: number } | null>(null);
+  /** Last successful watchDevicePosition tick — preferred for recenter over one-shot. */
+  const lastWatchRef = useRef<{ lat: number; lon: number } | null>(null);
+  const lastLayersRef = useRef<{
+    bridges: unknown[];
+    weigh: unknown[];
+    reports: unknown[];
+  } | null>(null);
   const reportsRef = useRef<CrowdReport[]>([]);
   /** Last local police pin — cloud publish only via explicit Publier. */
   const lastLocalPoliceRef = useRef<CrowdReport | null>(null);
   const [bootHtml, setBootHtml] = useState<string | null>(null);
+  const [mapReady, setMapReady] = useState(false);
   const [canPublishPolice, setCanPublishPolice] = useState(false);
   const [hudNote, setHudNote] = useState<string | null>(null);
   const [lastRoute, setLastRoute] = useState<VehicleRouteResult | null>(null);
@@ -275,6 +283,7 @@ export function GpsFullMap() {
       weigh: unknown[];
       reports: unknown[];
     }) => {
+      lastLayersRef.current = payload;
       if (Platform.OS === 'web') {
         postGpsCmd(iframeWinRef.current, { cmd: 'setLayers', payload });
         return;
@@ -399,6 +408,7 @@ export function GpsFullMap() {
         const next = await watchDevicePosition(
           (pos) => {
             if (cancelled) return;
+            lastWatchRef.current = { lat: pos.lat, lon: pos.lon };
             setGpsOk(true);
             injectLivePosition(pos.lat, pos.lon, true, pos.headingDeg, pos.speedMps);
           },
@@ -406,8 +416,11 @@ export function GpsFullMap() {
             if (cancelled) return;
             setGpsOk(false);
             // Keep map GPS state in sync — do not leave marker/routing as if live.
-            const origin = liveOriginRef.current ?? { lat: 46.5, lon: 2.5 };
-            injectLivePosition(origin.lat, origin.lon, false, null, null);
+            // Never invent France centroid: keep last known origin + route graphics.
+            const origin = lastWatchRef.current ?? liveOriginRef.current;
+            if (origin) {
+              injectLivePosition(origin.lat, origin.lon, false, null, null);
+            }
             setHudNote(`GPS live — ${err}`);
           },
         );
@@ -425,11 +438,11 @@ export function GpsFullMap() {
   );
 
   useEffect(() => {
-    if (!bootHtml || !gpsOk) return;
+    if (!bootHtml || !gpsOk || !mapReady) return;
     void refreshLayers();
     const t = setInterval(() => void refreshLayers(), 90_000);
     return () => clearInterval(t);
-  }, [bootHtml, gpsOk, modeLabel, refreshLayers]);
+  }, [bootHtml, gpsOk, mapReady, modeLabel, refreshLayers]);
 
   useEffect(() => {
     if (!bootedRef.current || !bootHtml) return;
@@ -475,6 +488,16 @@ export function GpsFullMap() {
       const msg = parseMapMsg(raw);
       if (!msg) return;
 
+      if (msg.type === 'ready') {
+        setMapReady(true);
+        if (msg.mode === 'voiture' || msg.mode === 'camion') setModeLabel(msg.mode);
+        // First inject may have raced before Leaflet boot — reinject last + refresh.
+        const cached = lastLayersRef.current;
+        if (cached) injectLayers(cached);
+        void refreshLayers();
+        return;
+      }
+
       if (msg.type === 'mode') {
         setModeLabel(msg.mode);
         void saveGpsNavPrefs({ mode: msg.mode }).then((p) => {
@@ -488,18 +511,26 @@ export function GpsFullMap() {
         void (async () => {
           const loc = await getDeviceCoords({ allowFallback: false });
           const deviceOk = loc.ok === true && loc.data?.source === 'device';
-          setGpsOk(deviceOk);
-          if (!deviceOk) {
-            setHudNote(
-              loc.ok === false
-                ? `GPS appareil refusé — ${loc.error}`
-                : 'GPS appareil requis — autorisez la localisation',
-            );
-            setMapOrigin(46.5, 2.5, false);
+          if (deviceOk) {
+            lastWatchRef.current = { lat: loc.data.lat, lon: loc.data.lon };
+            setGpsOk(true);
+            setHudNote('GPS appareil OK — suivi live');
+            setMapOrigin(loc.data.lat, loc.data.lon, true);
             return;
           }
-          setHudNote('GPS appareil OK — suivi live');
-          setMapOrigin(loc.data.lat, loc.data.lon, true);
+          // One-shot failed: prefer last watch / last known — never France centroid,
+          // never clearRouteGraphics while a live route may still be valid.
+          const fallback = lastWatchRef.current ?? liveOriginRef.current;
+          const errTxt =
+            loc.ok === false
+              ? `GPS one-shot refusé — ${loc.error}`
+              : 'GPS one-shot indisponible';
+          if (fallback) {
+            setHudNote(`${errTxt} — recentrage sur dernière position live (itinéraire conservé)`);
+            setMapOrigin(fallback.lat, fallback.lon, true);
+            return;
+          }
+          setHudNote(`${errTxt} — itinéraire / origine conservés`);
         })();
         return;
       }
@@ -565,7 +596,7 @@ export function GpsFullMap() {
         setHudNote('Arrivée — GPS live toujours actif');
       }
     },
-    [gpsOk, injectRoute, setMapOrigin, refreshLayers],
+    [gpsOk, injectRoute, setMapOrigin, refreshLayers, injectLayers],
   );
 
   const onMessage = useCallback(
@@ -654,23 +685,34 @@ export function GpsFullMap() {
       return;
     }
     void (async () => {
+      const uid = profile.uid?.trim();
+      if (!uid) {
+        setHudNote('Publier cloud — uid manquant — pin reste local');
+        return;
+      }
       const r = await reportHazard({
-        reporterUid: profile.uid,
+        reporterUid: uid,
         kind: 'radar',
         lat: pin.lat,
         lon: pin.lon,
         note: pin.note ?? 'Police',
         expiresAt: pin.expiresAt,
       });
-      if (r.ok === false) {
-        setHudNote(r.stubLabel ?? 'Publication cloud refusée — pin reste local');
+      // mockResult is ok:true + source:'mock' — must NOT claim cloud publish.
+      const cloudLive = r.ok === true && r.source === 'firebase' && !!r.data;
+      if (!cloudLive) {
+        setHudNote(
+          r.stubLabel ??
+            'Publication non live (mock / Firebase off) — pin reste local · Publier toujours disponible',
+        );
+        // Keep Publier visible so the user can retry when cloud is real.
         return;
       }
       setCanPublishPolice(false);
       setHudNote('Police publié cloud (explicite) — pin local conservé');
       void refreshLayers();
     })();
-  }, [profile?.uid, refreshLayers]);
+  }, [profile, refreshLayers]);
 
   if (!bootHtml) {
     return (
@@ -776,12 +818,13 @@ export function GpsFullMap() {
         </View>
       ) : null}
 
+      {/* Top-right — clear of Leaflet bottom GPS / Suivre GPS controls. */}
       <View
         style={[
           styles.reportRow,
           {
-            bottom: chromePads.padBottom + 8,
-            left: chromePads.padLeft + 4,
+            top: chromePads.padTop + 58,
+            right: chromePads.padRight + 4,
           },
         ]}
         pointerEvents="box-none"

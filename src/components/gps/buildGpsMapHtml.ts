@@ -346,8 +346,8 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
         ? 'GPS appareil OK — mode camion, touchez une destination'
         : 'GPS appareil OK — touchez une destination');
     } else {
-      setStatus('GPS appareil refusé — activez la localisation (bouton GPS)');
-      clearRouteGraphics();
+      // One-shot GPS fail must NOT wipe live route / destination while watch may recover.
+      setStatus('GPS one-shot refusé — itinéraire conservé (réessayez GPS)');
     }
   };
 
@@ -386,7 +386,9 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
       && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
   }
 
-  window.__gpsSetLayers = function(payload){
+  var pendingLayers = null;
+  var layersReady = false;
+  function applyLayersPayload(payload){
     try {
       layerGroup.clearLayers();
       if (!payload) return;
@@ -429,6 +431,11 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
           .addTo(layerGroup);
       });
     } catch (e) {}
+  }
+  window.__gpsSetLayers = function(payload){
+    pendingLayers = payload || null;
+    if (!layersReady) return;
+    applyLayersPayload(pendingLayers);
   };
 
   window.addEventListener('message', function(ev){
@@ -464,6 +471,8 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     post({ type: 'recenter' });
   };
 
+  layersReady = true;
+  if (pendingLayers) applyLayersPayload(pendingLayers);
   post({ type: 'ready', mode: mode });
 })();
 </script>
