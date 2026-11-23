@@ -196,7 +196,8 @@ function buildBuyUrls(name: string, oemSku: string, make?: string, model?: strin
     },
     {
       label: 'RockAuto (NA)',
-      url: `https://www.rockauto.com/en/catalog/?search=${encodeURIComponent([make, model, oemSku].filter(Boolean).join(' '))}`,
+      // RockAuto uses /en/partsearch/?partnum= — catalog/?search= is invalid and lands on home
+      url: `https://www.rockauto.com/en/partsearch/?partnum=${encodeURIComponent(oemSku || [make, name].filter(Boolean).join(' '))}`,
     },
   ];
 }

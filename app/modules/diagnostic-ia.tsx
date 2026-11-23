@@ -192,8 +192,14 @@ export default function DiagnosticIaScreen() {
         return;
       }
     }
-    setShowCamera(true);
-    setCameraReady(false);
+    // If CameraView is already mounted, keep cameraReady — onCameraReady won't re-fire.
+    // Only reset ready when opening a fresh mount.
+    if (!showCamera) {
+      setCameraReady(false);
+      setShowCamera(true);
+    } else {
+      setShowCamera(true);
+    }
     setPhotoOutcome({
       kind: 'captured_pending',
       media,
