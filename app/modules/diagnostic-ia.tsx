@@ -1,5 +1,12 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioRecorder,
+  useAudioRecorderState,
+} from 'expo-audio';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Link, Stack } from 'expo-router';
 import { Card } from '../../src/components/Card';
@@ -10,7 +17,11 @@ import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { runMultiIaDiagnostic } from '../../src/services/ai/multiIaRouter';
 import {
-  MIC_AUDIO_BLOCKED,
+  analyzeAcousticCapture,
+  MIC_AUDIO_LIVE,
+  type AcousticFocus,
+} from '../../src/services/diagnostic/acousticMic';
+import {
   VISION_PIXELS_BLOCKED,
   quoteFromCameraText,
 } from '../../src/services/diagnostic/cameraTextDiag';
@@ -64,9 +75,17 @@ export default function DiagnosticIaScreen() {
   const [capturedUri, setCapturedUri] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [acousticPhase, setAcousticPhase] = useState<'idle' | 'listening' | 'done'>('idle');
-  const [acousticFocus, setAcousticFocus] = useState<string | null>(null);
+  const [acousticFocus, setAcousticFocus] = useState<AcousticFocus | null>(null);
   const [acousticGuess, setAcousticGuess] = useState<string | null>(null);
-  const [acousticBars] = useState(() => [4, 10, 6, 14, 8, 12, 5, 11, 7, 13]);
+  const [acousticLabel, setAcousticLabel] = useState<string | null>(null);
+  const [acousticBars, setAcousticBars] = useState(() => [4, 10, 6, 14, 8, 12, 5, 11, 7, 13]);
+  const peakMeteringRef = useRef<number | null>(null);
+  const acousticBusyRef = useRef(false);
+  const audioRecorder = useAudioRecorder({
+    ...RecordingPresets.HIGH_QUALITY,
+    isMeteringEnabled: true,
+  });
+  const recorderState = useAudioRecorderState(audioRecorder, 120);
   const [qResult, setQResult] = useState<string | null>(null);
   const [qBusy, setQBusy] = useState(false);
   const [freeResult, setFreeResult] = useState<string | null>(null);
@@ -288,18 +307,98 @@ export default function DiagnosticIaScreen() {
     setQResult(null);
   };
 
+  useEffect(() => {
+    if (acousticPhase !== 'listening') return;
+    const m = recorderState.metering;
+    if (typeof m === 'number' && Number.isFinite(m)) {
+      peakMeteringRef.current =
+        peakMeteringRef.current == null ? m : Math.max(peakMeteringRef.current, m);
+      const norm = Math.max(0, Math.min(1, (m + 60) / 60));
+      setAcousticBars((prev) => prev.map((h, i) => 4 + Math.round(norm * (10 + ((h + i) % 8)))));
+    }
+  }, [recorderState.metering, acousticPhase]);
+
+  // Stop any in-flight recording if the screen unmounts mid-capture.
+  useEffect(() => {
+    return () => {
+      acousticBusyRef.current = false;
+      void (async () => {
+        try {
+          const st = audioRecorder.getStatus();
+          if (st.isRecording) await audioRecorder.stop();
+        } catch {
+          /* ignore unmount stop errors */
+        }
+        try {
+          await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+        } catch {
+          /* ignore */
+        }
+      })();
+    };
+    // audioRecorder identity is stable for the screen lifetime
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const runAcoustic = () => {
+    if (acousticBusyRef.current || acousticPhase === 'listening') return;
+    acousticBusyRef.current = true;
     setAcousticPhase('listening');
     setAcousticGuess(null);
-    setTimeout(() => {
-      const a = stubAcoustic();
-      const focusBit = acousticFocus
-        ? `Piste sélectionnée : ${HAZARD_KINDS_ACOUSTIC.find((k) => k.id === acousticFocus)?.label ?? acousticFocus}.`
-        : 'Aucune piste sélectionnée.';
-      setAcousticGuess(`${a.label}\n${a.data.guess}\n${focusBit}\n${MIC_AUDIO_BLOCKED}`);
-      setAcousticPhase('done');
-      if (acousticFocus) void loadYoutube(`bruit moteur ${acousticFocus}`);
-    }, 600);
+    setAcousticLabel(null);
+    peakMeteringRef.current = null;
+    const focusAtStart = acousticFocus;
+    void (async () => {
+      try {
+        const perm = await AudioModule.requestRecordingPermissionsAsync();
+        if (!perm.granted) {
+          const a = stubAcoustic();
+          setAcousticGuess(`${a.label}\n${a.data.guess}`);
+          setAcousticLabel('Permission micro refusée');
+          setAcousticPhase('done');
+          return;
+        }
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          allowsRecording: true,
+        });
+        await audioRecorder.prepareToRecordAsync();
+        audioRecorder.record();
+        await new Promise((r) => setTimeout(r, 2500));
+        if (!acousticBusyRef.current) {
+          try {
+            const st = audioRecorder.getStatus();
+            if (st.isRecording) await audioRecorder.stop();
+          } catch {
+            /* unmounted */
+          }
+          return;
+        }
+        await audioRecorder.stop();
+        const status = audioRecorder.getStatus();
+        const analysis = analyzeAcousticCapture({
+          durationMs: status.durationMillis ?? 2500,
+          peakMeteringDb: peakMeteringRef.current ?? status.metering,
+          focus: focusAtStart,
+        });
+        setAcousticGuess(analysis.guess);
+        setAcousticLabel(analysis.label);
+        setAcousticPhase('done');
+        if (focusAtStart) void loadYoutube(`bruit moteur ${focusAtStart}`);
+      } catch {
+        const a = stubAcoustic();
+        setAcousticGuess(`${a.label}\n${a.data.guess}`);
+        setAcousticLabel('Runtime micro KO — fallback honnête');
+        setAcousticPhase('done');
+      } finally {
+        acousticBusyRef.current = false;
+        try {
+          await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+        } catch {
+          /* ignore mode reset */
+        }
+      }
+    })();
   };
 
   return (
@@ -310,7 +409,7 @@ export default function DiagnosticIaScreen() {
         subtitle={`Module 4 · ${active?.make ?? '—'} ${active?.model ?? ''}`.trim()}
       >
         <StubBanner text={`Caméra LIVE + capture photo · ${VISION_PIXELS_BLOCKED}`} />
-        <StubBanner text={MIC_AUDIO_BLOCKED} />
+        <StubBanner text={MIC_AUDIO_LIVE} />
 
         <Card title="Photo / vidéo → description → pièce + devis">
           <Text style={styles.hint}>
@@ -481,14 +580,14 @@ export default function DiagnosticIaScreen() {
         </Card>
 
         <Card title="Analyseur acoustique moteur">
-          <Text style={styles.hint}>{MIC_AUDIO_BLOCKED}</Text>
+          <Text style={styles.hint}>{MIC_AUDIO_LIVE}</Text>
           <View style={styles.waveRow}>
             {acousticBars.map((h, i) => (
               <View
                 key={`bar-${i}`}
                 style={[
                   styles.waveBar,
-                  { height: acousticPhase === 'listening' ? 8 + ((h + i) % 14) : h + 4 },
+                  { height: acousticPhase === 'listening' ? Math.max(6, h) : h + 4 },
                   acousticPhase === 'listening' && styles.waveBarLive,
                 ]}
               />
@@ -496,7 +595,11 @@ export default function DiagnosticIaScreen() {
           </View>
           <View style={styles.tags}>
             {HAZARD_KINDS_ACOUSTIC.map((k) => (
-              <Pressable key={k.id} style={[styles.tag, acousticFocus === k.id && styles.tagOn]} onPress={() => setAcousticFocus(k.id)}>
+              <Pressable
+                key={k.id}
+                style={[styles.tag, acousticFocus === k.id && styles.tagOn]}
+                onPress={() => setAcousticFocus(k.id)}
+              >
                 <Text style={[styles.tagTxt, acousticFocus === k.id && styles.tagTxtOn]}>{k.label}</Text>
               </Pressable>
             ))}
@@ -507,9 +610,10 @@ export default function DiagnosticIaScreen() {
             disabled={acousticPhase === 'listening'}
           >
             <Text style={styles.btnTxt}>
-              {acousticPhase === 'listening' ? 'Vérification…' : 'Lancer (honnête — pas de micro)'}
+              {acousticPhase === 'listening' ? 'Écoute micro (~2,5 s)…' : 'Enregistrer micro + analyser'}
             </Text>
           </Pressable>
+          {acousticLabel ? <Text style={styles.meta}>{acousticLabel}</Text> : null}
           {acousticGuess ? <Text style={styles.result}>{acousticGuess}</Text> : null}
           {acousticPhase === 'done' && acousticFocus ? (
             <Link href="/modules/pieces" asChild>

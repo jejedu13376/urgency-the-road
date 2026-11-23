@@ -80,15 +80,16 @@ export function stubQuoteScan(): StubResult<{ overchargeRisk: 'faible' | 'moyen'
   };
 }
 
+/** Fallback when mic permission / native audio unavailable. Prefer acousticMic + expo-audio. */
 export function stubAcoustic(): StubResult<{ guess: string }> {
   return {
     ok: true,
     data: {
       guess:
-        'Micro non capturé — aucune classification audio. Décrivez le bruit (courroie / injecteur / bielle / roulement) dans le diagnostic libre.',
+        'Micro indisponible sur cet appareil — aucune classification audio inventée. Décrivez le bruit (courroie / injecteur / bielle / roulement) dans le diagnostic libre.',
     },
     stub: true,
-    label: 'STUB acoustique — pas d’enregistrement micro ; aucun diagnostic son inventé',
+    label: 'Acoustique fallback — permission / runtime micro KO (chemin LIVE = expo-audio)',
   };
 }
 

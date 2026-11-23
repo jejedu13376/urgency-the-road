@@ -1,9 +1,11 @@
 /**
  * Module 10 — carnet export.
  * Shares plain-text + HTML-lite via the OS share sheet.
- * Never claims "PDF certifié" — certification needs a signed backend.
+ * PDF via expo-print is a real printable file — never "PDF certifié" (needs signed backend).
  */
 import { Share, Platform } from 'react-native';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
 export type CarnetExportLine = {
   title: string;
@@ -50,7 +52,7 @@ export function buildCarnetText(input: CarnetExportInput): string {
   }
   lines.push(
     '',
-    'Note : export texte / HTML-lite partageable — pas un PDF certifié / signé serveur.',
+    'Note : export texte / HTML-lite / PDF imprimable — pas un PDF certifié / signé serveur.',
   );
   return lines.join('\n');
 }
@@ -83,8 +85,46 @@ th{background:#f4f4f4}.note{color:#666;font-size:12px;margin-top:24px}</style></
 <table><thead><tr><th>Date</th><th>Km</th><th>Intervention</th><th>Coût</th><th>Facture</th></tr></thead>
 <tbody>${rows}</tbody></table>
 <h2>Entretiens faits</h2>${done}
-<p class="note">HTML-lite partageable — <strong>pas</strong> un PDF certifié / signé serveur. Branchez un backend de signature pour la certification.</p>
+<p class="note">HTML-lite / PDF imprimable — <strong>pas</strong> un PDF certifié / signé serveur. Branchez un backend de signature pour la certification.</p>
 </body></html>`;
+}
+
+/**
+ * Generate a real PDF file from the carnet HTML and open the share sheet.
+ * Explicitly not certified / not cryptographically signed.
+ */
+export async function shareCarnetPdf(input: CarnetExportInput): Promise<{
+  ok: boolean;
+  message: string;
+  uri?: string;
+}> {
+  const html = buildCarnetHtml(input);
+  try {
+    const file = await Print.printToFileAsync({ html });
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+      await Sharing.shareAsync(file.uri, {
+        mimeType: 'application/pdf',
+        UTI: 'com.adobe.pdf',
+        dialogTitle: 'Carnet PDF (non certifié)',
+      });
+      return {
+        ok: true,
+        uri: file.uri,
+        message: `PDF généré (${file.numberOfPages} page(s)) — partageable, non certifié / non signé serveur.`,
+      };
+    }
+    return {
+      ok: true,
+      uri: file.uri,
+      message: `PDF généré (${file.uri}) — partage OS indisponible ; fichier local non certifié.`,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : 'Échec génération PDF carnet',
+    };
+  }
 }
 
 export async function shareCarnetText(input: CarnetExportInput): Promise<{

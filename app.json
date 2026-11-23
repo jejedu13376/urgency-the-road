@@ -12,7 +12,10 @@
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "Connexion à la valise diagnostic OBD (ELM327 / J1939).",
         "NSBluetoothPeripheralUsageDescription": "Connexion à la valise diagnostic OBD (ELM327 / J1939).",
-        "NSLocationWhenInUseUsageDescription": "Urgence Mécanique utilise votre position pour garages, balances et SOS."
+        "NSLocationWhenInUseUsageDescription": "Urgence Mécanique utilise votre position pour garages, balances et SOS.",
+        "NSMicrophoneUsageDescription": "Urgence Mécanique utilise le micro pour l’analyseur acoustique moteur (Module 4).",
+        "NSCameraUsageDescription": "Urgence Mécanique utilise la caméra pour VIN, diagnostic et devis.",
+        "NSPhotoLibraryUsageDescription": "Urgence Mécanique accède à la médiathèque pour sélectionner une vidéo locale (Fil) ou un devis."
       }
     },
     "android": {
@@ -24,7 +27,10 @@
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.BLUETOOTH_SCAN",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_IMAGES"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
@@ -53,6 +59,23 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "Urgence Mécanique utilise votre position pour garages, balances et SOS."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Urgence Mécanique utilise le micro pour l’analyseur acoustique moteur (Module 4).",
+          "enableBackgroundPlayback": false,
+          "enableBackgroundRecording": false,
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Urgence Mécanique accède à vos photos/vidéos pour le fil mécanique et les devis (fichiers locaux, pas de CDN).",
+          "cameraPermission": "Urgence Mécanique utilise la caméra pour VIN, diagnostic et devis.",
+          "microphonePermission": "Urgence Mécanique utilise le micro pour l’analyseur acoustique moteur (Module 4)."
         }
       ]
     ],
