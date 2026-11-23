@@ -84,6 +84,16 @@ async function fetchJson(
       (err as Error & { status: number; code: string }).code = 'provider/bad-json';
       throw err;
     }
+  } catch (e) {
+    const name = e instanceof Error ? e.name : '';
+    if (name === 'AbortError' || (typeof DOMException !== 'undefined' && e instanceof DOMException)) {
+      console.error(`[${label}] upstream timeout`);
+      const err = new Error('Engine request failed');
+      (err as Error & { status: number; code: string }).status = 504;
+      (err as Error & { status: number; code: string }).code = 'provider/timeout';
+      throw err;
+    }
+    throw e;
   } finally {
     clearTimeout(timer);
   }

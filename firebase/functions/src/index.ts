@@ -57,13 +57,15 @@ function sendError(
 }
 
 /** Map internal errors → safe client strings (never provider bodies / key material). */
-function clientSafeMessage(code: string, status: number): string {
-  if (code.startsWith('auth/')) return 'Authentication required';
-  if (code.startsWith('appcheck/')) return 'App Check required';
-  if (code.startsWith('rate/')) return 'Rate limit exceeded';
-  if (code.startsWith('bad-request/')) return 'Invalid request';
-  if (code.startsWith('provider/') || status === 502) return 'Engine request failed';
+function clientSafeMessage(code: unknown, status: number): string {
+  const c = typeof code === 'string' ? code : '';
+  if (c.startsWith('auth/')) return 'Authentication required';
+  if (c.startsWith('appcheck/')) return 'App Check required';
+  if (c.startsWith('rate/')) return 'Rate limit exceeded';
+  if (c.startsWith('bad-request/')) return 'Invalid request';
+  if (c.startsWith('provider/') || status === 502) return 'Engine request failed';
   if (status === 503) return 'Engine unavailable';
+  if (status === 429) return 'Rate limit exceeded';
   return 'Internal error';
 }
 
@@ -118,11 +120,26 @@ export const multiIa = onRequest(
     } catch (e) {
       const err = e as Error & {
         status?: number;
-        code?: string;
+        code?: unknown;
+        name?: string;
         retryAfterSec?: number;
       };
-      const status = typeof err.status === 'number' ? err.status : 500;
-      const code = err.code ?? 'internal';
+      const aborted =
+        err.name === 'AbortError' ||
+        (typeof DOMException !== 'undefined' && e instanceof DOMException);
+      const status =
+        typeof err.status === 'number'
+          ? err.status
+          : aborted
+            ? 504
+            : 500;
+      // AbortError/Firestore use numeric `code` — only keep string codes for clients.
+      const code =
+        typeof err.code === 'string' && err.code.length > 0
+          ? err.code
+          : aborted
+            ? 'provider/timeout'
+            : 'internal';
       // Log code + status only — never err.message if it might contain upstream text.
       console.error(`[multiIa] code=${code} status=${status}`);
       sendError(
