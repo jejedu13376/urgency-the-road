@@ -15,7 +15,7 @@ Cloud agents **cannot** `firebase login` or set your provider secrets. This ship
 | --- | --- |
 | Method | `POST` |
 | Body | `{ "engine": "Claude"\|"Gemini"\|"GPT-4o"\|"Grok"\|"Mistral"\|"DeepSeek", "prompt": string, "context"?: string }` |
-| Auth | `Authorization: Bearer <Firebase ID token>` |
+| Auth | `Authorization: Bearer <Firebase ID token>` (required on POST; unsigned clients stay on heuristic) |
 | Success `200` | `{ "summary": string, "likelyParts": string[], "severity": "info"\|"warn"\|"critique", "engine", "provider", "latencyMs" }` |
 | Health | `GET` → `{ ok, enginesConfigured, … }` (no secrets) |
 
