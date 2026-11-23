@@ -90,7 +90,7 @@ Détail : `docs/MODULES-STATUS.md`.
 | 10 Entretien | LIVE carnet + share | PDF certifié |
 | 11 Tutoriels | LIVE YouTube redirect | — |
 | 12 Fil | LIVE texte Firestore si Auth | Upload vidéo CDN |
-| 13 Urgence / SOS | LIVE SOS/QR · GPS device only · PHI mock exact (#19) | Auth secours produit |
+| 13 Urgence / SOS | LIVE SOS/QR · **QR hors ligne local** (générate SVG + AsyncStorage + scan UMQR1) · GPS device only · PHI mock exact (#19) | Auth secours produit |
 | 14 Bases | LIVE learnedFailures + OTA probe | OTA canal prod |
 | 15 Compte | LIVE Auth + checkout scaffold | Stripe / PayPal / RC keys |
 | 16 Partage | LIVE share sheet | **`EXPO_PUBLIC_INSTALL_URL`** (après APK) |
@@ -173,3 +173,4 @@ Deploy CLI : `--config firebase/firebase.json` · project `urgency-road`.
 | ~13:15 | PR #22 mergée `6d1e127` — tip `main` |
 | ~13:50 | Status tonight + secrets guide (store) ; CI = no Actions ; Expo local OK sans deploy tokens |
 | ~22:50 | UR-89 GPS — PR `itinéraire` + menu destination (Share / AsyncStorage / stubs) ; helpers `gpsSavedPlaces` partagés vs Places reviews sibling |
+| ~23:25 | UR-95 QR hors ligne — generate local SVG, payload AsyncStorage, scan sans réseau (branche `cursor/qr-offline-local-1b29`) |

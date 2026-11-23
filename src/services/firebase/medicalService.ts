@@ -13,6 +13,15 @@ import type {
   UserDoc,
 } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
+import {
+  loadMedicalCardByOwnerUid,
+  loadMedicalCardByScanCode,
+  saveMedicalCardLocal,
+} from '../urgence/medicalLocalStore';
+import {
+  offlinePayloadToEmergencyView,
+  parseScannedQrValue,
+} from '../urgence/offlineQr';
 import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { failResult, flaggedDemoResult, liveResult, mockResult, ServiceResult } from './result';
 
@@ -311,7 +320,9 @@ export async function upsertMedicalCard(
   };
 
   if (!fb || !uid || uid !== card.ownerUid) {
-    return mockResult(payload, 'MOCK medical — QR/fiche locale (ou non connecté)');
+    // Offline-first: persist fiche + QR payload on device even without Firebase.
+    const local = await saveMedicalCardLocal(payload);
+    return mockResult(local, 'LOCAL medical — fiche + QR stockés sur l’appareil (hors ligne)');
   }
 
   let claimedNewIndex: string | null = null;
@@ -410,6 +421,8 @@ export async function upsertMedicalCard(
       }
     }
 
+    // Mirror live write to device so scan works offline later.
+    await saveMedicalCardLocal(payload);
     const stub = payload.subscriberActive
       ? undefined
       : 'Fiche enregistrée — index réservé sans PHI (abonné inactif)';
@@ -425,9 +438,13 @@ export async function upsertMedicalCard(
         /* best-effort orphan cleanup */
       }
     }
-    return failResult(
+    // Network / rules failure — keep device copy so QR still works offline.
+    await saveMedicalCardLocal(payload);
+    return mockResult(
       payload,
-      e instanceof Error ? e.message : 'Échec écriture fiche médicale',
+      e instanceof Error
+        ? `LOCAL — cloud échoué (${e.message}), fiche + QR sur l’appareil`
+        : 'LOCAL — cloud échoué, fiche + QR sur l’appareil',
     );
   }
 }
@@ -436,6 +453,10 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
   const fb = getFirebase();
   const uid = getSignedInUid();
   if (!fb || !uid) {
+    const local = await loadMedicalCardByOwnerUid(ownerUid);
+    if (local) {
+      return mockResult(local, 'LOCAL medical — fiche lue hors ligne (appareil)');
+    }
     // Flagged demo PHI — ok:false so UI never treats it as live Firestore.
     return flaggedDemoResult(
       { ...MOCK_CARD, ownerUid, id: medicalCardDocId(ownerUid), scanCode: MOCK_CARD.scanCode },
@@ -450,18 +471,31 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
       if (snap.exists()) {
         const raw = snap.data() as Omit<MedicalCardDoc, 'id'>;
         // Normalize arrays — incomplete Firestore docs must not crash hydrateForm .join().
-        return liveResult({
+        const card: MedicalCardDoc = {
           id: snap.id,
           ...raw,
           allergies: raw.allergies ?? [],
           conditions: raw.conditions ?? [],
           medications: raw.medications ?? [],
           emergencyContacts: raw.emergencyContacts ?? [],
-        });
+        };
+        await saveMedicalCardLocal(card);
+        return liveResult(card);
       }
+    }
+    const local = await loadMedicalCardByOwnerUid(uid);
+    if (local) {
+      return mockResult(local, 'LOCAL medical — cloud vide, fiche appareil');
     }
     return liveResult(null);
   } catch (e) {
+    const local = await loadMedicalCardByOwnerUid(uid);
+    if (local) {
+      return mockResult(
+        local,
+        'LOCAL medical — cloud indisponible, fiche appareil hors ligne',
+      );
+    }
     // Soft-fail: ok:false + null — NEVER mockResult(ok:true) with PHI.
     if (isPermissionDenied(e) || isDevSoftAuth()) {
       return failResult(
@@ -477,23 +511,31 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
 
 /**
  * Anonymous / public camera scan → limited preview only (no PHI).
- * Does not list or read medicalCards — static SOS payload for any UM-QR-* code.
+ * Accepts offline envelope (UMQR1:) or opaque UM-QR-* — never surfaces PHI.
+ * Works fully offline (static SOS payload).
  */
 export async function scanMedicalPublic(
-  scanCode: string,
+  scanInput: string,
 ): Promise<ServiceResult<MedicalPublicPreview | null>> {
-  const code = scanCode.trim().toUpperCase();
-  if (!code) return mockResult(null, 'Code QR vide');
-  if (!code.startsWith('UM-QR-')) return mockResult(null, 'QR inconnu');
-  return liveResult(toPublicPreview(code), 'Vue publique limitée — pas de PHI');
+  const parsed = parseScannedQrValue(scanInput);
+  if (parsed.kind === 'unknown') {
+    const raw = scanInput.trim();
+    if (!raw) return mockResult(null, 'Code QR vide');
+    return mockResult(null, 'QR inconnu');
+  }
+  return liveResult(
+    toPublicPreview(parsed.scanCode),
+    'Vue publique limitée — hors ligne OK, pas de PHI',
+  );
 }
 
 /**
- * Authorized emergency scan → get(medicalScanIndex/{scanCode}) only.
- * Rules deny list on that collection — rescuer cannot dump all cards.
+ * Authorized emergency scan.
+ * Offline order: (1) UMQR1 envelope in QR (2) AsyncStorage by scanCode (3) Firestore index.
+ * Rules deny list on medicalScanIndex — rescuer cannot dump all cards.
  */
 export async function scanMedicalEmergency(
-  scanCode: string,
+  scanInput: string,
   rescuerProfile: UserDoc | null,
 ): Promise<ServiceResult<MedicalEmergencyView | null>> {
   const softDev = isDevSoftAuth();
@@ -507,7 +549,30 @@ export async function scanMedicalEmergency(
     );
   }
 
-  const code = scanCode.trim().toUpperCase();
+  const parsed = parseScannedQrValue(scanInput);
+
+  // (1) Self-contained printed envelope — no network.
+  if (parsed.kind === 'offline') {
+    return mockResult(
+      offlinePayloadToEmergencyView(parsed.payload),
+      'LOCAL vue urgence — payload QR hors ligne (appareil)',
+    );
+  }
+
+  const code =
+    parsed.kind === 'scanCode'
+      ? parsed.scanCode
+      : scanInput.trim().toUpperCase();
+
+  // (2) On-device store (owner previously saved fiche on this or synced device).
+  const local = code.startsWith('UM-QR-') ? await loadMedicalCardByScanCode(code) : null;
+  if (local) {
+    return mockResult(
+      toEmergencyView(local),
+      'LOCAL vue urgence — fiche appareil hors ligne',
+    );
+  }
+
   const fb = getFirebase();
   if (!fb) {
     // Only the exact demo scan code returns flagged demo PHI — never any UM-QR-* prefix.
@@ -518,8 +583,8 @@ export async function scanMedicalEmergency(
       );
     }
     return softDev
-      ? failResult(null, 'SOFT vue urgence — Firebase off / QR non démo (pas de PHI)')
-      : mockResult(null, 'QR inconnu (mock — seul le code démo renvoie une fiche)');
+      ? failResult(null, 'SOFT vue urgence — Firebase off / pas de fiche locale')
+      : mockResult(null, 'QR inconnu hors ligne — aucune fiche locale pour ce code');
   }
 
   try {
@@ -536,22 +601,37 @@ export async function scanMedicalEmergency(
       return liveResult(null);
     }
     const idx = snap.data() as ScanIndexDoc;
-    return liveResult(
-      toEmergencyView({
-        id: idx.cardId,
-        ownerUid: idx.ownerUid,
-        scanCode: idx.scanCode,
-        fullName: idx.fullName,
-        address: idx.address,
-        allergies: idx.allergies ?? [],
-        conditions: idx.conditions ?? [],
-        medications: idx.medications ?? [],
-        emergencyContacts: idx.emergencyContacts ?? [],
-        bloodType: idx.bloodType,
-        notes: idx.notes,
-        updatedAt: idx.updatedAt,
-      }),
-    );
+    const view = toEmergencyView({
+      id: idx.cardId,
+      ownerUid: idx.ownerUid,
+      scanCode: idx.scanCode,
+      fullName: idx.fullName,
+      address: idx.address,
+      allergies: idx.allergies ?? [],
+      conditions: idx.conditions ?? [],
+      medications: idx.medications ?? [],
+      emergencyContacts: idx.emergencyContacts ?? [],
+      bloodType: idx.bloodType,
+      notes: idx.notes,
+      updatedAt: idx.updatedAt,
+    });
+    // Cache for later offline rescues on this device.
+    await saveMedicalCardLocal({
+      id: idx.cardId,
+      ownerUid: idx.ownerUid,
+      scanCode: idx.scanCode,
+      fullName: idx.fullName,
+      address: idx.address,
+      allergies: idx.allergies ?? [],
+      conditions: idx.conditions ?? [],
+      medications: idx.medications ?? [],
+      emergencyContacts: idx.emergencyContacts ?? [],
+      bloodType: idx.bloodType,
+      notes: idx.notes,
+      subscriberActive: idx.subscriberActive,
+      updatedAt: idx.updatedAt,
+    });
+    return liveResult(view);
   } catch (e) {
     // Soft-fail: ok:false + null — NEVER surface MOCK_CARD as live PHI.
     if (isPermissionDenied(e) || softDev) {

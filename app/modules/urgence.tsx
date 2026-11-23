@@ -6,6 +6,8 @@ import { Card } from '../../src/components/Card';
 import { DrowsinessMonitorCard } from '../../src/components/DrowsinessMonitorCard';
 import { EmergencyDialList } from '../../src/components/EmergencyDialList';
 import { HosLivePanel } from '../../src/components/HosLivePanel';
+import { MedicalQrCode } from '../../src/components/MedicalQrCode';
+import { MedicalQrScanner } from '../../src/components/MedicalQrScanner';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
@@ -33,6 +35,10 @@ import {
   emergencyOptionById,
   suggestEmergencyNumberId,
 } from '../../src/services/urgence/emergencyNumbers';
+import {
+  encodeOfflineQrFromCard,
+  extractScanCode,
+} from '../../src/services/urgence/offlineQr';
 import {
   formatSosAlertMessage,
   isValidSosEmail,
@@ -90,6 +96,17 @@ export default function UrgenceScreen() {
   const [gpsErr, setGpsErr] = useState<string | null>(null);
   const [label, setLabel] = useState<string | undefined>();
   const [coords, setCoords] = useState<DeviceCoords | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  /** Raw scanned value (UMQR1:… or UM-QR-*) kept for offline emergency decode. */
+  const [scanRaw, setScanRaw] = useState('');
+
+  // Align with firestore.rules ownerIsActiveSubscriber — flag only, never plan name / !profile.
+  const subscriberActive = profile?.subscriptionActive === true;
+
+  const qrPrintValue = useMemo(() => {
+    if (!card?.scanCode || !subscriberActive) return '';
+    return encodeOfflineQrFromCard(card);
+  }, [card, subscriberActive]);
 
   const suggestedEmergencyId = useMemo(
     () =>
@@ -100,9 +117,6 @@ export default function UrgenceScreen() {
     [coords?.lat, coords?.lon],
   );
   const suggestedEmergency = emergencyOptionById(suggestedEmergencyId);
-
-  // Align with firestore.rules ownerIsActiveSubscriber — flag only, never plan name / !profile.
-  const subscriberActive = profile?.subscriptionActive === true;
 
   useEffect(() => {
     // M13: never seed SOS UI with Lille fallback — device GPS only.
@@ -249,9 +263,11 @@ export default function UrgenceScreen() {
     setLabel(res.stubLabel);
   };
 
+  const resolveScanInput = () => scanRaw.trim() || scanCode.trim();
+
   const onPublicScan = async () => {
     setEmergencyView(null);
-    const res = await scanMedicalPublic(scanCode);
+    const res = await scanMedicalPublic(resolveScanInput());
     setPublicView(res.data);
     setScanMsg(res.stubLabel ?? (res.data ? 'Vue publique limitée' : 'QR inconnu'));
   };
@@ -272,7 +288,7 @@ export default function UrgenceScreen() {
       profile?.role === 'rescuer'
         ? { ...profile, rescuerBadgeId: badgeId || profile.rescuerBadgeId }
         : profile;
-    const res = await scanMedicalEmergency(scanCode, rescuer ?? null);
+    const res = await scanMedicalEmergency(resolveScanInput(), rescuer ?? null);
     // ok:false demo can still carry flagged PHI for UX — never present as live.
     setEmergencyView(res.data);
     const demoFlag =
@@ -286,6 +302,12 @@ export default function UrgenceScreen() {
           ? `Urgence : ${res.data.fullName} · ${res.data.address}`
           : 'Accès refusé ou QR inconnu'),
     );
+  };
+
+  const onCameraScan = (raw: string) => {
+    setScanRaw(raw);
+    setScanCode(extractScanCode(raw));
+    setScanMsg('QR lu — choisissez vue publique ou vue urgence (hors ligne OK).');
   };
 
   const driveSec = Math.floor(breakState.drivingSec);
@@ -371,11 +393,15 @@ export default function UrgenceScreen() {
 
         <Card title="QR personnel (compte abonné)">
           <Text style={styles.meta}>
-            Un QR unique par compte abonné, imprimé en autocollant / carte / porte-clés — scannable
-            avec n’importe quel appareil photo. Distinct de la valise OBD (M5) et de la fiche
-            diagnostique véhicule.
+            QR généré localement (pas de serveur image) · payload stocké sur l’appareil · scannable
+            hors ligne. Autocollant / carte / porte-clés — distinct de la valise OBD (M5) et de la
+            fiche diagnostique véhicule.
           </Text>
-          <Text style={styles.qrCode}>{(card?.scanCode ?? scanCode) || '— (abonné requis)'}</Text>
+          <MedicalQrCode
+            value={qrPrintValue}
+            size={196}
+            label={(card?.scanCode ?? scanCode) || '— (abonné requis)'}
+          />
           <Text style={styles.meta}>
             Statut abonnement : {subscriberActive ? 'actif → QR disponible' : 'inactif → pas de QR'}
           </Text>
@@ -407,14 +433,21 @@ export default function UrgenceScreen() {
         <Card title="Scan — accès contrôlé">
           <Text style={styles.meta}>
             (1) Public limité : SOS sans données médicales. (2) Urgence complète : nom, adresse,
-            contact d’urgence, fiche médicale — secours autorisés uniquement.
+            contact d’urgence, fiche médicale — secours autorisés. Lecture locale d’abord (hors
+            ligne), cloud ensuite si dispo.
           </Text>
+          <Pressable style={styles.gpsBtn} onPress={() => setScannerOpen(true)}>
+            <Text style={styles.sosTxt}>Scanner QR caméra (hors ligne)</Text>
+          </Pressable>
           <Text style={styles.label}>Code QR scanné</Text>
           <TextInput
             value={scanCode}
-            onChangeText={setScanCode}
+            onChangeText={(t) => {
+              setScanCode(t);
+              setScanRaw(t);
+            }}
             style={styles.input}
-            placeholder="UM-QR-…"
+            placeholder="UM-QR-… ou UMQR1:…"
             placeholderTextColor={colors.muted}
             autoCapitalize="characters"
           />
@@ -547,6 +580,11 @@ export default function UrgenceScreen() {
           </View>
         </Card>
       </Screen>
+      <MedicalQrScanner
+        visible={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScan={onCameraScan}
+      />
     </>
   );
 }
@@ -554,13 +592,6 @@ export default function UrgenceScreen() {
 const styles = StyleSheet.create({
   meta: { color: colors.muted, fontSize: 12, lineHeight: 17 },
   coords: { fontWeight: '700', color: colors.ink },
-  qrCode: {
-    fontWeight: '900',
-    fontSize: 18,
-    color: colors.signal,
-    letterSpacing: 0.5,
-    marginVertical: 6,
-  },
   label: { color: colors.slate, fontWeight: '700', fontSize: 12, marginTop: 6 },
   row: { flexDirection: 'row', gap: 8, marginTop: 8 },
   sos: { flex: 1, backgroundColor: colors.danger, borderRadius: 10, padding: 12, alignItems: 'center' },
