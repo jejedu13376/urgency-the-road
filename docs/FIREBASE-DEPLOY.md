@@ -26,12 +26,49 @@ firebase login
 
 Opens a browser → sign in with the Google account that owns the Firebase project.
 
-CI / headless alternative (optional):
+### Headless / CI alternatives (pick one)
+
+**A — CI token (recommended for agents / GitHub Actions)**
+
+On Lorenzo’s machine (browser once):
 
 ```bash
-# Create a service account JSON in GCP → IAM → Service accounts
+firebase login:ci
+# Copy the printed token into CI secrets as FIREBASE_TOKEN (never commit it)
+```
+
+Then in CI / cloud agent env:
+
+```bash
+export FIREBASE_TOKEN="<from-login:ci>"
+firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes --project urgency-road --non-interactive
+```
+
+**B — Service account (GCP ADC)**
+
+```bash
+# Create a service account JSON in GCP → IAM → Service accounts (Firebase Admin / Editor)
 export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/service-account.json
-firebase login:use-service-account
+firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes --project urgency-road --non-interactive
+```
+
+### Cloud-agent attempts (2026-11-23)
+
+Ran twice from `jejedu13376/urgency-the-road` → project **`urgency-road`** (`--only firestore:rules,firestore:indexes`):
+
+```text
+Error: Failed to authenticate, have you run firebase login?
+Could not load the default credentials.
+```
+
+`firebase login:list` on the agent VM: **No authorized accounts**. Empty `FIREBASE_TOKEN`, unset `GOOGLE_APPLICATION_CREDENTIALS`, no Cursor secrets.
+
+**Important:** `firebase login` on Lorenzo’s laptop does **not** authenticate the cloud agent. After local login succeeds, Lorenzo must run the deploy **on that same machine** (or inject **A** / **B** into the agent env).
+
+```bash
+# On the machine where `firebase login` already succeeded:
+cd /path/to/urgency-the-road
+firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes --project urgency-road
 ```
 
 ### 3. Select project
