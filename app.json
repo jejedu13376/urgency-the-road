@@ -42,7 +42,18 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png",
+      "name": "Urgence Mécanique",
+      "shortName": "Urgency Road",
+      "description": "Urgency Road — diagnostic mécanique, SOS et modules urgence sur le téléphone.",
+      "lang": "fr",
+      "themeColor": "#C45C26",
+      "backgroundColor": "#F7F4EF",
+      "display": "standalone",
+      "startUrl": "/",
+      "scope": "/"
     },
     "plugins": [
       "expo-router",
