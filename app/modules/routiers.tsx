@@ -41,10 +41,14 @@ const LAW_BY_REGION: Record<WeighStationDoc['region'], { title: string; lines: s
 };
 
 function statusBadge(w: WeighStationDoc): { lit: boolean; text: string } {
-  if (w.status === 'open' && w.litUp) return { lit: true, text: 'ON / OUVERTE' };
-  if (w.status === 'closed') return { lit: false, text: 'OFF / FERMÉE' };
-  // unknown / untagged OSM — never label as OFF (no live feed)
-  return { lit: false, text: 'UNKNOWN (pas de feed ON/OFF live)' };
+  if (w.status === 'open' && w.litUp) {
+    return { lit: true, text: 'ON / OUVERTE (opening_hours OSM)' };
+  }
+  if (w.status === 'closed') {
+    return { lit: false, text: 'OFF / FERMÉE (opening_hours OSM)' };
+  }
+  // unknown / untagged OSM — never label as OFF (no live jurisdiction feed)
+  return { lit: false, text: 'UNKNOWN (pas de feed juridiction live)' };
 }
 
 /** Module 8 — balances OSM + dépôts PL ; pas de faux ON/OFF sans tag. */
@@ -107,8 +111,8 @@ export default function RoutiersScreen() {
 
         <Card title="Balances de pesage — statut ON / OFF / UNKNOWN">
           <Text style={styles.hint}>
-            Sources OSM (weighbridge). Aucun feed mondial gratuit ON/OFF temps réel — unknown = honnête, pas de faux
-            « allumé ».
+            Sources OSM (weighbridge). Si tag opening_hours → advisory ON/OFF local. Aucun feed juridiction payant
+            temps réel — unknown reste unknown (pas de faux « allumé »).
           </Text>
           <Text style={styles.hint}>
             {meta

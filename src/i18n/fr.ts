@@ -13,7 +13,7 @@ export const fr = {
   stubPay: 'Paiement — Stripe / PayPal / Apple Pay / Google Pay (pas de Lydia)',
   stubGps: 'STUB GPS — transfert apps réel ; pas de graphe ponts/PTAC live',
   stubWeather: 'Météo LIVE Open-Meteo (cache 10 min)',
-  stubQuote: 'Devis — saisie manuelle ou heuristique marché (OCR ML Kit non branché)',
+  stubQuote: 'Devis — OCR-lite texte / saisie manuelle / heuristique (OCR ML Kit non branché)',
 } as const;
 
 export type FrKey = keyof typeof fr;

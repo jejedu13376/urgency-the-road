@@ -11,6 +11,7 @@ import { useProgress } from '../../src/context/ProgressContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { listPartsForVin, scanQuoteStub } from '../../src/services/firebase';
 import { OCR_ML_BLOCKED, OEM_CATALOGUE_BLOCKED } from '../../src/services/parts/vinPartsCatalog';
+import { parseQuoteTextAmounts } from '../../src/services/quotes/parseQuoteText';
 import type { PartDoc, QuoteDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
 
@@ -44,6 +45,8 @@ export default function PiecesScreen() {
   const [funnelStep, setFunnelStep] = useState<0 | 1 | 2 | 3>(0);
   const [manualPart, setManualPart] = useState('');
   const [manualLabor, setManualLabor] = useState('');
+  const [pasteText, setPasteText] = useState('');
+  const [pasteNote, setPasteNote] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -266,8 +269,8 @@ export default function PiecesScreen() {
 
         <Card title="Scanner devis garage (anti-arnaque)">
           <Text style={styles.hint}>
-            OCR ML non branché — saisissez les montants du devis garage, ou lancez l’heuristique marché vs pièce
-            sélectionnée. Aucun « devis scanné avec succès » inventé.
+            OCR ML Kit non branché — collez le texte du devis, saisissez les montants, ou lancez l’heuristique marché.
+            Aucun « devis scanné OCR ML avec succès » inventé.
           </Text>
           <View style={styles.funnelRow}>
             <Pressable style={[styles.funnelChip, scanMode === 'photo' && styles.funnelChipOn]} onPress={() => setScanMode('photo')}>
@@ -277,6 +280,27 @@ export default function PiecesScreen() {
               <Text style={[styles.funnelTxt, scanMode === 'pdf' && styles.funnelTxtOn]}>Mode PDF</Text>
             </Pressable>
           </View>
+          <Text style={styles.meta}>Coller texte devis (OCR-lite — extraction montants)</Text>
+          <TextInput
+            value={pasteText}
+            onChangeText={setPasteText}
+            placeholder="Ex. Pièce plaquettes 189,00 € · Main d’œuvre 120 €"
+            placeholderTextColor={colors.muted}
+            style={styles.pasteInput}
+            multiline
+          />
+          <Pressable
+            style={styles.scanSoft}
+            onPress={() => {
+              const parsed = parseQuoteTextAmounts(pasteText);
+              setPasteNote(parsed.note);
+              if (parsed.partPrice != null) setManualPart(String(parsed.partPrice));
+              if (parsed.laborPrice != null) setManualLabor(String(parsed.laborPrice));
+            }}
+          >
+            <Text style={styles.scanTxt}>Extraire montants du texte</Text>
+          </Pressable>
+          {pasteNote ? <Text style={styles.meta}>{pasteNote}</Text> : null}
           <Text style={styles.meta}>Montants saisis (pièce + main-d’œuvre du devis garage)</Text>
           <View style={styles.funnelRow}>
             <TextInput
@@ -402,7 +426,25 @@ const styles = StyleSheet.create({
   devisBox: { backgroundColor: colors.garageSoft, borderRadius: 10, padding: 10, gap: 4 },
   devisTitle: { fontWeight: '800', color: colors.garage },
   scan: { backgroundColor: colors.asphalt, borderRadius: 12, padding: 14, alignItems: 'center' },
+  scanSoft: {
+    backgroundColor: colors.signal,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    marginBottom: 6,
+  },
   scanTxt: { color: colors.white, fontWeight: '800' },
+  pasteInput: {
+    minHeight: 64,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: colors.ink,
+    backgroundColor: colors.mist,
+    marginBottom: 6,
+  },
   manualInput: {
     flexGrow: 1,
     minWidth: '40%',

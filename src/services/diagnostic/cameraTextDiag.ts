@@ -105,7 +105,8 @@ export function quoteFromCameraText(opts: {
 }
 
 export const VISION_PIXELS_BLOCKED =
-  'Vision pixels non branchée — capture caméra + description texte uniquement (pas d’identification visuelle IA).';
+  'Vision pixels non branchée — capture caméra + description texte uniquement (pas d’identification visuelle IA / API vision).';
 
+/** @deprecated Prefer MIC_AUDIO_LIVE from acousticMic — kept for UI banners during migration. */
 export const MIC_AUDIO_BLOCKED =
-  'Micro audio non capturé — aucune classification sonore. Décrivez le bruit en texte.';
+  'Micro LIVE possible (expo-audio) — heuristique metering ; pas de classification ML spectrale.';

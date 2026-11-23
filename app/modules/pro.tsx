@@ -14,6 +14,13 @@ import {
   submitGarageRating,
   updateAppointment,
 } from '../../src/services/firebase';
+import {
+  adminKeys,
+  loadJson,
+  loadProKpi,
+  saveJson,
+  saveProKpi,
+} from '../../src/services/admin/adminLocalStore';
 import type { AppointmentDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
 
@@ -53,6 +60,7 @@ export default function ProScreen() {
   const [rateStars, setRateStars] = useState<1 | 2 | 3 | 4 | 5>(5);
   const [rateComment, setRateComment] = useState('');
   const [view, setView] = useState<'jour' | 'semaine'>('jour');
+  const [ratingsHydrated, setRatingsHydrated] = useState(false);
 
   const reload = useCallback(async () => {
     const res = await listAppointmentsForGarage(garageId);
@@ -64,14 +72,57 @@ export default function ProScreen() {
     void reload();
   }, [reload]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const stored = await loadJson<RatingRow[]>(adminKeys.ratings);
+      if (cancelled) return;
+      if (stored?.length) setRatings(stored);
+      setRatingsHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!ratingsHydrated) return;
+    void saveJson(adminKeys.ratings, ratings);
+  }, [ratings, ratingsHydrated]);
+
   const dashboard = useMemo(() => {
     const active = appts.filter((a) => a.status !== 'cancelled' && a.status !== 'done');
     const ca = appts
       .filter((a) => a.status === 'done' || a.status === 'in_shop' || a.status === 'confirmed')
       .reduce((s, a) => s + (a.estimatedTotal ?? 0), 0);
     const inShop = appts.filter((a) => a.status === 'in_shop').length;
-    return { charge: active.length, inShop, ca, currency: appts[0]?.currency ?? 'EUR' };
-  }, [appts]);
+    return {
+      charge: active.length,
+      inShop,
+      ca,
+      currency: appts[0]?.currency ?? 'EUR',
+      ratingsCount: ratings.length,
+    };
+  }, [appts, ratings.length]);
+
+  useEffect(() => {
+    void saveProKpi({
+      updatedAt: new Date().toISOString(),
+      charge: dashboard.charge,
+      inShop: dashboard.inShop,
+      ca: dashboard.ca,
+      currency: dashboard.currency,
+      ratingsCount: dashboard.ratingsCount,
+    });
+  }, [dashboard]);
+
+  useEffect(() => {
+    void loadProKpi().then((k) => {
+      if (k) {
+        setMsg((prev) => prev ?? `KPI atelier local · MAJ ${new Date(k.updatedAt).toLocaleString('fr-FR')}`);
+      }
+    });
+  }, []);
 
   const addRdv = async () => {
     if (!clientName.trim() || !vehicleLabel.trim()) {
@@ -153,9 +204,12 @@ export default function ProScreen() {
                 {dashboard.ca}
                 <Text style={styles.kpiCur}> {dashboard.currency}</Text>
               </Text>
-              <Text style={styles.kpiLbl}>CA du jour (mock)</Text>
+              <Text style={styles.kpiLbl}>CA atelier (local)</Text>
             </View>
           </View>
+          <Text style={styles.meta}>
+            Avis locaux : {dashboard.ratingsCount} · KPI persistés AsyncStorage (pas de serveur atelier).
+          </Text>
           <View style={styles.viewRow}>
             {(['jour', 'semaine'] as const).map((v) => (
               <Pressable key={v} style={[styles.chip, view === v && styles.chipOn]} onPress={() => setView(v)}>

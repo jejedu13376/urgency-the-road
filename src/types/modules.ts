@@ -83,6 +83,9 @@ export interface FeedPost {
   likes: number;
   comments: number;
   createdAt: string;
+  /** On-device video URI only — never implies CDN hosting. */
+  localMediaUri?: string;
+  mediaKind?: 'text' | 'video_local';
 }
 
 export interface SubscriptionPlan {

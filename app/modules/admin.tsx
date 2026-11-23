@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
+import { adminKeys, loadJson, saveJson } from '../../src/services/admin/adminLocalStore';
 import { colors } from '../../src/theme/colors';
 
 type FlagKey =
@@ -82,6 +83,47 @@ export default function AdminScreen() {
   const [mod, setMod] = useState(INITIAL_MOD);
   const [accounts, setAccounts] = useState(INITIAL_ACCOUNTS);
   const [filterRole, setFilterRole] = useState<'all' | AccountRow['role']>('all');
+  const [hydrated, setHydrated] = useState(false);
+  const [persistLabel, setPersistLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [f, m, a] = await Promise.all([
+        loadJson<Record<FlagKey, boolean>>(adminKeys.flags),
+        loadJson<ModItem[]>(adminKeys.mod),
+        loadJson<AccountRow[]>(adminKeys.accounts),
+      ]);
+      if (cancelled) return;
+      if (f) setFlags((prev) => ({ ...prev, ...f }));
+      if (m?.length) setMod(m);
+      if (a?.length) setAccounts(a);
+      setPersistLabel(
+        f || m || a
+          ? 'Admin local restauré (AsyncStorage) — pas de KPI cloud'
+          : 'Admin local vierge — éditions persistées on-device',
+      );
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    void saveJson(adminKeys.flags, flags);
+  }, [flags, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    void saveJson(adminKeys.mod, mod);
+  }, [mod, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    void saveJson(adminKeys.accounts, accounts);
+  }, [accounts, hydrated]);
 
   const toggle = (k: FlagKey) => setFlags((f) => ({ ...f, [k]: !f[k] }));
 
@@ -108,30 +150,33 @@ export default function AdminScreen() {
     <>
       <Stack.Screen options={{ title: 'Super-admin' }} />
       <Screen title="Super-admin" subtitle="Module 17 — comptes · contenus · flags · abo">
-        <StubBanner text="STUB admin — UI locale ; pas de KPI live / pas de faux succès analytics" />
+        <StubBanner text="Admin UI locale persistée · KPI cloud / backend Pro non branchés" />
+        {persistLabel ? <Text style={styles.meta}>{persistLabel}</Text> : null}
 
-        <Card title="Analytics">
+        <Card title="Analytics (local)">
           <View style={styles.kpiGrid}>
             <View style={styles.kpi}>
-              <Text style={styles.kpiVal}>—</Text>
-              <Text style={styles.kpiLbl}>MAU</Text>
+              <Text style={styles.kpiVal}>{accounts.filter((a) => a.active).length}</Text>
+              <Text style={styles.kpiLbl}>Comptes actifs (local)</Text>
             </View>
             <View style={styles.kpi}>
-              <Text style={styles.kpiVal}>—</Text>
-              <Text style={styles.kpiLbl}>Sessions / j</Text>
+              <Text style={styles.kpiVal}>{accounts.length}</Text>
+              <Text style={styles.kpiLbl}>Comptes listés</Text>
             </View>
             <View style={styles.kpi}>
-              <Text style={styles.kpiVal}>—</Text>
-              <Text style={styles.kpiLbl}>Conv. Pro</Text>
+              <Text style={styles.kpiVal}>
+                {Object.values(flags).filter(Boolean).length}/{Object.keys(flags).length}
+              </Text>
+              <Text style={styles.kpiLbl}>Flags ON</Text>
             </View>
             <View style={styles.kpi}>
               <Text style={styles.kpiVal}>{openMod}</Text>
-              <Text style={styles.kpiLbl}>Modération (locale)</Text>
+              <Text style={styles.kpiLbl}>Modération ouverte</Text>
             </View>
           </View>
           <Text style={styles.meta}>
-            KPI cloud non branchés — seules les files de modération locales sont éditables ici. Backend admin =
-            Lorenzo / rules role admin.
+            Compteurs dérivés de l’UI locale persistée — pas de MAU / sessions cloud. Backend admin analytics =
+            à brancher séparément.
           </Text>
         </Card>
 
