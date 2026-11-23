@@ -74,13 +74,14 @@ async function overpassQuery(ql: string): Promise<OsmEl[]> {
 function mapGarageKind(tags: OsmTags): GarageDoc['kind'] {
   const shop = tags.shop ?? '';
   const amenity = tags.amenity ?? '';
-  // Amenity first — brand alone must not force concession (Bosch / Feu Vert / Midas)
-  if (amenity === 'towing' || amenity === 'vehicle_inspection') return 'depannage';
-  if (amenity === 'car_repair') return 'garage';
-  if (shop === 'car_parts' || shop === 'tyres') return 'pieces';
-  if (shop === 'car' || shop === 'car_dealer' || amenity === 'car_dealer') return 'concession';
+  // Specific kinds first so dual-tagged OSM nodes keep the right filter bucket.
+  // Brand alone never forces concession (Bosch / Feu Vert / Midas).
   if (tags.mobile === 'yes' || tags['service:vehicle:mobile'] === 'yes') return 'mobile';
   if (tags.hgv === 'yes' || tags['hgv:repair'] === 'yes' || tags.truck === 'yes') return 'depot_pl';
+  if (shop === 'car_parts' || shop === 'tyres') return 'pieces';
+  if (shop === 'car' || shop === 'car_dealer' || amenity === 'car_dealer') return 'concession';
+  if (amenity === 'towing' || amenity === 'vehicle_inspection') return 'depannage';
+  if (amenity === 'car_repair') return 'garage';
   return 'garage';
 }
 
