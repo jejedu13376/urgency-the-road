@@ -85,12 +85,13 @@ export default function ObdScreen() {
   const guideFor = useMemo(() => new Map(MOCK_DTC.map((d) => [d.code, d])), []);
 
   const onRead = async () => {
+    if (busy) return;
     setBusy(true);
     try {
       // Prefer live ELM327/J1939 BLE session when connected to real hardware
       if (liveBle && connectedId && !connectedId.startsWith('mock-')) {
         const live = await readLiveObdSnapshot(protocol);
-          if (live) {
+        if (live) {
           const sensors: Record<string, number | string> = {};
           for (const [k, v] of Object.entries(live.sensors)) {
             sensors[k] = v === null ? '—' : v;
@@ -118,6 +119,10 @@ export default function ObdScreen() {
           setSelectedDtc(live.dtcCodes[0]?.code ?? null);
           return;
         }
+        // Do NOT fall through to mock/Firestore DTCs while a live session banner is shown.
+        setLabel('Lecture BLE live échouée — session ELM toujours ouverte, réessayez (pas de fallback mock).');
+        setBleMsg('Live read null — aucun DTC mock affiché pendant session ELM.');
+        return;
       }
 
       const ownerUid = profile?.uid ?? 'mock-local-user';
@@ -142,6 +147,7 @@ export default function ObdScreen() {
   };
 
   const onBleScan = async () => {
+    if (busy) return;
     setBusy(true);
     try {
       const r = await scanBleDevices();
@@ -161,9 +167,12 @@ export default function ObdScreen() {
   };
 
   const onConnect = async (id: string) => {
+    if (busy) return;
     setBusy(true);
     try {
       if (id.startsWith('mock-')) {
+        // Tear down any live GATT session before switching to mock UI.
+        await disconnectBleSession();
         const r = await connectBleDevice(id);
         setBleMsg(r.message);
         setConnectedId(id);
@@ -277,7 +286,7 @@ export default function ObdScreen() {
           <Text style={styles.meta}>{cap.available ? 'BLE natif prêt' : `Expo Go / web : ${cap.reason}`}</Text>
           <Text style={styles.meta}>{cap.pathToLive}</Text>
           <Pressable style={[styles.btn, busy && styles.btnDisabled]} disabled={busy} onPress={() => void onBleScan()}>
-            <Text style={styles.btnTxt}>{busy ? 'Scan…' : 'Scanner appareils OBD'}</Text>
+            <Text style={styles.btnTxt}>Scanner appareils OBD</Text>
           </Pressable>
           {devices.map((d) => {
             const on = connectedId === d.id;
@@ -327,8 +336,12 @@ export default function ObdScreen() {
             ))}
           </View>
           <Text style={styles.meta}>{PROTOCOL_HELP[protocol]}</Text>
-          <Pressable style={styles.btn} onPress={() => void onRead()}>
-            <Text style={styles.btnTxt}>Lire snapshot DTC + capteurs</Text>
+          <Pressable
+            style={[styles.btn, busy && styles.btnDisabled]}
+            disabled={busy}
+            onPress={() => void onRead()}
+          >
+            <Text style={styles.btnTxt}>{busy ? 'Lecture…' : 'Lire snapshot DTC + capteurs'}</Text>
           </Pressable>
         </Card>
 

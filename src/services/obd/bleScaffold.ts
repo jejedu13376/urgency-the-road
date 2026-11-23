@@ -4,11 +4,12 @@
  * Expo Go limitation: react-native-ble-plx requires a custom Dev Client / bare workflow.
  * This module:
  *  - detects whether a native BLE module is present
- *  - scan / connect
+ *  - scan / connect (after PoweredOn + Android runtime permissions)
  *  - delegates ELM327 AT init + PID/DTC to bleSession (live path)
  *  - never pretends a hardware link succeeded without native BLE
  */
 import { getBleCapability } from './bleCapability';
+import { ensureAndroidBlePermissions, waitForBlePoweredOn } from './bleNative';
 
 export type { BleCapability } from './bleCapability';
 export { getBleCapability };
@@ -36,10 +37,19 @@ export async function scanBleDevices(): Promise<BleScanResult> {
       message: `Scan BLE impossible — ${cap.reason}. ${cap.pathToLive}`,
     };
   }
+
+  const perm = await ensureAndroidBlePermissions();
+  if (!perm.ok) {
+    return { ok: false, devices: [], message: perm.message ?? 'Permissions Bluetooth manquantes.' };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let manager: any = null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { BleManager } = require('react-native-ble-plx');
-    const manager = new BleManager();
+    manager = new BleManager();
+    await waitForBlePoweredOn(manager);
     const found: { id: string; name: string }[] = [];
     await new Promise<void>((resolve) => {
       const sub = manager.startDeviceScan(
@@ -47,7 +57,11 @@ export async function scanBleDevices(): Promise<BleScanResult> {
         { allowDuplicates: false },
         (error: Error | null, device: { id: string; name?: string | null; localName?: string | null } | null) => {
           if (error) {
-            sub?.remove?.();
+            try {
+              sub?.remove?.();
+            } catch {
+              /* ignore */
+            }
             resolve();
             return;
           }
@@ -65,7 +79,11 @@ export async function scanBleDevices(): Promise<BleScanResult> {
         } catch {
           /* ignore */
         }
-        sub?.remove?.();
+        try {
+          sub?.remove?.();
+        } catch {
+          /* ignore */
+        }
         resolve();
       }, 5000);
     });
@@ -80,6 +98,12 @@ export async function scanBleDevices(): Promise<BleScanResult> {
       devices: [],
       message: e instanceof Error ? e.message : 'Erreur scan BLE',
     };
+  } finally {
+    try {
+      manager?.destroy?.();
+    } catch {
+      /* ignore */
+    }
   }
 }
 
