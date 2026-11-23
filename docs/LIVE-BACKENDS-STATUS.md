@@ -15,7 +15,7 @@ Updated continuously. **Formations: never touched.**
 | Recalls NHTSA | **LIVE** (free) | `src/services/recalls/nhtsaRecalls.ts` |
 | Weather banner | **LIVE Open-Meteo** (cache 10 min) | `src/services/weather/openMeteo.ts` |
 | Geocode destination | **LIVE Open-Meteo** | `src/services/geo/openMeteoGeocode.ts` |
-| Device GPS | **LIVE expo-location** (fallback Lille) | `src/services/geo/deviceLocation.ts` |
+| Device GPS | **LIVE expo-location** (Lille fallback opt-in for discovery; **M13 SOS refuses fallback**) | `src/services/geo/deviceLocation.ts` |
 | Garages / pièces around me | **LIVE Overpass OSM** (+ Firestore/mock fallback) | `overpassPlaces.ts` + `garagesService.ts` |
 | Weigh / dépôts PL | **LIVE Overpass OSM** (ON/OFF unknown if untagged) | `weighService.ts` |
 | Parts list by VIN | **Local WMI catalogue** (+ Firestore if filled) | `vinPartsCatalog.ts` |

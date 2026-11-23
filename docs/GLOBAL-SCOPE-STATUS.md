@@ -2,12 +2,12 @@
 
 **Scope:** Urgency Road ONLY — Formations never touched.  
 **Repo:** `jejedu13376/urgency-the-road` · store mirror `/cursor/stores/self/urgency-road-one/` · docs `/cursor/stores/self/docs/urgency-road-one/`  
-**Updated:** 2026-11-23 ~11:45 UTC
+**Updated:** 2026-11-23 ~11:55 UTC
 
 ## Code status
 
 **All Urgency code PRs merged to `main`:** #4, #8, #9, #10, #11 (plus earlier #1/#2/#3/#5/#7).  
-No further code PRs pending for the current scope.
+**Open fix PR:** #14 (`cursor/analyze-fix-urgency-91d8`) — typecheck exclude, worklets peer, M13 GPS honesty, doc sync.
 
 | PR | What landed |
 | --- | --- |
@@ -16,6 +16,8 @@ No further code PRs pending for the current scope.
 | #9 | EAS restore (`eas.json`, Dev Client, ble-plx, runbooks) |
 | #10 | Stubs deepen (live free APIs) |
 | #11 | SUIVI tracking |
+| #12 | Docs deploy status / checklist / path coherence |
+| #14 | Analyze/fix (tsc, peers, M13 GPS, doc drift) — open |
 
 ## Deploy / secrets (blocked)
 
@@ -41,7 +43,7 @@ Once Lorenzo injects secrets → follow **`docs/DEPLOY-CHECKLIST.md`**.
 | Item | Done | Blocked on Lorenzo / secrets |
 | --- | --- | --- |
 | M1 VIN + fiche + scan | Code live NHTSA/camera | Network / camera permission |
-| M2–M17 UI local | Expanded | Deep OEM data feeds |
+| M2–M17 UI + free APIs | Expanded | Deep OEM / paid feeds |
 | Firebase Auth/Firestore | Code + rules on main | Console enable + `firebase deploy` rules/indexes |
 | Multi-IA proxy | Code on main (#8) | Provider secrets + functions deploy + `EXPO_PUBLIC_MULTI_IA_PROXY_URL` |
 | YouTube | Code | API key restrict (key name may already be in local `.env`) |
@@ -64,7 +66,7 @@ npx eas-cli build -p android --profile preview
 
 Also: `LIVE-BACKENDS-STATUS.md`, `docs/FIREBASE-DEPLOY.md`, `docs/MULTI-IA-PROXY.md`, `docs/EAS-RUNBOOK.md`.
 
-## Payments update
+## Payments
 
 Lydia **removed**. Methods: Stripe cards, PayPal, Apple Pay, Google Pay only.
 

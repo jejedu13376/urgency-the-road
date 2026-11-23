@@ -1,8 +1,9 @@
 # Urgence Mécanique — 17 modules status
 
-**App:** `/home/ubuntu/Axarel/urgency-road-one`  
+**App:** `jejedu13376/urgency-the-road`  
 **Shell:** Expo Router · tabs FR · onglet exact **« Mon véhicule »**  
-**Formations:** PAUSED (untouched)
+**Formations:** PAUSED (untouched)  
+**Updated:** 2026-11-23 — deepen stubs **merged** PR #10 → `03a4efd44cc4958048f5a74633445bcccdbb56bd` · audit/fix PR sync
 
 ## UX vendeur / addiction (leviers)
 
@@ -16,34 +17,35 @@
 | SOS flottant + bandeau météo (M13) | root layout |
 | Palette propriétaire asphalt/signal (pas purple-AI) | `src/theme/colors.ts` |
 
-## Coded vs stubbed
+## Coded vs stubbed (post deepen)
 
-| M | Écran | Coded (UI / local) | Stub (pas live) |
+| M | Écran | LIVE / coded | Still stub / blocked |
 | --- | --- | --- | --- |
-| 1 | `/(tabs)/mon-vehicule` | VIN input, fiche, fluides, pannes, flotte link | API VIN OEM, scan caméra |
-| 2 | `/modules/flotte` | Cascade continent→…→motorisation, multi-flotte | — |
-| 3 | `/modules/pieces` | Liste pièces, comparateur, pose | Catalogue mondial, OCR devis IA |
-| 4 | `/modules/diagnostic-ia` | Questions, politesse, UI photo/son | IA photo/vidéo/micro live |
-| 5 | `/modules/obd` | VIN→prise+valise reco + achat abonné, DTC/BLE UX | BLE hardware Dev Client |
-| 6 | `/modules/multi-ia` | Routeur UI, `expo-speech` + Stop Voix | Claude/GPT/Gemini/Grok/Mistral/DeepSeek, web recalls |
-| 7 | `/modules/gps` | Modes PL/voiture, deep-links Maps/Waze/Apple | Graphe ponts/PTAC live |
-| 8 | `/modules/routiers` | Liste pesage & dépôts PL | Alertes temps réel |
-| 9 | `/modules/garages` | Pins mock + `tel:` | Géoloc live |
-| 10 | `/modules/entretien` | Rappels km/dates, carnet | PDF certifié réel |
-| 11 | `/modules/tutoriels` | Étapes par modèle | Lecteur vidéo CDN |
-| 12 | `/(tabs)/fil` | Feed + refresh | Upload vidéo live |
-| 13 | `/modules/urgence` + SOS root | 112, share position, chrono 4h | GPS précis live |
-| 14 | `/modules/bases` | Log apprentissage, sync UI | OTA cloud |
-| 15 | `/modules/compte` | Règles MDP, bio API, plans | Lydia/Stripe/Apple/Google Pay |
-| 16 | `/modules/partage` | Share sheet multi-canal | Lien install prod |
-| 17 | `/modules/pro` + `/modules/admin` | Atelier, devis list, flags, analytics mock | Backend Pro/Admin |
+| 1 | `/(tabs)/mon-vehicule` | NHTSA VIN + camera scan | OEM deep fluids API |
+| 2 | `/modules/flotte` | Cascade + multi-flotte local | Cloud fleet backend |
+| 3 | `/modules/pieces` | VIN/WMI catalogue local + buy search URLs | Mondial OEM catalogue · OCR ML |
+| 4 | `/modules/diagnostic-ia` | Camera LIVE + Multi-IA **texte** · YouTube | Vision pixels · micro audio |
+| 5 | `/modules/obd` | VIN→valise reco · BLE scaffold (PR #4) | Dev Client + dongle |
+| 6 | `/modules/multi-ia` | Heuristic + proxy-only + NHTSA recalls | Server proxy keys |
+| 7 | `/modules/gps` | Device GPS + Open-Meteo geocode + Maps handoff | Graphe ponts/PTAC commercial |
+| 8 | `/modules/routiers` | Overpass/Photon weigh + dépôts · UNKNOWN if untagged | Feed ON/OFF juridiction |
+| 9 | `/modules/garages` | Overpass/Photon around GPS · tel/maps | Places proprietary API |
+| 10 | `/modules/entretien` | Rappels km/admin + **share carnet texte** | PDF certifié signé |
+| 11 | `/modules/tutoriels` | YouTube suggestions + redirection | — (cahier: pas de vidéo embarquée) |
+| 12 | `/(tabs)/fil` | Texte Firestore si Auth | Upload vidéo CDN |
+| 13 | `/modules/urgence` + SOS | SOS/112/QR · **GPS device only** (refuse fallback) | Secours auth produit |
+| 14 | `/modules/bases` | learnedFailures owner-write + **AsyncStorage journal** + migrate Auth | OTA EAS canal |
+| 15 | `/modules/compte` | Auth + bio + password rules | Stripe/PayPal/RC keys |
+| 16 | `/modules/partage` | Share sheet multi-canal | `EXPO_PUBLIC_INSTALL_URL` prod |
+| 17 | `/modules/pro` + `/modules/admin` | RDV Firebase si Auth · admin UI locale | Backend Pro/Admin KPI |
 
 ## Run
 
 ```bash
-cd /home/ubuntu/Axarel/urgency-road-one
+cd /workspace   # or local clone
 npm install
+# Cloud Functions typecheck is separate (own package.json):
+#   cd firebase/functions && npm install && npm run typecheck
 npx expo start
+npx tsc --noEmit
 ```
-
-Typecheck: `npx tsc --noEmit` (clean).

@@ -1,46 +1,46 @@
-# urgency road one (Android)
+# Urgence Mécanique (`urgency-the-road`)
 
-Expo (React Native) app under Axarel. Blank home screen only.
+Expo Router (React Native) app — 17 modules: VIN/OBD, Multi-IA, GPS PL, SOS médical, Auth/Firestore, YouTube tutoriels, etc.
 
-Package: `com.axarel.urgencyroadone`
+**Repo:** `jejedu13376/urgency-the-road` · package `com.axarel.urgencyroadone`  
+**Formations:** separate project — do not mix.
 
 ## Run (dev)
 
 ```bash
-cd Axarel/urgency-road-one
+cp .env.example .env   # fill EXPO_PUBLIC_* as needed — never commit .env
 npm install
 npx expo start
 ```
 
-Press `a` for Android emulator, or scan the QR code with **Expo Go** on a phone.
-
-## Build AAB (Play Store)
+Typecheck (app only — Cloud Functions excluded from root `tsc`):
 
 ```bash
-npm i -g eas-cli
-eas login
-eas build:configure
-eas build -p android --profile production
+npx tsc --noEmit
+cd firebase/functions && npm install && npm run typecheck
 ```
 
-Download the `.aab` from the EAS build page when finished.
+Press `a` for Android emulator, or scan the QR with **Expo Go**. BLE OBD needs a **Dev Client** (`docs/BLE-DEV-CLIENT.md`).
 
-## Google Play Console ($25 one-time)
+## Backend / deploy
 
-Full steps: [`docs/google-play-console.md`](docs/google-play-console.md)
+- Firebase + YouTube setup: [`docs/BACKEND-SETUP.md`](docs/BACKEND-SETUP.md)
+- Post-secrets deploy order: [`docs/DEPLOY-CHECKLIST.md`](docs/DEPLOY-CHECKLIST.md)
+- Multi-IA proxy: [`docs/MULTI-IA-PROXY.md`](docs/MULTI-IA-PROXY.md)
+- Module LIVE vs stub: [`docs/MODULES-STATUS.md`](docs/MODULES-STATUS.md)
 
-1. https://play.google.com/console/signup → pay **$25 USD** once → verify account  
-2. Create app “urgency road one”  
-3. Complete store listing + App content / Data safety  
-4. Upload the AAB (prefer Internal testing first, then Production)
+Agents do **not** run `firebase deploy` or paste secrets. Lorenzo injects keys / tokens locally or via Cursor Dashboard secrets.
 
-## Test APK (EAS preview)
-
-See [`docs/apk-build.md`](docs/apk-build.md). Needs a free Expo login, then:
+## Build AAB / APK (EAS)
 
 ```bash
 npx eas-cli login
-npx eas-cli build -p android --profile preview
+npx eas-cli build -p android --profile preview      # APK
+npx eas-cli build -p android --profile production  # AAB
 ```
 
-Download the APK from the Expo build page when finished.
+See [`docs/EAS-RUNBOOK.md`](docs/EAS-RUNBOOK.md) and [`docs/apk-build.md`](docs/apk-build.md).
+
+## Google Play Console
+
+[`docs/google-play-console.md`](docs/google-play-console.md)
