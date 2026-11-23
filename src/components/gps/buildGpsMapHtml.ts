@@ -41,8 +41,8 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     top:calc(8px + var(--pad-top));
     display:flex;flex-direction:column;gap:6px;pointer-events:none;
   }
-  .hud > *{pointer-events:auto}
-  .chip-row{display:flex;gap:6px}
+  /* Only chips capture taps — status text must not steal map clicks. */
+  .chip-row{display:flex;gap:6px;pointer-events:auto}
   .chip{
     flex:1;border:0;border-radius:11px;padding:9px 10px;font:650 12px/1.15 system-ui,sans-serif;
     background:rgba(255,255,255,.94);color:var(--ink);box-shadow:0 1px 8px rgba(0,0,0,.16);
