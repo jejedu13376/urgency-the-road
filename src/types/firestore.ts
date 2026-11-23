@@ -234,6 +234,8 @@ export const COLLECTIONS = {
   obdReadings: 'obdReadings',
   garages: 'garages',
   medicalCards: 'medicalCards',
+  /** Doc id = scanCode. Rescuer get-only (no list). */
+  medicalScanIndex: 'medicalScanIndex',
   roadHazards: 'roadHazards',
   gpsPrefs: 'gpsPrefs',
   weighStations: 'weighStations',

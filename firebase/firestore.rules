@@ -22,6 +22,10 @@ service cloud.firestore {
         && userDoc().subscription == 'rescuer'
         && userDoc().subscriptionActive == true;
     }
+    function garageOwnedBy(garageOwnerUid) {
+      return exists(/databases/$(database)/documents/garages/$(garageOwnerUid))
+        && get(/databases/$(database)/documents/garages/$(garageOwnerUid)).data.ownerUid == garageOwnerUid;
+    }
 
     match /users/{userId} {
       allow read: if signedIn() && (uid() == userId || isAdmin());
@@ -55,18 +59,50 @@ service cloud.firestore {
 
     match /garages/{id} {
       allow read: if true;
-      allow create: if isGaragePro();
+      allow create: if isGaragePro() && request.resource.data.ownerUid == uid();
       allow update, delete: if isGaragePro()
         && (resource.data.ownerUid == uid() || isAdmin());
     }
 
-    // Module 13 — medical cards: owner R/W; rescuer with active subscription may read only
+    /**
+     * Module 13 — medicalCards: owner-only (no rescuer list/get-all).
+     * Rescuers read PHI only via medicalScanIndex/{scanCode} get (exact QR).
+     */
     match /medicalCards/{id} {
-      allow read: if signedIn() && (
-        resource.data.ownerUid == uid() || isActiveRescuer() || isAdmin()
-      );
-      allow create: if signedIn() && request.resource.data.ownerUid == uid();
-      allow update, delete: if signedIn() && resource.data.ownerUid == uid();
+      allow get, list: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == uid()
+        && request.resource.data.scanCode is string
+        && request.resource.data.scanCode.size() >= 8
+        && !exists(/databases/$(database)/documents/medicalScanIndex/$(request.resource.data.scanCode));
+      allow update: if signedIn()
+        && resource.data.ownerUid == uid()
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.scanCode == resource.data.scanCode; // immutable — no hijack
+      allow delete: if signedIn() && resource.data.ownerUid == uid();
+    }
+
+    /**
+     * Doc id MUST equal scanCode. list denied → rescuer cannot dump all cards.
+     * get allowed only for active rescuer (scan-scoped) or owning subscriber.
+     * create fails if scanCode already taken (collision / hijack).
+     */
+    match /medicalScanIndex/{scanCode} {
+      allow get: if isActiveRescuer()
+        || (signedIn() && resource.data.ownerUid == uid())
+        || isAdmin();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == uid()
+        && request.resource.data.scanCode == scanCode
+        && request.resource.data.cardId is string
+        && !exists(/databases/$(database)/documents/medicalScanIndex/$(scanCode));
+      allow update: if signedIn()
+        && resource.data.ownerUid == uid()
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.scanCode == resource.data.scanCode
+        && request.resource.data.scanCode == scanCode;
+      allow delete: if signedIn() && resource.data.ownerUid == uid();
     }
 
     match /roadHazards/{id} {
@@ -76,9 +112,13 @@ service cloud.firestore {
         && (resource.data.reporterUid == uid() || isAdmin());
     }
 
+    // Split read/write: request.resource only exists on writes — reads must not require it.
     match /gpsPrefs/{id} {
-      allow read, write: if signedIn()
-        && (resource == null || resource.data.ownerUid == uid())
+      allow read: if signedIn()
+        && (resource == null || resource.data.ownerUid == uid() || id == uid());
+      allow create: if signedIn() && request.resource.data.ownerUid == uid();
+      allow update, delete: if signedIn()
+        && resource.data.ownerUid == uid()
         && request.resource.data.ownerUid == uid();
     }
 
@@ -106,6 +146,11 @@ service cloud.firestore {
         && (resource.data.authorUid == uid() || isAdmin());
     }
 
+    /**
+     * Appointments: garage owner may create into own inbox.
+     * Clients may only create status=requested into a real garage (doc id = ownerUid).
+     * Blocks forging garageOwnerUid == arbitrary victim without a garages/{uid} doc.
+     */
     match /appointments/{id} {
       allow read: if signedIn() && (
         resource.data.garageOwnerUid == uid()
@@ -114,7 +159,13 @@ service cloud.firestore {
       );
       allow create: if signedIn() && (
         request.resource.data.garageOwnerUid == uid()
-        || request.resource.data.clientUid == uid()
+        || (
+          request.resource.data.clientUid == uid()
+          && request.resource.data.status == 'requested'
+          && request.resource.data.garageOwnerUid is string
+          && request.resource.data.garageOwnerUid != uid()
+          && garageOwnedBy(request.resource.data.garageOwnerUid)
+        )
       );
       allow update, delete: if signedIn() && (
         resource.data.garageOwnerUid == uid() || isAdmin()

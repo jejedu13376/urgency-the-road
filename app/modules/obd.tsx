@@ -70,12 +70,21 @@ export default function ObdScreen() {
   const guideFor = useMemo(() => new Map(MOCK_DTC.map((d) => [d.code, d])), []);
 
   const onRead = async () => {
-    const res = await readObdSnapshot(profile?.uid ?? 'mock-local-user', active?.id ?? 'unknown', protocol);
+    const ownerUid = profile?.uid ?? 'mock-local-user';
+    const vehicleId = active?.id ?? 'unknown';
+    const res = await readObdSnapshot(ownerUid, vehicleId, protocol);
     setReading(res.data);
-    setLabel(res.stubLabel ?? (res.source === 'firebase' ? 'Lecture enregistrée Firestore' : undefined));
+    setLabel(
+      res.stubLabel ??
+        (res.source === 'firebase'
+          ? 'Lecture enregistrée Firestore'
+          : !profile
+            ? 'OBD local — connexion requise pour historique live'
+            : undefined),
+    );
     setCleared(false);
     setSelectedDtc(res.data.dtcCodes[0]?.code ?? null);
-    const hist = await listObdHistory(active?.id ?? 'unknown');
+    const hist = await listObdHistory(vehicleId, profile?.uid);
     setHistory(hist.data);
   };
 

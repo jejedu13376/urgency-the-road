@@ -9,7 +9,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { MOCK_FLEET, mockDecodeVin } from '../../data/mocks';
-import { getFirebase } from '../../firebase/config';
+import { getFirebase, getSignedInUid } from '../../firebase/config';
 import type { VehicleDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
 import type { VehicleProfile } from '../../types/vehicle';
@@ -62,9 +62,10 @@ function fromDoc(d: VehicleDoc): VehicleProfile {
 /** Module 1–2 */
 export async function listVehicles(ownerUid: string): Promise<ServiceResult<VehicleProfile[]>> {
   const fb = getFirebase();
-  if (!fb) return mockResult(MOCK_FLEET, 'MOCK vehicles — flotte locale');
+  const uid = getSignedInUid();
+  if (!fb || !uid) return mockResult(MOCK_FLEET, 'MOCK vehicles — flotte locale (non connecté)');
 
-  const q = query(collection(fb.db, COLLECTIONS.vehicles), where('ownerUid', '==', ownerUid));
+  const q = query(collection(fb.db, COLLECTIONS.vehicles), where('ownerUid', '==', uid));
   const snap = await getDocs(q);
   const list = snap.docs.map((d) => fromDoc({ id: d.id, ...(d.data() as Omit<VehicleDoc, 'id'>) }));
   return liveResult(list);
@@ -75,9 +76,10 @@ export async function upsertVehicle(
   vehicle: VehicleProfile,
 ): Promise<ServiceResult<VehicleProfile>> {
   const fb = getFirebase();
-  if (!fb) return mockResult(vehicle, 'MOCK vehicles — upsert local');
+  const uid = getSignedInUid();
+  if (!fb || !uid) return mockResult(vehicle, 'MOCK vehicles — upsert local (non connecté)');
 
-  const payload = toDoc(vehicle, ownerUid);
+  const payload = toDoc(vehicle, uid);
   if (vehicle.id && !vehicle.id.startsWith('decoded-') && !vehicle.id.startsWith('cascade-')) {
     await setDoc(doc(fb.db, COLLECTIONS.vehicles, vehicle.id), payload, { merge: true });
     return liveResult(vehicle);
@@ -88,7 +90,7 @@ export async function upsertVehicle(
 
 export async function removeVehicle(id: string): Promise<ServiceResult<null>> {
   const fb = getFirebase();
-  if (!fb) return mockResult(null, 'MOCK vehicles — delete local');
+  if (!fb || !getSignedInUid()) return mockResult(null, 'MOCK vehicles — delete local');
   await deleteDoc(doc(fb.db, COLLECTIONS.vehicles, id));
   return liveResult(null);
 }

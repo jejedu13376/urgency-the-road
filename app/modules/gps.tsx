@@ -51,6 +51,7 @@ export default function GpsScreen() {
 
   useEffect(() => {
     void (async () => {
+      // Signed-out → services mock; never force mock-local-user into live Firestore
       const uid = profile?.uid ?? 'mock-local-user';
       const prefs = await getGpsPrefs(uid);
       setMode(prefs.data.mode);
@@ -58,7 +59,10 @@ export default function GpsScreen() {
       if (prefs.data.truckWidthM != null) setWidthM(String(prefs.data.truckWidthM));
       if (prefs.data.truckPtacT != null) setPtacT(String(prefs.data.truckPtacT));
       setHazmat(prefs.data.hazmat);
-      setLabel(prefs.stubLabel);
+      setLabel(
+        prefs.stubLabel ??
+          (!profile ? 'GPS local — connectez-vous pour sync Firestore' : undefined),
+      );
       const hz = await listRoadHazards();
       setHazards(hz.data);
     })();
@@ -76,7 +80,11 @@ export default function GpsScreen() {
 
   const persistMode = (m: 'voiture' | 'camion') => {
     setMode(m);
-    const uid = profile?.uid ?? 'mock-local-user';
+    if (!profile?.uid) {
+      setLabel('GPS local — connexion requise pour enregistrer');
+      return;
+    }
+    const uid = profile.uid;
     void saveGpsPrefs({
       id: uid,
       ownerUid: uid,

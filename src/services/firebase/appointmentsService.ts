@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -9,10 +10,10 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { getFirebase } from '../../firebase/config';
+import { getFirebase, getSignedInUid } from '../../firebase/config';
 import type { AppointmentDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
-import { liveResult, mockResult, ServiceResult } from './result';
+import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 let mockStore: AppointmentDoc[] = [
   {
@@ -45,7 +46,8 @@ export async function listAppointmentsForGarage(
   garageOwnerUid: string,
 ): Promise<ServiceResult<AppointmentDoc[]>> {
   const fb = getFirebase();
-  if (!fb) {
+  const uid = getSignedInUid();
+  if (!fb || !uid) {
     return mockResult(
       mockStore.filter((a) => a.garageOwnerUid === garageOwnerUid || garageOwnerUid === 'garage-pro-1'),
       'MOCK appointments Pro',
@@ -66,6 +68,11 @@ export async function listAppointmentsForGarage(
   );
 }
 
+/**
+ * Create appointment.
+ * - Garage owner: garageOwnerUid must be self.
+ * - Client: status=requested + clientUid=self + target garage doc must exist (blocks inbox forge).
+ */
 export async function createAppointment(
   input: Omit<AppointmentDoc, 'id' | 'createdAt'>,
 ): Promise<ServiceResult<AppointmentDoc>> {
@@ -75,12 +82,41 @@ export async function createAppointment(
     createdAt: new Date().toISOString(),
   };
   const fb = getFirebase();
-  if (!fb) {
+  const uid = getSignedInUid();
+  if (!fb || !uid) {
     mockStore = [payload, ...mockStore];
     return mockResult(payload, 'MOCK appointment create');
   }
-  const ref = await addDoc(collection(fb.db, COLLECTIONS.appointments), payload);
-  return liveResult({ ...payload, id: ref.id });
+
+  const asGarage = payload.garageOwnerUid === uid;
+  const asClient =
+    payload.clientUid === uid &&
+    payload.status === 'requested' &&
+    payload.garageOwnerUid !== uid;
+
+  if (!asGarage && !asClient) {
+    return failResult(
+      payload,
+      'Création RDV refusée — garageOwnerUid doit être vous, ou clientUid=vous + status=requested',
+    );
+  }
+
+  if (asClient) {
+    const garageSnap = await getDoc(doc(fb.db, COLLECTIONS.garages, payload.garageOwnerUid));
+    if (!garageSnap.exists() || garageSnap.data()?.ownerUid !== payload.garageOwnerUid) {
+      return failResult(
+        payload,
+        'Création RDV refusée — garage cible inexistant (anti-forge inbox)',
+      );
+    }
+  }
+
+  try {
+    const ref = await addDoc(collection(fb.db, COLLECTIONS.appointments), payload);
+    return liveResult({ ...payload, id: ref.id });
+  } catch (e) {
+    return failResult(payload, e instanceof Error ? e.message : 'Création RDV échouée');
+  }
 }
 
 export async function updateAppointment(
@@ -88,7 +124,7 @@ export async function updateAppointment(
   patch: Partial<Pick<AppointmentDoc, 'status' | 'scheduledAt' | 'notes' | 'estimatedTotal' | 'clientName' | 'vehicleLabel'>>,
 ): Promise<ServiceResult<AppointmentDoc | null>> {
   const fb = getFirebase();
-  if (!fb) {
+  if (!fb || !getSignedInUid()) {
     const idx = mockStore.findIndex((a) => a.id === id);
     if (idx < 0) return mockResult(null, 'MOCK — RDV introuvable');
     mockStore[idx] = { ...mockStore[idx], ...patch };
