@@ -49,21 +49,28 @@ export function VinCameraScanner({ visible, onClose, onVin }: Props) {
             </Pressable>
           </View>
         ) : (
-          <>
-            <CameraView
-              style={styles.camera}
-              facing="back"
-              barcodeScannerSettings={{ barcodeTypes: ['qr', 'code39', 'code128', 'datamatrix', 'pdf417'] }}
-              onBarcodeScanned={locked ? undefined : onBarcode}
-            />
-            <Text style={styles.hint}>{hint ?? 'Cadrez le code-barres / QR VIN (plaque, carte grise).'}</Text>
-          </>
+          <CameraView
+            style={styles.camera}
+            facing="back"
+            barcodeScannerSettings={{ barcodeTypes: ['qr', 'code39', 'code128', 'datamatrix', 'pdf417'] }}
+            onBarcodeScanned={locked ? undefined : onBarcode}
+          />
         )}
+
+        <Text style={styles.hint}>
+          {hint ??
+            (permission?.granted
+              ? 'Cadrez le code-barres / QR VIN (plaque, carte grise).'
+              : 'Saisissez le VIN manuellement (11–17 caractères).')}
+        </Text>
 
         <Text style={styles.manualLbl}>Saisie manuelle (si scan illisible)</Text>
         <TextInput
           value={manual}
-          onChangeText={setManual}
+          onChangeText={(t) => {
+            setManual(t);
+            if (hint) setHint(null);
+          }}
           autoCapitalize="characters"
           autoCorrect={false}
           placeholder="VF1RJA00067000001"

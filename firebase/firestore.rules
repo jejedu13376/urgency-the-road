@@ -38,7 +38,10 @@ service cloud.firestore {
     match /vehicles/{id} {
       allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
       allow create: if signedIn() && request.resource.data.ownerUid == uid();
-      allow update, delete: if signedIn() && resource.data.ownerUid == uid();
+      allow update: if signedIn()
+        && resource.data.ownerUid == uid()
+        && request.resource.data.ownerUid == resource.data.ownerUid; // frozen
+      allow delete: if signedIn() && resource.data.ownerUid == uid();
     }
 
     match /parts/{id} {
@@ -49,13 +52,19 @@ service cloud.firestore {
     match /obdReadings/{id} {
       allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
       allow create: if signedIn() && request.resource.data.ownerUid == uid();
-      allow update, delete: if signedIn() && resource.data.ownerUid == uid();
+      allow update: if signedIn()
+        && resource.data.ownerUid == uid()
+        && request.resource.data.ownerUid == resource.data.ownerUid; // frozen
+      allow delete: if signedIn() && resource.data.ownerUid == uid();
     }
 
     match /garages/{id} {
       allow read: if true;
       allow create: if isGaragePro() && request.resource.data.ownerUid == uid();
-      allow update, delete: if isGaragePro()
+      allow update: if isGaragePro()
+        && (resource.data.ownerUid == uid() || isAdmin())
+        && request.resource.data.ownerUid == resource.data.ownerUid; // frozen
+      allow delete: if isGaragePro()
         && (resource.data.ownerUid == uid() || isAdmin());
     }
 
@@ -92,7 +101,9 @@ service cloud.firestore {
      * cardId must be caller's uid or med-{uid} (no pointing index at victim card).
      */
     match /medicalScanIndex/{scanCode} {
-      allow get: if isActiveRescuer()
+      // resource == null on missing docs — needed for collision getDoc before create
+      allow get: if (resource == null && signedIn())
+        || isActiveRescuer()
         || (signedIn() && resource.data.ownerUid == uid())
         || isAdmin();
       allow list: if false;
@@ -116,7 +127,10 @@ service cloud.firestore {
     match /roadHazards/{id} {
       allow read: if true;
       allow create: if signedIn() && request.resource.data.reporterUid == uid();
-      allow update, delete: if signedIn()
+      allow update: if signedIn()
+        && (resource.data.reporterUid == uid() || isAdmin())
+        && request.resource.data.reporterUid == resource.data.reporterUid; // frozen
+      allow delete: if signedIn()
         && (resource.data.reporterUid == uid() || isAdmin());
     }
 
@@ -142,27 +156,34 @@ service cloud.firestore {
     match /quotes/{id} {
       allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
       allow create: if signedIn() && request.resource.data.ownerUid == uid();
-      allow update, delete: if signedIn() && resource.data.ownerUid == uid();
+      allow update: if signedIn()
+        && resource.data.ownerUid == uid()
+        && request.resource.data.ownerUid == resource.data.ownerUid; // frozen
+      allow delete: if signedIn() && resource.data.ownerUid == uid();
     }
 
     match /insuranceClaims/{id} {
       allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
       allow create: if signedIn() && request.resource.data.ownerUid == uid();
-      allow update, delete: if signedIn() && resource.data.ownerUid == uid();
+      allow update: if signedIn()
+        && resource.data.ownerUid == uid()
+        && request.resource.data.ownerUid == resource.data.ownerUid; // frozen
+      allow delete: if signedIn() && resource.data.ownerUid == uid();
     }
 
     match /garageRatings/{id} {
       allow read: if true;
       allow create: if signedIn() && request.resource.data.authorUid == uid();
-      allow update, delete: if signedIn()
+      allow update: if signedIn()
+        && (resource.data.authorUid == uid() || isAdmin())
+        && request.resource.data.authorUid == resource.data.authorUid; // frozen
+      allow delete: if signedIn()
         && (resource.data.authorUid == uid() || isAdmin());
     }
 
     /**
      * Appointments: only the garage owner may create into their own inbox.
-     * Blocks any authenticated user from forging bookings into another Pro list
-     * (clientUid alone is not enough — no cross-user spam / integrity attack).
-     * Client self-serve booking requires a Cloud Function later.
+     * garageOwnerUid is immutable on update — blocks create-then-reassign inbox forge.
      */
     match /appointments/{id} {
       allow read: if signedIn() && (
@@ -172,7 +193,10 @@ service cloud.firestore {
       );
       allow create: if signedIn()
         && request.resource.data.garageOwnerUid == uid();
-      allow update, delete: if signedIn() && (
+      allow update: if signedIn()
+        && (resource.data.garageOwnerUid == uid() || isAdmin())
+        && request.resource.data.garageOwnerUid == resource.data.garageOwnerUid; // frozen
+      allow delete: if signedIn() && (
         resource.data.garageOwnerUid == uid() || isAdmin()
       );
     }
@@ -189,8 +213,12 @@ service cloud.firestore {
 
     match /feedPosts/{id} {
       allow read: if true;
-      allow create: if signedIn();
-      allow update, delete: if signedIn()
+      allow create: if signedIn()
+        && request.resource.data.authorUid == uid();
+      allow update: if signedIn()
+        && resource.data.authorUid == uid()
+        && request.resource.data.authorUid == resource.data.authorUid; // frozen — no impersonation
+      allow delete: if signedIn()
         && (resource.data.authorUid == uid() || isAdmin());
     }
   }

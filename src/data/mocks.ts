@@ -370,7 +370,7 @@ export function mockDecodeVin(vin: string): VehicleProfile | null {
       },
     ],
     odometerKm: 0,
-    unitSystem: hint.continent === 'NA' || hint.continent === 'AU' ? 'imperial' : 'metric',
+    unitSystem: hint.continent === 'NA' ? 'imperial' : 'metric', // AU = metric
     currency:
       hint.continent === 'NA' ? (hint.country === 'CA' ? 'CAD' : 'USD') : hint.continent === 'AU' ? 'AUD' : 'EUR',
   };

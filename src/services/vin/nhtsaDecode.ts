@@ -130,7 +130,7 @@ export async function decodeVinNhtsa(vinRaw: string): Promise<NhtsaDecodeOutcome
         },
       ],
       odometerKm: 0,
-      unitSystem: continent === 'NA' || continent === 'AU' ? 'imperial' : 'metric',
+      unitSystem: continent === 'NA' ? 'imperial' : 'metric', // AU = metric
       currency: continent === 'NA' ? (country === 'CA' ? 'CAD' : 'USD') : continent === 'AU' ? 'AUD' : 'EUR',
     };
     return { ok: true, profile, source: 'nhtsa' };
