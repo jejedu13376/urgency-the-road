@@ -11,7 +11,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { fr } from '../../src/i18n/fr';
-import { decodeVinRemote, upsertVehicle as upsertVehicleRemote } from '../../src/services/firebase';
+import { decodeVinRemote } from '../../src/services/firebase';
 import { colors } from '../../src/theme/colors';
 import type { VehicleProfile } from '../../src/types/vehicle';
 
@@ -48,7 +48,7 @@ const SEV_FR: Record<string, string> = {
 export default function MonVehiculeScreen() {
   useModuleVisit(1);
   const { profile } = useAuth();
-  const { active, vehicles, setActive, upsertVehicle } = useFleet();
+  const { active, vehicles, setActive, upsertVehicle, syncLabel, syncSource } = useFleet();
   const [vin, setVin] = useState(active?.vin ?? '');
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -64,15 +64,22 @@ export default function MonVehiculeScreen() {
       ...decoded,
       label: active?.label && active.vin === decoded.vin ? active.label : decoded.label,
     };
+    // FleetContext syncs to Firestore when Auth — avoid double addDoc for cascade-/decoded- ids
     upsertVehicle(merged);
-    if (!profile?.uid) {
-      setSourceLabel(stub ?? 'Local — connectez-vous pour sync Firestore');
-      setMsg(`Fiche locale : ${merged.make} ${merged.model} ${merged.year}`);
-      return;
-    }
-    const remote = await upsertVehicleRemote(profile.uid, merged);
-    setSourceLabel(remote.stubLabel ?? stub ?? (remote.source === 'firebase' ? 'Firestore' : undefined));
-    setMsg(`Fiche enregistrée : ${merged.make} ${merged.model} ${merged.year}`);
+    setSourceLabel(
+      stub ??
+        syncLabel ??
+        (profile?.uid
+          ? syncSource === 'firestore'
+            ? 'Firestore via flotte'
+            : 'Sync flotte…'
+          : 'Local — connectez-vous pour sync Firestore'),
+    );
+    setMsg(
+      profile?.uid
+        ? `Fiche enregistrée : ${merged.make} ${merged.model} ${merged.year}`
+        : `Fiche locale : ${merged.make} ${merged.model} ${merged.year}`,
+    );
   };
 
   const onDecode = async () => {

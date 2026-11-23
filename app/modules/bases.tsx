@@ -12,10 +12,10 @@ import {
   recordLearnedFailure,
   type LearnedFailure,
 } from '../../src/services/firebase/learnedFailuresService';
-import { stubOtaSync } from '../../src/services/stubs';
+import { checkOtaChannel, type OtaProbe } from '../../src/services/ota/checkOtaChannel';
 import { colors } from '../../src/theme/colors';
 
-/** Module 14 — learnedFailures Firestore owner-only + OTA honest (no fake sync success). */
+/** Module 14 — learnedFailures Firestore owner-only + OTA probe honnête. */
 export default function BasesScreen() {
   useModuleVisit(14);
   const { profile } = useAuth();
@@ -24,8 +24,8 @@ export default function BasesScreen() {
   const [label, setLabel] = useState<string | undefined>();
   const [draft, setDraft] = useState('');
   const [partsDraft, setPartsDraft] = useState('');
-  const [sync, setSync] = useState<ReturnType<typeof stubOtaSync> | null>(null);
-  const [otaStatus, setOtaStatus] = useState<'idle' | 'checking' | 'unavailable'>('idle');
+  const [ota, setOta] = useState<OtaProbe | null>(null);
+  const [otaStatus, setOtaStatus] = useState<'idle' | 'checking' | 'done'>('idle');
   const [msg, setMsg] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -65,12 +65,11 @@ export default function BasesScreen() {
 
   const runOta = () => {
     setOtaStatus('checking');
-    setTimeout(() => {
-      const r = stubOtaSync();
-      setSync(r);
-      setOtaStatus('unavailable');
+    void checkOtaChannel().then((r) => {
+      setOta(r);
+      setOtaStatus('done');
       setMsg(r.label);
-    }, 400);
+    });
   };
 
   return (
@@ -80,7 +79,7 @@ export default function BasesScreen() {
         <StubBanner
           text={
             label ??
-            'Apprentissage owner-only Firestore si Auth · OTA EAS non configuré (pas de faux « à jour »)'
+            'Apprentissage owner-only Firestore si Auth · OTA EAS sondé sans faux « à jour »'
           }
         />
 
@@ -90,39 +89,37 @@ export default function BasesScreen() {
             <Text
               style={[
                 styles.badge,
-                otaStatus === 'unavailable' && styles.badgeWarn,
+                otaStatus === 'done' && !ota?.available && styles.badgeWarn,
                 otaStatus === 'checking' && styles.badgeWarn,
+                ota?.available && styles.badgeOk,
               ]}
             >
               {otaStatus === 'idle' && 'Non vérifié'}
               {otaStatus === 'checking' && 'Vérif…'}
-              {otaStatus === 'unavailable' && 'Canal OTA absent'}
+              {otaStatus === 'done' && (ota?.available ? 'Update dispo' : 'Canal absent / à jour')}
             </Text>
           </View>
           <Text style={styles.meta}>
-            EAS Update / canal OTA non branché ici — le bouton vérifie et dit la vérité (aucun « sync réussie »
-            inventé).
+            Sonde expo-updates / EAS si présents — jamais de « sync réussie » inventée.
           </Text>
+          {ota ? (
+            <View style={styles.syncBox}>
+              <Text style={styles.meta}>Canal : {ota.channel ?? '—'}</Text>
+              <Text style={styles.meta}>Runtime : {ota.runtimeVersion ?? '—'}</Text>
+              <Text style={styles.meta}>{ota.label}</Text>
+            </View>
+          ) : null}
           <Pressable style={styles.btn} onPress={runOta} disabled={otaStatus === 'checking'}>
             <Text style={styles.btnTxt}>
               {otaStatus === 'checking' ? 'Vérification…' : 'Vérifier canal OTA'}
             </Text>
           </Pressable>
-          {sync ? (
-            <View style={styles.syncBox}>
-              <StubBanner text={sync.label} />
-              <Text style={styles.meta}>
-                Dernier check : {new Date(sync.data.lastSync).toLocaleString('fr-FR')} · pannes cloud :{' '}
-                {sync.data.learnedFailures}
-              </Text>
-            </View>
-          ) : null}
         </Card>
 
         <Card title="Journal d’auto-apprentissage">
           <Text style={styles.meta}>
-            Pannes résolues — écriture Firestore owner-only quand connecté (pas de VIN stocké). Hors Auth = journal
-            local AsyncStorage (persistant sur l’appareil).
+            Pannes résolues — écriture Firestore owner-only quand connecté (pas de VIN stocké). Hors Auth =
+            journal local AsyncStorage (persistant sur l’appareil).
           </Text>
           <Text style={styles.meta}>Compte : {profile?.email ?? 'non connecté'}</Text>
           <TextInput
@@ -141,7 +138,7 @@ export default function BasesScreen() {
           />
           <Pressable style={styles.btnDark} onPress={() => void addLearned()}>
             <Text style={styles.btnTxt}>
-              {profile?.uid ? 'Enregistrer (Firestore)' : 'Ajouter local (mock)'}
+              {profile?.uid ? 'Enregistrer (Firestore)' : 'Ajouter local (journal)'}
             </Text>
           </Pressable>
           {msg ? <Text style={styles.msg}>{msg}</Text> : null}
@@ -193,5 +190,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   badgeWarn: { color: colors.warn, backgroundColor: colors.warnSoft },
+  badgeOk: { color: colors.garage, backgroundColor: colors.garageSoft },
   syncBox: { marginTop: 8, gap: 4 },
 });

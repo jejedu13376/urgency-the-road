@@ -3,35 +3,49 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
+import { useAuth } from '../../src/context/AuthContext';
 import { MOCK_FEED } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
+import {
+  loadComments,
+  loadLiked,
+  saveComments,
+  saveLiked,
+  type LocalComment,
+} from '../../src/services/feed/feedComments';
 import { createTextFeedPost, listFeedPosts } from '../../src/services/firebase/feedService';
 import type { FeedPost } from '../../src/types/modules';
 import { colors } from '../../src/theme/colors';
 
-type LocalComment = { id: string; author: string; text: string; at: string };
-
-/** Module 12 — Fil mécanique (feed + pull refresh + commentaires + upload stub clair). */
+/** Module 12 — Fil mécanique texte (Firestore + commentaires locaux). Vidéo CDN = stub honnête. */
 export default function FilMecaniqueScreen() {
   useModuleVisit(12);
+  const { profile } = useAuth();
   const [posts, setPosts] = useState<FeedPost[]>(MOCK_FEED);
   const [refreshing, setRefreshing] = useState(false);
   const [commentOpen, setCommentOpen] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
-  const [comments, setComments] = useState<Record<string, LocalComment[]>>({
-    fp1: [
-      {
-        id: 'c1',
-        author: 'MécanoPaul',
-        text: 'Couple 25 Nm et pâte neuve — tiens bon.',
-        at: '2026-11-22T11:00:00Z',
-      },
-    ],
-  });
+  const [comments, setComments] = useState<Record<string, LocalComment[]>>({});
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [liked, setLiked] = useState<Record<string, boolean>>({});
   const [captionDraft, setCaptionDraft] = useState('');
+  const [titleDraft, setTitleDraft] = useState('Conseil mécanique');
   const [feedLabel, setFeedLabel] = useState<string | undefined>();
+
+  useEffect(() => {
+    void (async () => {
+      setComments(await loadComments());
+      setLiked(await loadLiked());
+    })();
+  }, []);
+
+  useEffect(() => {
+    void saveComments(comments);
+  }, [comments]);
+
+  useEffect(() => {
+    void saveLiked(liked);
+  }, [liked]);
 
   const loadFeed = useCallback(async () => {
     setRefreshing(true);
@@ -63,9 +77,12 @@ export default function FilMecaniqueScreen() {
   const publishCaption = async () => {
     if (!captionDraft.trim()) return;
     const res = await createTextFeedPost({
-      title: 'Conseil mécanique',
+      title: titleDraft.trim() || 'Conseil mécanique',
       caption: captionDraft.trim(),
-      authorName: 'Vous',
+      // Never publish email — feedPosts is world-readable
+      authorName:
+        profile?.displayName?.trim() ||
+        (profile?.uid ? `Conducteur-${profile.uid.slice(0, 6)}` : 'Conducteur'),
     });
     setUploadMsg(res.stubLabel ?? (res.ok ? 'Publié' : 'Échec publication'));
     if (res.data) {
@@ -88,7 +105,9 @@ export default function FilMecaniqueScreen() {
     if (!draft.trim()) return;
     const entry: LocalComment = {
       id: `lc-${Date.now()}`,
-      author: 'Vous',
+      author:
+        profile?.displayName?.trim() ||
+        (profile?.uid ? `Conducteur-${profile.uid.slice(0, 6)}` : 'Conducteur'),
       text: draft.trim(),
       at: new Date().toISOString(),
     };
@@ -100,11 +119,11 @@ export default function FilMecaniqueScreen() {
   return (
     <Screen
       title="Fil mécanique"
-      subtitle="Module 12 — réseau social vidéo (structure locale)"
+      subtitle="Module 12 — texte LIVE · vidéo CDN à brancher"
       refreshing={refreshing}
       onRefresh={onRefresh}
     >
-      <StubBanner text="Texte Firestore LIVE si Auth · upload vidéo = stub honnête (aucun succès CDN inventé)" />
+      <StubBanner text="Texte Firestore LIVE si Auth · likes/commentaires persistés · upload vidéo = stub honnête" />
       {feedLabel ? <Text style={styles.meta}>{feedLabel}</Text> : null}
 
       <Pressable style={styles.refreshBar} onPress={onRefresh}>
@@ -113,17 +132,25 @@ export default function FilMecaniqueScreen() {
         </Text>
       </Pressable>
 
-      <Card title="Publier une réparation">
+      <Card title="Publier une réparation (texte)">
         <Text style={styles.meta}>
-          Conducteurs et garagistes : partagez pannes, conseils et clips. Vidéo = CDN à brancher ;
-          légende texte sync Firestore quand connecté.
+          Conducteurs et garagistes : partagez pannes et conseils. Vidéo = CDN à brancher ; légende
+          texte sync Firestore quand connecté.
         </Text>
+        <TextInput
+          value={titleDraft}
+          onChangeText={setTitleDraft}
+          placeholder="Titre…"
+          placeholderTextColor={colors.muted}
+          style={styles.input}
+        />
         <TextInput
           value={captionDraft}
           onChangeText={setCaptionDraft}
           placeholder="Légende / conseil…"
           placeholderTextColor={colors.muted}
           style={styles.input}
+          multiline
         />
         <Pressable style={styles.send} onPress={() => void publishCaption()}>
           <Text style={styles.uploadTxt}>Publier le texte</Text>
@@ -134,53 +161,64 @@ export default function FilMecaniqueScreen() {
         {uploadMsg ? <Text style={styles.warn}>{uploadMsg}</Text> : null}
       </Card>
 
-      {posts.map((p) => (
-        <Card key={p.id} title={p.title}>
-          <Text style={styles.meta}>
-            {p.author} · {new Date(p.createdAt).toLocaleString('fr-FR')}
-          </Text>
-          <Text style={styles.caption}>{p.caption}</Text>
-          <View style={styles.videoStub}>
-            <Text style={styles.videoStubTxt}>[aperçu vidéo mock — pas de fichier embarqué]</Text>
-          </View>
-          <View style={styles.statsRow}>
-            <Pressable onPress={() => toggleLike(p.id)}>
-              <Text style={[styles.stats, liked[p.id] && styles.liked]}>
-                ♥ {p.likes} {liked[p.id] ? '· aimé' : ''}
+      {posts.map((p) => {
+        const isTextOnly = !p.title.toLowerCase().includes('vidéo') && !p.caption.toLowerCase().includes('[vidéo]');
+        return (
+          <Card key={p.id} title={p.title}>
+            <Text style={styles.meta}>
+              {p.author} · {new Date(p.createdAt).toLocaleString('fr-FR')}
+            </Text>
+            <Text style={styles.caption}>{p.caption}</Text>
+            {!isTextOnly ? (
+              <View style={styles.videoStub}>
+                <Text style={styles.videoStubTxt}>
+                  [aperçu vidéo — pas de fichier embarqué · CDN non branché]
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.textBadge}>
+                <Text style={styles.textBadgeTxt}>Publication texte</Text>
+              </View>
+            )}
+            <View style={styles.statsRow}>
+              <Pressable onPress={() => toggleLike(p.id)}>
+                <Text style={[styles.stats, liked[p.id] && styles.liked]}>
+                  ♥ {p.likes} {liked[p.id] ? '· aimé' : ''}
+                </Text>
+              </Pressable>
+              <Text style={styles.stats}>💬 {p.comments + (comments[p.id]?.length ?? 0)}</Text>
+            </View>
+            <Pressable
+              style={styles.comment}
+              onPress={() => setCommentOpen(commentOpen === p.id ? null : p.id)}
+            >
+              <Text style={styles.commentTxt}>
+                {commentOpen === p.id ? 'Fermer commentaires' : 'Commentaires d’entraide'}
               </Text>
             </Pressable>
-            <Text style={styles.stats}>💬 {p.comments}</Text>
-          </View>
-          <Pressable
-            style={styles.comment}
-            onPress={() => setCommentOpen(commentOpen === p.id ? null : p.id)}
-          >
-            <Text style={styles.commentTxt}>
-              {commentOpen === p.id ? 'Fermer commentaires' : 'Commentaires d’entraide'}
-            </Text>
-          </Pressable>
-          {commentOpen === p.id ? (
-            <View style={styles.commentBox}>
-              {(comments[p.id] ?? []).map((c) => (
-                <View key={c.id} style={styles.commentItem}>
-                  <Text style={styles.commentAuthor}>{c.author}</Text>
-                  <Text style={styles.caption}>{c.text}</Text>
-                </View>
-              ))}
-              <TextInput
-                value={draft}
-                onChangeText={setDraft}
-                placeholder="Écrire un conseil…"
-                placeholderTextColor={colors.muted}
-                style={styles.input}
-              />
-              <Pressable style={styles.send} onPress={() => addComment(p.id)}>
-                <Text style={styles.uploadTxt}>Envoyer</Text>
-              </Pressable>
-            </View>
-          ) : null}
-        </Card>
-      ))}
+            {commentOpen === p.id ? (
+              <View style={styles.commentBox}>
+                {(comments[p.id] ?? []).map((c) => (
+                  <View key={c.id} style={styles.commentItem}>
+                    <Text style={styles.commentAuthor}>{c.author}</Text>
+                    <Text style={styles.caption}>{c.text}</Text>
+                  </View>
+                ))}
+                <TextInput
+                  value={draft}
+                  onChangeText={setDraft}
+                  placeholder="Écrire un conseil…"
+                  placeholderTextColor={colors.muted}
+                  style={styles.input}
+                />
+                <Pressable style={styles.send} onPress={() => addComment(p.id)}>
+                  <Text style={styles.uploadTxt}>Envoyer</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </Card>
+        );
+      })}
     </Screen>
   );
 }
@@ -207,6 +245,15 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
   },
   videoStubTxt: { color: colors.muted, fontSize: 11, fontWeight: '700' },
+  textBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.garageSoft,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginVertical: 6,
+  },
+  textBadgeTxt: { color: colors.garage, fontSize: 11, fontWeight: '800' },
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center' },
   stats: { color: colors.ink, fontSize: 12, fontWeight: '700' },
   liked: { color: colors.danger },
@@ -227,6 +274,7 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: colors.mist,
     color: colors.ink,
+    marginTop: 6,
   },
   upload: {
     backgroundColor: colors.asphalt,
@@ -235,7 +283,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
-  send: { backgroundColor: colors.signal, borderRadius: 10, padding: 10, alignItems: 'center' },
+  send: { backgroundColor: colors.signal, borderRadius: 10, padding: 10, alignItems: 'center', marginTop: 8 },
   uploadTxt: { color: colors.white, fontWeight: '800' },
   warn: { color: colors.warn, fontWeight: '700', fontSize: 12, marginTop: 8 },
 });
