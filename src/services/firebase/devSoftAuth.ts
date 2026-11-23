@@ -1,10 +1,13 @@
 /**
  * DEV / mock soft-auth helpers.
- * When Firebase client keys exist but rules/Auth/entitlements block,
- * prefer soft-fail → mock so Expo UI still loads (no hard "approval" crash).
+ * When Firebase client keys exist but rules/Auth deny, soft-fail so Expo UI
+ * still loads (no uncaught "Missing or insufficient permissions" crash).
  *
- * TEMPORARY: paired with open-to-world firestore/storage rules (dev only).
- * Flip off for production: unset EXPO_PUBLIC_DEV_SOFT_AUTH and tighten rules.
+ * Soft-fail means: catch → ok:false + null/empty data + clear stubLabel.
+ * NEVER return mockResult(ok:true) with medical PHI on permission-denied.
+ *
+ * Live world-open Firestore/Storage rules are FORBIDDEN on shared project
+ * urgency-road — Expo preview relies on this client soft-path instead.
  */
 
 /** True in Expo/React Native __DEV__, or when EXPO_PUBLIC_DEV_SOFT_AUTH=1. */

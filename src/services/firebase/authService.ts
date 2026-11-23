@@ -77,8 +77,8 @@ function profileFromAuth(
 
 /**
  * Ensure users/{uid} exists so refresh() does not wipe a successful sign-in.
- * On permission-denied (rules not yet open / deploy pending), soft-return an
- * in-memory profile so Expo never crashes on Auth bootstrap.
+ * On permission-denied, soft-return an in-memory Auth-derived profile so Expo
+ * never crashes on bootstrap (not medical PHI; no world-open rules required).
  */
 async function ensureUserDoc(
   uid: string,

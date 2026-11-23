@@ -5,17 +5,23 @@
 **Project id:** from your `.env` → `EXPO_PUBLIC_FIREBASE_PROJECT_ID` (also mirrored as `firebase/.firebaserc`)  
 **Formations:** never deploy from that project.
 
-## TEMPORARY — open-to-world rules (dev only)
+## NEVER world-open rules on shared `urgency-road`
 
-`firestore.rules` and `storage.rules` currently allow **all read/write** (`if true`) so Expo preview stops hitting `Missing or insufficient permissions`. **Not for production.** Re-tighten before any public release.
+**Forbidden:** `allow read, write: if true` on Firestore or Storage for the shared project. Security review treats that as CRITICAL (medical PHI / role fields become world R/W).
+
+**Expo preview without crashing:** use the **client soft-path** only:
+
+- `__DEV__` or `EXPO_PUBLIC_DEV_SOFT_AUTH=1`
+- On `permission-denied`: return `ok: false` + `null` / empty list + clear stubLabel — **never** `mockResult(ok:true)` with medical PHI
+- Secure auth-based `firestore.rules` stay in repo; Storage requires `request.auth != null`
+
+Live open rules are **never** the fix for Expo tunnel. Deploy secure rules only:
 
 ```bash
 firebase deploy --config firebase/firebase.json --only firestore:rules,storage --project urgency-road
 ```
 
-**Cloud-agent deploy status (2026-11-23):** **blocked** — `FIREBASE_TOKEN` unset, no service-account JSON, no `GOOGLE_APPLICATION_CREDENTIALS`. Store `.env` has only `EXPO_PUBLIC_FIREBASE_*` client keys (not a deploy token). *Clé d'hier non retrouvable.* Rules land via PR → main; Lorenzo deploys locally after `firebase login` / `login:ci`.
-
-**Client soft-path:** `__DEV__` or `EXPO_PUBLIC_DEV_SOFT_AUTH=1` → Auth/profile/fil/rescuer gates soft-fail to mock instead of crashing Expo. No Firebase Functions content-moderation rules block Firestore reads in-repo (Multi-IA proxy only gates LLM spend via ID token + optional email verified).
+**Cloud-agent deploy status (2026-11-23):** **blocked** — `FIREBASE_TOKEN` unset (*clé d'hier non retrouvable*). No service-account JSON / `GOOGLE_APPLICATION_CREDENTIALS`. Store `.env` has only `EXPO_PUBLIC_FIREBASE_*` client keys.
 
 Cloud agents usually **cannot** complete `firebase login` (no browser). Lorenzo runs these steps once on a machine with Firebase CLI access.
 

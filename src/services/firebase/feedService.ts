@@ -46,14 +46,17 @@ export async function listFeedPosts(max = 40): Promise<ServiceResult<FeedPost[]>
     const posts = snap.docs.map((d) => mapDoc(d.id, d.data() as Record<string, unknown>));
     return liveResult(posts);
   } catch (e) {
+    // Soft-fail: ok:false + empty list — UI loads; do not present mock as live.
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult(
-        MOCK_FEED,
-        'SOFT fil — permission/DEV (mock, UI charge)',
+      return failResult(
+        [],
+        isPermissionDenied(e)
+          ? 'SOFT fil — permission refusée (liste vide, UI charge)'
+          : 'SOFT fil — DEV (liste vide, pas de mock live)',
       );
     }
     return failResult(
-      MOCK_FEED,
+      [],
       e instanceof Error ? e.message : 'Lecture fil refusée',
     );
   }
