@@ -2,12 +2,12 @@
 
 **Scope:** Urgency Road ONLY — Formations never touched.  
 **Repo:** `jejedu13376/urgency-the-road` · store docs `/cursor/stores/self/docs/urgency-road-one/`  
-**Updated:** 2026-11-23 ~12:15 UTC · tip `main` `c31633d`
+**Updated:** 2026-11-23 ~13:13 UTC · tip `main` `487204c` (merge #19)
 
 ## Code status
 
-**Merged on `main`:** #1–#18 (incl. #12 docs, #13/#15/#16 stubs batches, #14 analyze/fix, #17 SUIVI, #18 Photon).  
-**Open:** [#19](https://github.com/jejedu13376/urgency-the-road/pull/19) deferred security/crash fixes — pending review (no secrets).
+**Merged on `main`:** #1–#21 (incl. #19 deferred security/crash, #20 docs sync, #21 Batch E).  
+**Open (deferred bugs):** aucune.
 
 | PR | What landed |
 | --- | --- |
@@ -22,7 +22,9 @@
 | #16 | Batch C M1/M3/M4 free/local/NHTSA/camera-text |
 | #17 | SUIVI deploy-blocked note |
 | #18 | Photon-only reverse geocode |
-| #19 | **Pending** — deferred security/crash after #14 |
+| #19 | Deferred security/crash — PHI, fleet, appointments, rate-limit, activeId rematch (`487204c`) |
+| #20 | Docs sync post-#12–#18/#16 |
+| #21 | Batch E remaining software stubs |
 
 ## Deploy / secrets (blocked)
 

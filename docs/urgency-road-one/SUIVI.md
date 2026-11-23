@@ -1,7 +1,7 @@
 # Urgency Road — suivi
 
-Dernière mise à jour : 2026-11-23 ~12:15 UTC  
-**Tip `main`:** `c31633d` (merge #16) · **Formations:** standby (untouched) · **Hearts:** non (secrets Lorenzo)
+Dernière mise à jour : 2026-11-23 ~13:13 UTC  
+**Tip `main`:** `487204c` (merge #19) · **Formations:** standby (untouched) · **Hearts:** non (secrets Lorenzo)
 
 ---
 
@@ -11,12 +11,13 @@ Déjà sur `main` sans action Lorenzo :
 
 | Item | État |
 | --- | --- |
-| App Expo Router · 17 modules UI | Code mergé (#1–#18 sauf #19) |
+| App Expo Router · 17 modules UI | Code mergé (#1–#21) |
 | Free live APIs (NHTSA, Open-Meteo, Photon, Overpass, YouTube client) | Coded |
 | Multi-IA **heuristic** + proxy client + Functions source | Coded (#8) — votes LLM **pas** live sans deploy |
 | BLE OBD path + EAS config (`eas.json`, runbooks) | Coded (#4/#9) |
+| Deferred security/crash (#19) | **Mergé** — PHI, fleet, appointments, rate-limit, activeId rematch |
 | Docs deploy / secrets / modules sync | À jour (ce fichier + `MODULES-STATUS` / `DEPLOY-CHECKLIST`) |
-| PR **#19** security/crash follow-up | **Ouverte** — mergeable ; pas de secrets ; attend review/approval |
+| Open PRs (deferred bugs) | **Aucune** — file d’attente deferred bugs vide |
 
 **Pas de APK téléchargeable** sans Lorenzo (`EXPO_TOKEN` / `eas login`).  
 **Pas de Firebase rules/functions live** sans Lorenzo (`FIREBASE_TOKEN` / `firebase login`).  
@@ -74,22 +75,22 @@ Détail : `docs/MODULES-STATUS.md`.
 | M | Statut résumé | Bloqué / stub |
 | --- | --- | --- |
 | 1 Mon véhicule | LIVE NHTSA VIN + camera + recalls | OEM fluids |
-| 2 Flotte | LIVE local uid-scoped + Firestore migrate | — |
+| 2 Flotte | LIVE local uid-scoped + Firestore migrate · activeId rematch (#19) | — |
 | 3 Pièces | LIVE catalogue WMI + buy URLs | OEM / OCR ML |
 | 4 Diagnostic IA | LIVE camera + texte Multi-IA + YouTube | Vision pixels |
 | 5 OBD | Path BLE coded | **Hardware** Dev Client + dongle |
-| 6 Multi-IA | Heuristic + proxy client | **`EXPO_PUBLIC_MULTI_IA_PROXY_URL` + provider keys + deploy** |
+| 6 Multi-IA | Heuristic + proxy client · rate-limit UID (#19) | **`EXPO_PUBLIC_MULTI_IA_PROXY_URL` + provider keys + deploy** |
 | 7 GPS | LIVE GPS + Open-Meteo + Photon reverse | Graphe PTAC |
 | 8 Routiers | LIVE Overpass/Photon | Feed juridiction |
 | 9 Garages | LIVE Overpass/Photon | Places API |
 | 10 Entretien | LIVE carnet + share | PDF certifié |
 | 11 Tutoriels | LIVE YouTube redirect | — |
 | 12 Fil | LIVE texte Firestore si Auth | Upload vidéo CDN |
-| 13 Urgence / SOS | LIVE SOS/QR · GPS device only | Auth secours produit |
+| 13 Urgence / SOS | LIVE SOS/QR · GPS device only · PHI mock exact (#19) | Auth secours produit |
 | 14 Bases | LIVE learnedFailures + OTA probe | OTA canal prod |
 | 15 Compte | LIVE Auth + checkout scaffold | Stripe / PayPal / RC keys |
 | 16 Partage | LIVE share sheet | **`EXPO_PUBLIC_INSTALL_URL`** (après APK) |
-| 17 Pro / Admin | LIVE RDV si Auth + UI locale | KPI atelier backend |
+| 17 Pro / Admin | LIVE RDV si Auth + UI locale · appointments failResult (#19) | KPI atelier backend |
 
 ---
 
@@ -115,8 +116,11 @@ Détail : `docs/MODULES-STATUS.md`.
 | **#17** | `4f4db6d` | SUIVI deploy blocked |
 | **#18** | `cdf3e04` | Photon-only reverse geocode |
 | **#16** | `c31633d` | Batch C M1/M3/M4 free/local paths |
+| **#20** | `1dd989c` | Docs sync post-#12–#18/#16 |
+| **#21** | `d210e5c` | Batch E remaining software stubs |
+| **#19** | `487204c` | Deferred security/crash — PHI, fleet, appointments, rate-limit, activeId rematch (tip `703e07e`) |
 
-**Pending:** [#19](https://github.com/jejedu13376/urgency-the-road/pull/19) `cursor/deferred-bug-fixes-b29e` — security/crash follow-up after #14 (gate, Auth writers, Fil empty, etc.). Pas de secrets.
+**Open PRs (deferred bugs):** aucune.
 
 ---
 
@@ -143,7 +147,7 @@ Deploy CLI : `--config firebase/firebase.json` · project `urgency-road`.
 - Formations ≠ Urgency Road — **standby**
 - Multi-IA live = proxy URL only (pas de clés LLM dans `EXPO_PUBLIC_*`)
 - Hearts seulement quand blockers Lorenzo (APK + Firebase) levés
-- Bugbot : merge #19 seulement si Approval OK sur tip courant
+- Deferred bugs (#19) **landed** — file ouverte vide
 
 ## Journal (récent)
 
@@ -156,4 +160,8 @@ Deploy CLI : `--config firebase/firebase.json` · project `urgency-road`.
 | ~11:57 | PR #17 mergée — SUIVI deploy blocked |
 | ~12:01 | PR #18 mergée — Photon-only reverse |
 | ~12:11 | PR #16 mergée — Batch C M1/M3/M4 |
-| ~12:15 | Docs sync post-#12–#18/#16 ; #19 pending ; ce soir = APK/Firebase = Lorenzo secrets (`EXPO_TOKEN` / `FIREBASE_TOKEN` / Multi-IA). Formations standby. |
+| ~12:15 | Docs sync post-#12–#18/#16 ; #19 pending ; ce soir = APK/Firebase = Lorenzo secrets |
+| ~12:20 | PR #20 mergée — docs sync |
+| ~12:xx | PR #21 mergée — Batch E software stubs |
+| ~13:11 | PR #19 mergée `487204c` (tip `703e07e`) — PHI, fleet, appointments, rate-limit, activeId rematch |
+| ~13:13 | Docs sync post-#19 ; open deferred PRs = 0 ; Formations standby. |
