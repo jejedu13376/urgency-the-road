@@ -104,12 +104,18 @@ export default function GpsScreen() {
           .join(' · '),
       );
       const hz = await listRoadHazards();
-      if (hz.ok === false) {
+      // Soft-fail: keep mock pins when permission/DEV; empty only on hard fail without data.
+      if (hz.ok === false && (!hz.data || hz.data.length === 0)) {
         setHazards([]);
-        return;
+      } else {
+        setHazards(hz.data ?? []);
       }
-      setHazards(hz.data);
-    })();
+      if (hz.stubLabel) {
+        setLabel((cur) => [cur, hz.stubLabel].filter(Boolean).join(' · '));
+      }
+    })().catch((e) => {
+      setLabel(e instanceof Error ? `GPS soft — ${e.message}` : 'GPS soft — mock');
+    });
   }, [profile?.uid]);
 
   const resolveDest = async () => {

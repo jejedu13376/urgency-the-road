@@ -119,6 +119,18 @@ export async function createTextFeedPost(input: {
       createdAt: new Date().toISOString(),
     });
   } catch (e) {
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      const local: FeedPost = {
+        id: `local-${Date.now()}`,
+        author,
+        title,
+        caption: caption || 'Note locale (permission soft)',
+        likes: 0,
+        comments: 0,
+        createdAt: new Date().toISOString(),
+      };
+      return mockResult(local, 'SOFT publish — permission/DEV (local mock)');
+    }
     return failResult(null, e instanceof Error ? e.message : 'Publication refusée');
   }
 }

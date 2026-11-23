@@ -6,6 +6,7 @@ import { COLLECTIONS } from '../../types/firestore';
 import { FALLBACK_LAT, FALLBACK_LON, getDeviceCoords } from '../geo/deviceLocation';
 import { fetchNearbyAutoPlaces, withDistance } from '../osm/overpassPlaces';
 import { fetchPhotonAutoPlaces } from '../osm/photonPlaces';
+import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { externalLiveResult, failResult, liveResult, mockResult, ServiceResult } from './result';
 
 /** Aggregate Firestore garageRatings onto OSM/Photon docs by garageId (= OSM id). */
@@ -164,6 +165,9 @@ export async function submitGarageRating(
     const ref = await addDoc(collection(fb.db, COLLECTIONS.garageRatings), owned);
     return liveResult({ ...owned, id: ref.id });
   } catch (e) {
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return mockResult(owned, 'SOFT garage rating — permission/DEV (local)');
+    }
     return failResult(owned, e instanceof Error ? e.message : 'Note garage refusée');
   }
 }

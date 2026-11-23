@@ -78,29 +78,33 @@ export default function UrgenceScreen() {
 
   useEffect(() => {
     void (async () => {
-      const uid = profile?.uid ?? 'mock-local-user';
-      const qr = await ensurePersonalQr(uid, subscriberActive);
-      setLabel(qr.stubLabel);
-      if (qr.ok === false) {
-        // Do not hydrate demo PHI after a failed read / mint abort.
-        return;
-      }
-      if (qr.data.card?.scanCode) {
-        setCard(qr.data.card);
-        setScanCode(qr.data.scanCode);
-        hydrateForm(qr.data.card);
-      } else {
-        const res = await getOwnMedicalCard(uid);
-        if (res.ok === false) {
-          setLabel(res.stubLabel ?? qr.stubLabel);
+      try {
+        const uid = profile?.uid ?? 'mock-local-user';
+        const qr = await ensurePersonalQr(uid, subscriberActive);
+        setLabel(qr.stubLabel);
+        if (qr.ok === false) {
+          // Do not hydrate demo PHI after a failed read / mint abort.
           return;
         }
-        setCard(res.data);
-        setLabel(res.stubLabel ?? qr.stubLabel);
-        if (res.data) {
-          setScanCode(res.data.scanCode);
-          hydrateForm(res.data);
+        if (qr.data.card?.scanCode) {
+          setCard(qr.data.card);
+          setScanCode(qr.data.scanCode);
+          hydrateForm(qr.data.card);
+        } else {
+          const res = await getOwnMedicalCard(uid);
+          if (res.ok === false) {
+            setLabel(res.stubLabel ?? qr.stubLabel);
+            return;
+          }
+          setCard(res.data);
+          setLabel(res.stubLabel ?? qr.stubLabel);
+          if (res.data) {
+            setScanCode(res.data.scanCode);
+            hydrateForm(res.data);
+          }
         }
+      } catch (e) {
+        setLabel(e instanceof Error ? `Urgence soft — ${e.message}` : 'Urgence soft — mock');
       }
     })();
   }, [profile?.uid, subscriberActive]);
@@ -181,9 +185,15 @@ export default function UrgenceScreen() {
         ? { ...profile, rescuerBadgeId: badgeId || profile.rescuerBadgeId }
         : profile;
     const res = await scanMedicalEmergency(scanCode, rescuer ?? null);
+    // ok:false demo can still carry flagged PHI for UX — never present as live.
     setEmergencyView(res.data);
+    const demoFlag =
+      res.ok === false && res.data
+        ? `DEMO (ok:false) · ${res.stubLabel ?? 'pas live PHI'}`
+        : null;
     setScanMsg(
-      res.stubLabel ??
+      demoFlag ??
+        res.stubLabel ??
         (res.data
           ? `Urgence : ${res.data.fullName} · ${res.data.address}`
           : 'Accès refusé ou QR inconnu'),

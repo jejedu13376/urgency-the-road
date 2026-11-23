@@ -63,15 +63,24 @@ export default function ProScreen() {
   const [ratingsHydrated, setRatingsHydrated] = useState(false);
 
   const reload = useCallback(async () => {
-    const res = await listAppointmentsForGarage(garageId);
-    if (res.ok === false) {
+    try {
+      const res = await listAppointmentsForGarage(garageId);
+      if (res.ok === false && (!res.data || res.data.length === 0)) {
+        setAppts([]);
+        setLabel(res.stubLabel ?? 'Lecture RDV refusée');
+        setMsg(res.stubLabel ?? 'Lecture RDV refusée — aucun mock affiché');
+        return;
+      }
+      setAppts(res.data ?? []);
+      setLabel(res.stubLabel);
+      if (res.source === 'mock') {
+        setMsg(res.stubLabel ?? 'RDV mock (Firebase soft)');
+      }
+    } catch (e) {
       setAppts([]);
-      setLabel(res.stubLabel ?? 'Lecture RDV refusée');
-      setMsg(res.stubLabel ?? 'Lecture RDV refusée — aucun mock affiché');
-      return;
+      setLabel(e instanceof Error ? `Pro soft — ${e.message}` : 'Pro soft — mock');
+      setMsg('Soft-fail Pro — réessayez');
     }
-    setAppts(res.data);
-    setLabel(res.stubLabel);
   }, [garageId]);
 
   useEffect(() => {

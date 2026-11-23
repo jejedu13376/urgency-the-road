@@ -14,6 +14,7 @@ import type { VehicleDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
 import type { VehicleProfile } from '../../types/vehicle';
 import { decodeVinNhtsa } from '../vin/nhtsaDecode';
+import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 /** Local-only temp ids — must not be used as Firestore doc ids (would create orphans on retry). */
@@ -128,6 +129,16 @@ export async function listVehicles(ownerUid: string): Promise<ServiceResult<Vehi
     );
     return liveResult(list);
   } catch (e) {
+    // Soft-fail permissions / DEV → ok:false so FleetContext keeps cloud-KO
+    // (not “empty ready to migrate”). Local fleet is preserved by refreshCloud.
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return failResult(
+        [],
+        isPermissionDenied(e)
+          ? 'SOFT vehicles — permission refusée (flotte locale conservée)'
+          : 'SOFT vehicles — DEV (flotte locale conservée)',
+      );
+    }
     // Empty payload + ok:false — never ship MOCK_FLEET as a firebase-looking failure.
     return failResult([], e instanceof Error ? e.message : 'Lecture flotte refusée');
   }
@@ -196,6 +207,13 @@ export async function upsertVehicle(
     await setDoc(ref, payload, { merge: true });
     return liveResult({ ...vehicle, id: ref.id });
   } catch (e) {
+    // ok:false — FleetContext must not treat this as a completed cloud write/migrate.
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return failResult(
+        vehicle,
+        'SOFT vehicles upsert — permission/DEV (local conservé, cloud non sync)',
+      );
+    }
     return failResult(vehicle, e instanceof Error ? e.message : 'Upsert véhicule refusé');
   }
 }
@@ -207,6 +225,13 @@ export async function removeVehicle(id: string): Promise<ServiceResult<null>> {
     await deleteDoc(doc(fb.db, COLLECTIONS.vehicles, id));
     return liveResult(null);
   } catch (e) {
+    // ok:false — do not fake cloud delete success for migrate/UI labels.
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return failResult(
+        null,
+        'SOFT vehicles delete — permission/DEV (refus cloud, pas de succès fictif)',
+      );
+    }
     return failResult(null, e instanceof Error ? e.message : 'Suppression véhicule refusée');
   }
 }

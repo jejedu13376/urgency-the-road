@@ -53,14 +53,16 @@ export default function FilMecaniqueScreen() {
     setRefreshing(true);
     try {
       const res = await listFeedPosts(40);
-      // Always apply service payload (including empty live feed) — never keep MOCK_FEED
-      // when Firestore is configured but empty.
+      // Success (live or intentional mock): apply payload. On ok:false keep prior posts
+      // (or empty) — never swap real→fake under an empty/error banner.
       if (res.ok !== false && Array.isArray(res.data)) {
         setPosts(res.data);
       }
       setFeedLabel(
         res.stubLabel ?? (res.source === 'firebase' ? 'Fil Firestore LIVE' : undefined),
       );
+    } catch (e) {
+      setFeedLabel(e instanceof Error ? `Fil soft — ${e.message}` : 'Fil soft — erreur');
     } finally {
       setRefreshing(false);
     }

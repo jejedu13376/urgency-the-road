@@ -4,6 +4,7 @@ import type { PartDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
 import { buildVinPartsCatalog, catalogLabel } from '../parts/vinPartsCatalog';
 import { normalizeVin } from '../vin/vinNormalize';
+import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 /** Module 3 — catalogue pièces lié au VIN (Firestore ou générateur local WMI). */
@@ -46,6 +47,9 @@ export async function listPartsForVin(
       catalogLabel(vin, 'firebase'),
     );
   } catch (e) {
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return mockResult(local, `SOFT pieces — permission/DEV · ${catalogLabel(vin, 'local')}`);
+    }
     return failResult(
       local,
       e instanceof Error ? e.message : 'Catalogue pièces refusé',

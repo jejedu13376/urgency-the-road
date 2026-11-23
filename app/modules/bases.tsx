@@ -29,9 +29,16 @@ export default function BasesScreen() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    const res = await listLearnedFailures(30);
-    setLog(res.data);
-    setLabel(res.stubLabel ?? (res.source === 'firebase' ? 'Bases Firestore LIVE (owner)' : undefined));
+    try {
+      const res = await listLearnedFailures(30);
+      setLog(res.data ?? []);
+      setLabel(
+        res.stubLabel ?? (res.source === 'firebase' ? 'Bases Firestore LIVE (owner)' : undefined),
+      );
+    } catch (e) {
+      setLog([]);
+      setLabel(e instanceof Error ? `Bases soft — ${e.message}` : 'Bases soft — mock');
+    }
   }, []);
 
   useEffect(() => {

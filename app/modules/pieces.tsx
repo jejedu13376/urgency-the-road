@@ -50,17 +50,22 @@ export default function PiecesScreen() {
 
   useEffect(() => {
     void (async () => {
-      const res = await listPartsForVin(active?.vin, {
-        isHeavyTruck: active?.vehicleClass === 'poids_lourd',
-        make: active?.make,
-        model: active?.model,
-        year: active?.year,
-        currency: active?.currency,
-      });
-      setParts(res.data);
-      setLabel(res.stubLabel);
-      setSelectedId(res.data[0]?.id ?? null);
-      setFunnelStep(res.data.length ? 1 : 0);
+      try {
+        const res = await listPartsForVin(active?.vin, {
+          isHeavyTruck: active?.vehicleClass === 'poids_lourd',
+          make: active?.make,
+          model: active?.model,
+          year: active?.year,
+          currency: active?.currency,
+        });
+        setParts(res.data ?? []);
+        setLabel(res.stubLabel);
+        setSelectedId(res.data?.[0]?.id ?? null);
+        setFunnelStep(res.data?.length ? 1 : 0);
+      } catch (e) {
+        setParts([]);
+        setLabel(e instanceof Error ? `Pièces soft — ${e.message}` : 'Pièces soft — mock');
+      }
     })();
   }, [active?.vin, active?.vehicleClass, active?.make, active?.model, active?.year, active?.currency]);
 

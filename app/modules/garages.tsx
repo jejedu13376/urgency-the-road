@@ -52,13 +52,17 @@ export default function GaragesScreen() {
     setLoading(true);
     try {
       const res = await listGaragesNearby({ radiusKm: km });
-      setPlaces(res.data);
+      setPlaces(res.data ?? []);
       setLabel(res.stubLabel);
       setMeta(res.meta ?? null);
       setSelectedId((prev) => {
-        if (prev && res.data.some((p) => p.id === prev)) return prev;
-        return res.data[0]?.id ?? null;
+        const list = res.data ?? [];
+        if (prev && list.some((p) => p.id === prev)) return prev;
+        return list[0]?.id ?? null;
       });
+    } catch (e) {
+      setPlaces([]);
+      setLabel(e instanceof Error ? `Garages soft — ${e.message}` : 'Garages soft — mock');
     } finally {
       setLoading(false);
     }

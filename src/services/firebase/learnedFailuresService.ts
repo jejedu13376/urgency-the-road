@@ -16,6 +16,7 @@ import {
 import type { Firestore } from 'firebase/firestore';
 import { getFirebase, getSignedInUid } from '../../firebase/config';
 import { COLLECTIONS } from '../../types/firestore';
+import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 const LOCAL_KEY = 'urgency.learnedFailures.v1';
@@ -253,6 +254,12 @@ export async function listLearnedFailures(max = 20): Promise<ServiceResult<Learn
     if (!merged.some((r) => r.id === DEMO_SEED.id) && !localBefore.length && !mig.uploadedRemote.length) {
       merged.push(DEMO_SEED);
     }
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return mockResult(
+        merged.slice(0, cap),
+        'SOFT bases — permission/DEV (journal local / mock)',
+      );
+    }
     return failResult(
       merged.slice(0, cap),
       e instanceof Error ? e.message : 'Lecture bases refusée — journal local intact',
@@ -310,6 +317,9 @@ export async function recordLearnedFailure(input: {
     // Keep on device so the entry isn't lost when rules reject the write
     const local = await readLocalJournal();
     await writeLocalJournal([payload, ...local.filter((r) => r.id !== payload.id)]);
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return mockResult(payload, 'SOFT bases write — permission/DEV (journal local)');
+    }
     return failResult(
       payload,
       e instanceof Error

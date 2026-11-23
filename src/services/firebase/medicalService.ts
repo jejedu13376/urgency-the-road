@@ -14,7 +14,7 @@ import type {
 } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
 import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
-import { failResult, liveResult, mockResult, ServiceResult } from './result';
+import { failResult, flaggedDemoResult, liveResult, mockResult, ServiceResult } from './result';
 
 const MOCK_CARD: MedicalCardDoc = {
   id: 'mock-med-1',
@@ -209,14 +209,15 @@ export async function ensurePersonalQr(
   subscriberActive: boolean,
 ): Promise<ServiceResult<{ scanCode: string; card: MedicalCardDoc }>> {
   if (!subscriberActive) {
-    return mockResult(
+    // Empty QR + flagged shell — ok:false so form does not hydrate as live PHI.
+    return flaggedDemoResult(
       { scanCode: '', card: { ...MOCK_CARD, ownerUid, scanCode: '', subscriberActive: false } },
-      'QR personnel réservé aux comptes abonnés actifs',
+      'DEMO — QR réservé abonnés (ok:false, pas live PHI)',
     );
   }
 
   const existing = await getOwnMedicalCard(ownerUid);
-  // Transient / permission read failure must NOT look like “no card” — never upsert demo PHI.
+  // Transient / permission / flagged-demo read — never upsert demo PHI as live.
   if (existing.ok === false) {
     return failResult(
       {
@@ -228,9 +229,9 @@ export async function ensurePersonalQr(
   }
   if (existing.data?.scanCode) {
     if (existing.source === 'mock') {
-      return mockResult(
+      return flaggedDemoResult(
         { scanCode: existing.data.scanCode, card: existing.data },
-        existing.stubLabel ?? 'QR personnel existant (mock)',
+        existing.stubLabel ?? 'DEMO QR personnel existant (ok:false, pas live)',
       );
     }
     // Refresh index (subscriberActive + PHI) without reminting — keeps legacy QR rescuer-readable
@@ -434,9 +435,10 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
   const fb = getFirebase();
   const uid = getSignedInUid();
   if (!fb || !uid) {
-    return mockResult(
+    // Flagged demo PHI — ok:false so UI never treats it as live Firestore.
+    return flaggedDemoResult(
       { ...MOCK_CARD, ownerUid, id: medicalCardDocId(ownerUid), scanCode: MOCK_CARD.scanCode },
-      'MOCK medical card — QR personnel démo',
+      'DEMO medical card — QR démo (ok:false, pas live)',
     );
   }
 
@@ -498,9 +500,12 @@ export async function scanMedicalEmergency(
   const code = scanCode.trim().toUpperCase();
   const fb = getFirebase();
   if (!fb) {
-    // Only the exact demo scan code returns mock PHI — never any UM-QR-* prefix.
+    // Only the exact demo scan code returns flagged demo PHI — never any UM-QR-* prefix.
     if (code === MOCK_CARD.scanCode.toUpperCase()) {
-      return mockResult(toEmergencyView({ ...MOCK_CARD }), 'MOCK vue urgence complète (code démo)');
+      return flaggedDemoResult(
+        toEmergencyView({ ...MOCK_CARD }),
+        'DEMO vue urgence (code démo) — ok:false, pas live PHI',
+      );
     }
     return softDev
       ? failResult(null, 'SOFT vue urgence — Firebase off / QR non démo (pas de PHI)')
@@ -511,11 +516,11 @@ export async function scanMedicalEmergency(
     // Exact document get by scanCode — not a collection list
     const snap = await getDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, code));
     if (!snap.exists()) {
-      // Demo code only when Firebase empty — never invent PHI for other codes.
+      // Demo code only when Firebase empty — flagged ok:false, never invent for other codes.
       if (code === MOCK_CARD.scanCode.toUpperCase()) {
-        return mockResult(
+        return flaggedDemoResult(
           toEmergencyView({ ...MOCK_CARD }),
-          'MOCK vue urgence — index absent, code démo uniquement',
+          'DEMO vue urgence — index absent, code démo (ok:false, pas live)',
         );
       }
       return liveResult(null);
