@@ -290,7 +290,7 @@ export async function connectAndInitElm(
         log.push(`${at} → ${resp.slice(0, 80)}`);
         if (isElmInitFailure(resp)) {
           await destroyManager(manager, deviceId, monitorSub, disconnectSub);
-          if (session !== null && session.id === id) session = null;
+          // Session was never published (still null under this lock) — only destroy pending manager.
           return {
             ok: false,
             message: `Init AT échouée (${at} → ${resp.slice(0, 40)}) — valise non prête.`,
@@ -307,10 +307,7 @@ export async function connectAndInitElm(
       };
     } catch (e) {
       await destroyManager(manager, deviceId, monitorSub, disconnectSub);
-      // Match by this attempt's session.id — never wipe a newer live session.
-      if (session !== null && session.id === id) {
-        session = null;
-      }
+      // Under this IO lock, global session stays null until successful publish.
       return { ok: false, message: e instanceof Error ? e.message : 'Échec connectAndInitElm' };
     }
   });
