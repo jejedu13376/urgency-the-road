@@ -58,11 +58,25 @@ function isUidDerivedScanCode(code: string, uid: string): boolean {
   );
 }
 
-/** Prefer existing opaque code; remint if empty or uid-derived. */
+/** Client mirror of firestore.rules isOpaqueScanCode — UM-QR- + ≥16 A-Z0-9. */
+function isOpaqueScanCode(code: string): boolean {
+  return /^UM-QR-[A-Z0-9]{16,}$/.test(code.trim().toUpperCase());
+}
+
+/** Keep only rule-compliant opaque codes; remint empty, uid-derived, or weak/short. */
 function resolveOpaqueScanCode(requested: string, uid: string): string {
   const code = requested.trim().toUpperCase();
-  if (!code || isUidDerivedScanCode(code, uid)) return mintScanCode();
+  if (!code || isUidDerivedScanCode(code, uid) || !isOpaqueScanCode(code)) {
+    return mintScanCode();
+  }
   return code;
+}
+
+/** True when an existing card/index code is safe to keep (opaque + not uid-derived). */
+function canReuseScanCode(code: string | null | undefined, uid: string): boolean {
+  if (!code) return false;
+  const c = code.trim().toUpperCase();
+  return isOpaqueScanCode(c) && !isUidDerivedScanCode(c, uid);
 }
 
 function canRescuerFull(profile: UserDoc | null | undefined): boolean {
@@ -295,19 +309,15 @@ export async function upsertMedicalCard(
     if (cardExists) {
       const prev = existingCard.data() as MedicalCardDoc;
       previousScanCode = prev.scanCode || null;
-      if (prev.scanCode && !isUidDerivedScanCode(prev.scanCode, uid)) {
-        payload.scanCode = prev.scanCode;
-      } else {
-        payload.scanCode = mintScanCode();
-      }
+      payload.scanCode = canReuseScanCode(prev.scanCode, uid)
+        ? prev.scanCode.trim().toUpperCase()
+        : mintScanCode();
     } else if (legacyCard?.exists()) {
       const prev = legacyCard.data() as MedicalCardDoc;
       previousScanCode = prev.scanCode || null;
-      if (prev.scanCode && !isUidDerivedScanCode(prev.scanCode, uid)) {
-        payload.scanCode = prev.scanCode;
-      } else {
-        payload.scanCode = mintScanCode();
-      }
+      payload.scanCode = canReuseScanCode(prev.scanCode, uid)
+        ? prev.scanCode.trim().toUpperCase()
+        : mintScanCode();
     } else {
       payload.scanCode = resolveOpaqueScanCode(payload.scanCode, uid);
       const probe = await getDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode));
@@ -316,11 +326,11 @@ export async function upsertMedicalCard(
         if (owner === uid) {
           const existingCode =
             (probe.data() as { scanCode?: string }).scanCode ?? payload.scanCode;
-          payload.scanCode = isUidDerivedScanCode(existingCode, uid)
-            ? mintScanCode()
-            : existingCode;
-          if (isUidDerivedScanCode(existingCode, uid)) {
+          if (canReuseScanCode(existingCode, uid)) {
+            payload.scanCode = existingCode.trim().toUpperCase();
+          } else {
             previousScanCode = existingCode;
+            payload.scanCode = mintScanCode();
           }
         } else {
           return failResult(payload, 'scanCode déjà utilisé — collision / hijack bloqué');
@@ -333,13 +343,15 @@ export async function upsertMedicalCard(
     const indexPayload = indexFromCard({ ...payload, id: cardId, scanCode: payload.scanCode });
     const newIndexRef = doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode);
 
-    const assertIndexOwnedOrFree = async () => {
+    /** Returns true when the target index already exists and is owned by caller. */
+    const assertIndexOwnedOrFree = async (): Promise<boolean> => {
       const snap = await getDoc(newIndexRef);
-      if (!snap.exists()) return;
+      if (!snap.exists()) return false;
       const owner = (snap.data() as { ownerUid?: string })?.ownerUid;
       if (owner && owner !== uid) {
         throw new Error('Index scanCode appartient à un autre compte');
       }
+      return true;
     };
 
     if (rotating && previousScanCode) {
@@ -359,10 +371,13 @@ export async function upsertMedicalCard(
       await assertIndexOwnedOrFree();
       await setDoc(newIndexRef, indexPayload);
     } else {
-      // Brand-new: index-first then card; rollback index if card create fails
-      await assertIndexOwnedOrFree();
+      // Brand-new / legacy migrate keeping same code: index-first then card.
+      // Only claim rollback when we create a NEW index — never delete a pre-owned live QR.
+      const indexPreexistedOwned = await assertIndexOwnedOrFree();
       await setDoc(newIndexRef, indexPayload);
-      claimedNewIndex = payload.scanCode;
+      if (!indexPreexistedOwned) {
+        claimedNewIndex = payload.scanCode;
+      }
       await setDoc(cardRef, cardWritePayload(payload));
       claimedNewIndex = null;
     }
