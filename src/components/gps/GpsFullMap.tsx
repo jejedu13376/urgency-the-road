@@ -159,7 +159,8 @@ function postGpsCmd(win: MapWindow | null, cmd: Record<string, unknown>) {
 
 /**
  * Full-bleed GPS map (OSM/Leaflet). Vehicle marker = LIVE device GPS.
- * No Maps/Waze branding chips. Tap / search → voiture/camion → Valhalla.
+ * Voiture/camion = top chips only. Tap / search = destination (no re-picker).
+ * No Maps/Waze branding chips.
  */
 export function GpsFullMap() {
   const insets = useSafeAreaInsets();

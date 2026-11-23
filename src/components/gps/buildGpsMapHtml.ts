@@ -1,7 +1,7 @@
 /**
  * Self-contained Leaflet + OSM map HTML for WebView.
  * Vehicle DivIcon = LIVE GPS (parent injects ticks) — not a canned polyline demo.
- * Tap / search destination → voiture/camion picker → Valhalla route.
+ * Voiture/camion = top chips only (once). Tap / search = destination only → Valhalla.
  */
 export type GpsMapBoot = {
   lat: number;
@@ -56,23 +56,6 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     background:rgba(27,36,48,.9);color:#fff;border-radius:9px;padding:7px 10px;
     font:550 11px/1.35 system-ui,sans-serif;letter-spacing:.01em;
   }
-  .picker{
-    display:none;position:absolute;z-index:1100;left:50%;top:50%;transform:translate(-50%,-50%) scale(.96);
-    width:min(300px,86vw);background:rgba(255,255,255,.98);border-radius:16px;padding:14px;
-    box-shadow:0 10px 32px rgba(0,0,0,.35);font:600 13px system-ui,sans-serif;color:var(--ink);
-    opacity:0;transition:opacity .18s ease,transform .18s ease;
-  }
-  .picker.show{display:block;opacity:1;transform:translate(-50%,-50%) scale(1)}
-  .picker h3{margin:0 0 4px;font-size:15px;font-weight:750}
-  .picker p{margin:0 0 12px;color:var(--muted);font-weight:500;font-size:12px;line-height:1.35}
-  .pick-row{display:flex;gap:8px}
-  .pick{
-    flex:1;border:1px solid #D3D9DF;border-radius:12px;background:var(--paper);padding:12px 8px;
-    display:flex;flex-direction:column;align-items:center;gap:6px;font:750 12px system-ui,sans-serif;
-    transition:transform .12s ease,border-color .15s ease;
-  }
-  .pick:active{transform:scale(.97)}
-  .icon{width:40px;height:40px}
   .bottom{
     position:absolute;z-index:1000;
     left:calc(10px + var(--pad-left));right:calc(74px + var(--pad-right));
@@ -130,21 +113,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     <button type="button" class="chip" id="btnCar"><span>Voiture</span><small>Profil auto</small></button>
     <button type="button" class="chip" id="btnTruck"><span>Camion</span><small>Profil truck</small></button>
   </div>
-  <div class="status" id="status">Touchez la carte ou cherchez une adresse</div>
-</div>
-<div class="picker" id="picker">
-  <h3>Mode de navigation</h3>
-  <p id="pickerHint">Destination sélectionnée — voiture ou camion ?</p>
-  <div class="pick-row">
-    <button type="button" class="pick" id="pickCar">
-      <svg class="icon" viewBox="0 0 64 64" aria-hidden="true"><path d="M12 30 L20 18 H44 L52 30 Z" fill="#C45C26"/><rect x="10" y="30" width="44" height="14" rx="5" fill="#2C3A47"/><circle cx="20" cy="46" r="5.5" fill="#101820"/><circle cx="44" cy="46" r="5.5" fill="#101820"/><rect x="16" y="33" width="10" height="6" rx="1.5" fill="#E8EEF2"/><rect x="38" y="33" width="10" height="6" rx="1.5" fill="#E8EEF2"/></svg>
-      Voiture
-    </button>
-    <button type="button" class="pick" id="pickTruck">
-      <svg class="icon" viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="20" width="32" height="22" rx="3" fill="#1F6B4A"/><rect x="36" y="26" width="22" height="16" rx="3" fill="#C45C26"/><rect x="40" y="29" width="10" height="7" rx="1.5" fill="#F3D9C8"/><circle cx="16" cy="46" r="5.5" fill="#101820"/><circle cx="48" cy="46" r="5.5" fill="#101820"/><rect x="8" y="24" width="12" height="8" rx="1" fill="#D7EDE3"/></svg>
-      Camion
-    </button>
-  </div>
+  <div class="status" id="status">Choisissez Voiture ou Camion en haut, puis touchez / cherchez une destination</div>
 </div>
 <div class="bottom">
   <button type="button" class="ghost" id="btnRecenter">GPS</button>
@@ -163,7 +132,6 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   var routeLine = null;
   var destMarker = null;
   var followLive = false;
-  var pendingPick = null;
   var layerGroup = null;
   var lastPanAt = 0;
 
@@ -280,29 +248,18 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     followLive = false;
   }
 
-  function showPicker(latlng, label){
-    if (!gpsOk) {
-      setStatus('GPS appareil requis avant itinéraire — tapez GPS');
-      return;
-    }
-    pendingPick = latlng;
-    document.getElementById('pickerHint').textContent =
-      (label ? label + ' — ' : '') +
-      latlng.lat.toFixed(4) + ', ' + latlng.lng.toFixed(4) + ' — voiture ou camion ?';
-    var el = document.getElementById('picker');
-    el.classList.add('show');
-  }
-
-  function hidePicker(){ document.getElementById('picker').classList.remove('show'); }
-
   function applyMode(next, opts){
     mode = next;
     syncChips();
     ensureVehicleMarker();
     if (!opts || !opts.silent) post({ type: 'mode', mode: mode });
+    setStatus(mode === 'camion'
+      ? 'Mode camion — touchez / cherchez une destination'
+      : 'Mode voiture — touchez / cherchez une destination');
     if (dest && gpsOk) requestRoute();
   }
 
+  /** Destination only — mode comes from top chips, never re-prompted on tap. */
   function setDestination(latlng, label){
     if (!gpsOk) {
       setStatus('GPS appareil requis — pas d’itinéraire sans position réelle');
@@ -311,7 +268,10 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     dest = { lat: latlng.lat, lon: latlng.lng };
     if (destMarker) map.removeLayer(destMarker);
     destMarker = L.marker([dest.lat, dest.lon], { icon: destDivIcon(), zIndexOffset: 700 }).addTo(map);
-    if (label) setStatus('Destination · ' + label);
+    setStatus(
+      (label ? 'Destination · ' + label + ' · ' : 'Destination · ') +
+      (mode === 'camion' ? 'camion' : 'voiture')
+    );
     requestRoute();
   }
 
@@ -403,7 +363,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   window.__gpsSetChrome = function(p){ applyChrome(p || {}); };
 
   window.__gpsProposeDestination = function(lat, lon, label){
-    showPicker(L.latLng(lat, lon), label || '');
+    setDestination(L.latLng(lat, lon), label || '');
   };
 
   window.__gpsSetLayers = function(payload){
@@ -462,20 +422,9 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   });
 
   map.on('click', function(e){
-    hidePicker();
-    showPicker(e.latlng);
+    setDestination(e.latlng);
   });
 
-  document.getElementById('pickCar').onclick = function(){
-    hidePicker();
-    applyMode('voiture');
-    if (pendingPick) setDestination(pendingPick);
-  };
-  document.getElementById('pickTruck').onclick = function(){
-    hidePicker();
-    applyMode('camion');
-    if (pendingPick) setDestination(pendingPick);
-  };
   document.getElementById('btnCar').onclick = function(){ applyMode('voiture'); };
   document.getElementById('btnTruck').onclick = function(){ applyMode('camion'); };
   document.getElementById('btnGo').onclick = function(){
