@@ -15,7 +15,14 @@ import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-web
 import { useAuth } from '../../context/AuthContext';
 import { useFleet } from '../../context/FleetContext';
 import { getDeviceCoords, watchDevicePosition } from '../../services/geo/deviceLocation';
-import { geocodePlace, type GeocodeHit } from '../../services/geo/openMeteoGeocode';
+import {
+  fetchPlacesAutocomplete,
+  isGooglePlacesConfigured,
+  newPlacesSessionToken,
+  resolvePlaceCoords,
+  type PlacesSuggestion,
+} from '../../services/geo/googlePlacesAutocomplete';
+import { geocodePlace } from '../../services/geo/openMeteoGeocode';
 import {
   fetchVehicleRoute,
   type VehicleRouteResult,
@@ -212,9 +219,13 @@ export function GpsFullMap() {
   const [modeLabel, setModeLabel] = useState<GpsVehicleMode>('voiture');
   const [gpsOk, setGpsOk] = useState(false);
   const [searchQ, setSearchQ] = useState('');
-  const [searchHits, setSearchHits] = useState<GeocodeHit[]>([]);
+  const [searchHits, setSearchHits] = useState<PlacesSuggestion[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const placesSessionRef = useRef(newPlacesSessionToken());
+  const searchReqIdRef = useRef(0);
+  const skipSuggestRef = useRef(false);
+  const placesConfigured = isGooglePlacesConfigured();
   const [destSelection, setDestSelection] = useState<GpsDestinationSelection | null>(null);
   const [destMenuOpen, setDestMenuOpen] = useState(false);
 
@@ -680,42 +691,150 @@ export function GpsFullMap() {
     return () => window.removeEventListener('message', onWinMsg);
   }, [handleMapMsg]);
 
-  const runSearch = useCallback(async () => {
-    const q = searchQ.trim();
-    if (!q) return;
-    setSearchBusy(true);
-    setSearchOpen(true);
-    try {
-      const res = await geocodePlace(q, 6);
-      setSearchHits(res.hits);
-      if (!res.ok) setHudNote(res.error ?? 'Adresse introuvable');
-      else setHudNote(`${res.hits.length} résultat(s) · ${res.source}`);
-    } finally {
-      setSearchBusy(false);
-    }
-  }, [searchQ]);
+  const clearSearchHits = useCallback(() => {
+    setSearchOpen(false);
+    setSearchHits([]);
+  }, []);
 
-  const pickSearchHit = useCallback(
-    (hit: GeocodeHit) => {
-      setSearchOpen(false);
-      setSearchHits([]);
-      setSearchQ(hit.label);
-      setDestSelection({ lat: hit.lat, lon: hit.lon, label: hit.label });
-      setLastRoute(null);
-      proposeDestination(hit.lat, hit.lon, hit.label);
-      setDestMenuOpen(true);
-      setHudNote(`Destination · ${hit.label}`);
+  /** Drop in-flight autocomplete without arming skipSuggest (safe on failed pick). */
+  const invalidateInFlightSuggest = useCallback(() => {
+    searchReqIdRef.current += 1;
+    setSearchBusy(false);
+    clearSearchHits();
+  }, [clearSearchHits]);
+
+  /** Fill the field after a confirmed destination — skip one suggest cycle for that setState. */
+  const applyDestinationLabel = useCallback(
+    (label: string) => {
+      skipSuggestRef.current = true;
+      searchReqIdRef.current += 1;
+      clearSearchHits();
+      setSearchQ(label);
+    },
+    [clearSearchHits],
+  );
+
+  /** Debounced live Google Places suggestions while typing. */
+  useEffect(() => {
+    if (skipSuggestRef.current) {
+      skipSuggestRef.current = false;
+      return;
+    }
+    const q = searchQ.trim();
+    const reqId = ++searchReqIdRef.current;
+    const timer = setTimeout(() => {
       void (async () => {
-        const saved = await findSavedPlace(hit.lat, hit.lon);
+        if (reqId !== searchReqIdRef.current) return;
+        if (!placesConfigured || q.length < 2) {
+          setSearchOpen(false);
+          setSearchHits([]);
+          setSearchBusy(false);
+          return;
+        }
+        setSearchBusy(true);
+        try {
+          const res = await fetchPlacesAutocomplete(q, placesSessionRef.current, {
+            limit: 6,
+          });
+          if (reqId !== searchReqIdRef.current) return;
+          setSearchHits(res.suggestions);
+          setSearchOpen(res.suggestions.length > 0);
+          if (!res.ok && res.error && q.length >= 3) {
+            // Soft note only — keep typing uninterrupted.
+            setHudNote(res.error);
+          }
+        } finally {
+          if (reqId === searchReqIdRef.current) setSearchBusy(false);
+        }
+      })();
+    }, 320);
+
+    return () => clearTimeout(timer);
+  }, [searchQ, placesConfigured]);
+
+  /** Confirm a resolved place: fill search, open dest menu, center map. */
+  const commitDestination = useCallback(
+    (lat: number, lon: number, label: string, noteSuffix?: string) => {
+      applyDestinationLabel(label);
+      setDestSelection({ lat, lon, label });
+      setLastRoute(null);
+      proposeDestination(lat, lon, label);
+      setDestMenuOpen(true);
+      setHudNote(noteSuffix ? `Destination · ${label} · ${noteSuffix}` : `Destination · ${label}`);
+      void (async () => {
+        const saved = await findSavedPlace(lat, lon);
         if (!saved?.tag) return;
         setDestSelection((prev) =>
-          prev && prev.lat === hit.lat && prev.lon === hit.lon
-            ? { ...prev, tag: saved.tag }
-            : prev,
+          prev && prev.lat === lat && prev.lon === lon ? { ...prev, tag: saved.tag } : prev,
         );
       })();
     },
-    [proposeDestination],
+    [applyDestinationLabel, proposeDestination],
+  );
+
+  /** Explicit OK: Places resolve if one hit, else Open-Meteo/Photon fallback. */
+  const runSearch = useCallback(async () => {
+    const q = searchQ.trim();
+    if (!q) return;
+    searchReqIdRef.current += 1;
+    setSearchBusy(true);
+    setSearchOpen(true);
+    try {
+      if (placesConfigured) {
+        const res = await fetchPlacesAutocomplete(q, placesSessionRef.current, {
+          limit: 6,
+        });
+        setSearchHits(res.suggestions);
+        if (res.suggestions.length === 1) {
+          const only = res.suggestions[0];
+          const coords = await resolvePlaceCoords(only.placeId, placesSessionRef.current);
+          placesSessionRef.current = newPlacesSessionToken();
+          if (coords.ok && coords.lat != null && coords.lon != null) {
+            commitDestination(coords.lat, coords.lon, coords.label ?? only.label);
+            return;
+          }
+        }
+        if (!res.ok) setHudNote(res.error ?? 'Adresse introuvable (Places)');
+        else setHudNote(`${res.suggestions.length} suggestion(s) · google_places`);
+        return;
+      }
+
+      const res = await geocodePlace(q, 6);
+      if (res.ok && res.hits[0]) {
+        const hit = res.hits[0];
+        commitDestination(hit.lat, hit.lon, hit.label, res.source);
+      } else {
+        setSearchHits([]);
+        setHudNote(
+          res.error ??
+            'EXPO_PUBLIC_GOOGLE_PLACES_API_KEY manquant — géocode fallback KO',
+        );
+      }
+    } finally {
+      setSearchBusy(false);
+    }
+  }, [searchQ, placesConfigured, commitDestination]);
+
+  const pickSearchHit = useCallback(
+    (hit: PlacesSuggestion) => {
+      void (async () => {
+        invalidateInFlightSuggest();
+        setSearchBusy(true);
+        try {
+          const coords = await resolvePlaceCoords(hit.placeId, placesSessionRef.current);
+          placesSessionRef.current = newPlacesSessionToken();
+          if (!coords.ok || coords.lat == null || coords.lon == null) {
+            skipSuggestRef.current = false;
+            setHudNote(coords.error ?? 'Place Details KO');
+            return;
+          }
+          commitDestination(coords.lat, coords.lon, coords.label ?? hit.label);
+        } finally {
+          setSearchBusy(false);
+        }
+      })();
+    },
+    [invalidateInFlightSuggest, commitDestination],
   );
 
   const destRouteStatus: GpsRouteStatus = !lastRoute
@@ -848,12 +967,16 @@ export function GpsFullMap() {
           <TextInput
             value={searchQ}
             onChangeText={setSearchQ}
-            placeholder="Adresse / lieu…"
+            placeholder={
+              placesConfigured ? 'Adresse / lieu…' : 'Adresse… (clé Places manquante)'
+            }
             placeholderTextColor={colors.muted}
             style={styles.searchInput}
             returnKeyType="search"
             onSubmitEditing={() => void runSearch()}
-            accessibilityLabel="Recherche adresse"
+            accessibilityLabel="Recherche adresse autocomplete"
+            autoCorrect={false}
+            autoCapitalize="none"
           />
           <Pressable style={styles.searchBtn} onPress={() => void runSearch()}>
             {searchBusy ? (
@@ -867,13 +990,18 @@ export function GpsFullMap() {
           <FlatList
             keyboardShouldPersistTaps="handled"
             data={searchHits}
-            keyExtractor={(item, i) => `${item.lat},${item.lon},${i}`}
+            keyExtractor={(item) => item.placeId}
             style={styles.hits}
             renderItem={({ item }) => (
               <Pressable style={styles.hitRow} onPress={() => pickSearchHit(item)}>
-                <Text style={styles.hitTxt} numberOfLines={2}>
-                  {item.label}
+                <Text style={styles.hitTxt} numberOfLines={1}>
+                  {item.mainText || item.label}
                 </Text>
+                {item.secondaryText ? (
+                  <Text style={styles.hitSub} numberOfLines={1}>
+                    {item.secondaryText}
+                  </Text>
+                ) : null}
               </Pressable>
             )}
           />
@@ -1007,12 +1135,18 @@ const styles = StyleSheet.create({
   searchBtnTxt: { color: colors.white, fontWeight: '800', fontSize: 12 },
   hits: {
     marginTop: 4,
-    maxHeight: 160,
+    maxHeight: 220,
     backgroundColor: 'rgba(255,255,255,0.97)',
     borderRadius: 11,
   },
-  hitRow: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  hitTxt: { color: colors.ink, fontSize: 12, fontWeight: '600' },
+  hitRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.line,
+  },
+  hitTxt: { color: colors.ink, fontSize: 13, fontWeight: '700' },
+  hitSub: { color: colors.muted, fontSize: 11, fontWeight: '500', marginTop: 2 },
   note: {
     position: 'absolute',
     backgroundColor: 'rgba(27,36,48,0.9)',
