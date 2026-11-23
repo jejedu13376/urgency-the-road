@@ -13,7 +13,7 @@
 
 - `__DEV__` or `EXPO_PUBLIC_DEV_SOFT_AUTH=1`
 - On `permission-denied`: return `ok: false` + `null` / empty list + clear stubLabel — **never** `mockResult(ok:true)` with medical PHI
-- Secure auth-based `firestore.rules` stay in repo; Storage requires `request.auth != null`
+- Secure auth-based `firestore.rules` stay in repo; Storage is **deny-all** until the app has owner/path-bound Storage SDK use (auth-only allow-all was MEDIUM)
 
 Live open rules are **never** the fix for Expo tunnel. Deploy secure rules only:
 

@@ -1,9 +1,11 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Auth-required only — NEVER world-open on shared urgency-road.
+    // Deny-all until the app has a real Storage SDK path with owner/path binding.
+    // Auth-only allow-all was flagged MEDIUM (any signup could R/W the whole bucket).
+    // NEVER world-open on shared urgency-road.
     match /{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }
