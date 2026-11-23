@@ -310,22 +310,26 @@ export default function GpsScreen() {
             style={styles.send}
             onPress={() =>
               void (async () => {
-                const loc = coords ?? (await getDeviceCoords({ allowFallback: true })).data;
-                if (!loc) {
-                  setReportMsg('GPS indisponible — signalement non publié.');
+                // Never publish Lille fallback as a live hazard pin
+                const fresh = await getDeviceCoords({ allowFallback: false });
+                if (!fresh.ok || fresh.data?.source !== 'device') {
+                  const err = !fresh.ok ? fresh.error : 'fallback interdit';
+                  setReportMsg(`Signalement refusé — GPS appareil requis (${err}).`);
                   return;
                 }
+                const device = fresh.data;
+                setCoords(device);
                 const r = await reportHazard({
                   reporterUid: profile?.uid ?? 'mock-local-user',
                   kind: hazardKind,
-                  lat: loc.lat,
-                  lon: loc.lon,
+                  lat: device.lat,
+                  lon: device.lon,
                   note: hazardNote || HAZARD_LABEL[hazardKind],
                 });
                 setHazards((prev) => [r.data, ...prev]);
                 setReportMsg(
                   r.source === 'firebase'
-                    ? 'Signalement Firestore LIVE'
+                    ? 'Signalement Firestore LIVE (GPS appareil)'
                     : r.stubLabel ?? 'Signalement local (mock — Auth pour sync)',
                 );
               })()

@@ -84,7 +84,8 @@ export async function listWeighStations(): Promise<
     };
   }
 
-  const photon = await fetchPhotonWeighHints(lat, lon);
+  // Cap Photon hits to Overpass weigh radius (100 km) — no distant NA pins as « nearby »
+  const photon = await fetchPhotonWeighHints(lat, lon, 100);
   if (photon.ok && photon.stations.length) {
     const stations: WeighStationDoc[] = photon.stations.map((s) => ({
       id: s.id,

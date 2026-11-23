@@ -74,9 +74,11 @@ async function overpassQuery(ql: string): Promise<OsmEl[]> {
 function mapGarageKind(tags: OsmTags): GarageDoc['kind'] {
   const shop = tags.shop ?? '';
   const amenity = tags.amenity ?? '';
-  if (shop === 'car_parts' || shop === 'tyres') return 'pieces';
-  if (shop === 'car' || tags.brand) return 'concession';
+  // Amenity first — brand alone must not force concession (Bosch / Feu Vert / Midas)
   if (amenity === 'towing' || amenity === 'vehicle_inspection') return 'depannage';
+  if (amenity === 'car_repair') return 'garage';
+  if (shop === 'car_parts' || shop === 'tyres') return 'pieces';
+  if (shop === 'car' || shop === 'car_dealer' || amenity === 'car_dealer') return 'concession';
   if (tags.mobile === 'yes' || tags['service:vehicle:mobile'] === 'yes') return 'mobile';
   if (tags.hgv === 'yes' || tags['hgv:repair'] === 'yes' || tags.truck === 'yes') return 'depot_pl';
   return 'garage';

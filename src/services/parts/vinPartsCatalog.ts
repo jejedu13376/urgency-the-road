@@ -16,14 +16,18 @@ type RegionPricing = {
 function pricingForMakeHint(make?: string, countryHint?: string): RegionPricing {
   const m = (make ?? '').toLowerCase();
   const c = (countryHint ?? '').toUpperCase();
-  if (c === 'CA' || m.includes('ford') || m.includes('gm') || m.includes('ram')) {
-    return { currency: 'CAD', region: 'NA-CA', laborRate: 120, multiplier: 1.15 };
-  }
+  // WMI country wins before make heuristics (US/AU Ford ≠ CAD)
   if (c === 'US') {
     return { currency: 'USD', region: 'NA-US', laborRate: 135, multiplier: 1.2 };
   }
   if (c === 'AU') {
     return { currency: 'AUD', region: 'AU', laborRate: 140, multiplier: 1.25 };
+  }
+  if (c === 'CA') {
+    return { currency: 'CAD', region: 'NA-CA', laborRate: 120, multiplier: 1.15 };
+  }
+  if (m.includes('ford') || m.includes('gm') || m.includes('ram')) {
+    return { currency: 'CAD', region: 'NA-CA', laborRate: 120, multiplier: 1.15 };
   }
   if (m.includes('mercedes') || m.includes('actros') || m.includes('iveco')) {
     return { currency: 'EUR', region: 'EU-DE', laborRate: 110, multiplier: 1.1 };

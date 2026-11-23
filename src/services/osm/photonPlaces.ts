@@ -5,6 +5,9 @@
 import type { GarageDoc } from '../../types/firestore';
 import { haversineKm } from '../geo/deviceLocation';
 
+/** Same default radius as Overpass weigh search (100 km). */
+const WEIGH_MAX_KM = 100;
+
 const UA = 'UrgencyRoad/1.0 (https://github.com/jejedu13376/urgency-the-road)';
 
 type PhotonFeature = {
@@ -70,6 +73,7 @@ async function photonSearch(
 export async function fetchPhotonWeighHints(
   lat: number,
   lon: number,
+  maxKm = WEIGH_MAX_KM,
 ): Promise<{
   ok: boolean;
   stations: Array<{
@@ -86,18 +90,20 @@ export async function fetchPhotonWeighHints(
     url.searchParams.set('q', 'weigh station');
     url.searchParams.set('lat', String(lat));
     url.searchParams.set('lon', String(lon));
-    url.searchParams.set('limit', '8');
+    url.searchParams.set('limit', '12');
     const res = await fetch(url.toString(), {
       headers: { 'User-Agent': UA, Accept: 'application/json' },
     });
     if (!res.ok) throw new Error(`Photon HTTP ${res.status}`);
     const body = (await res.json()) as { features?: PhotonFeature[] };
+    const cap = Math.max(5, maxKm);
     const stations = (body.features ?? [])
       .map((f) => {
         const coords = f.geometry?.coordinates;
         const p = f.properties;
         if (!coords || !p?.name) return null;
         const [lonP, latP] = coords;
+        if (haversineKm(lat, lon, latP, lonP) > cap) return null;
         return {
           id: `photon-w-${p.osm_type ?? 'n'}-${p.osm_id ?? `${latP}-${lonP}`}`,
           name: p.name,
@@ -117,8 +123,8 @@ export async function fetchPhotonWeighHints(
       ok: stations.length > 0,
       stations,
       label: stations.length
-        ? `LIVE Photon · ${stations.length} weigh hint(s) · statut UNKNOWN (pas de feed ON/OFF)`
-        : 'Photon weigh vide',
+        ? `LIVE Photon · ${stations.length} weigh ≤${cap} km · statut UNKNOWN (pas de feed ON/OFF)`
+        : `Photon weigh vide dans ${cap} km`,
     };
   } catch (e) {
     return {
