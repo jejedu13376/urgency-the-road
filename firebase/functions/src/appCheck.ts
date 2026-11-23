@@ -2,28 +2,18 @@ import { getAppCheck } from 'firebase-admin/app-check';
 import type { Request } from 'firebase-functions/v2/https';
 
 /**
- * App Check gate.
+ * App Check gate — **opt-in**.
  *
- * Production default: **required** when not running in the Functions emulator
- * (`FUNCTIONS_EMULATOR` unset). Override with:
- * - `MULTI_IA_REQUIRE_APP_CHECK=0` to disable (not recommended in prod)
- * - `MULTI_IA_REQUIRE_APP_CHECK=1` to force on (including emulator)
+ * Default: OFF (Expo client does not send `X-Firebase-AppCheck` yet).
+ * Auth still requires Firebase ID token with `email_verified` plus rate/global caps.
  *
- * Client must send `X-Firebase-AppCheck` once App Check is wired in Expo.
- * Until then, keep email_verified + rate/global caps (see auth.ts / rateLimit.ts).
+ * Enable only after Expo App Check is wired and the client sends the header:
+ * - `MULTI_IA_REQUIRE_APP_CHECK=1` (or true/yes) → require + verify token
+ * - unset / `0` / false / no → skip App Check
  */
 export async function assertAppCheckIfRequired(req: Request): Promise<void> {
   const flag = (process.env.MULTI_IA_REQUIRE_APP_CHECK ?? '').trim().toLowerCase();
-  const inEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
-  let required: boolean;
-  if (flag === '0' || flag === 'false' || flag === 'no') {
-    required = false;
-  } else if (flag === '1' || flag === 'true' || flag === 'yes') {
-    required = true;
-  } else {
-    // Unset → required outside emulator
-    required = !inEmulator;
-  }
+  const required = flag === '1' || flag === 'true' || flag === 'yes';
   if (!required) return;
 
   const token =

@@ -137,9 +137,15 @@ async function refreshAuthUserForProxy(): Promise<{
   }
 }
 
+/** Client abort must exceed server `fetchJson` (12s) so slow engines can still return live. */
+const LIVE_PROXY_ABORT_MS = 16_000;
+
 /**
  * Live vote via server proxy only. Proxy holds OpenAI/Anthropic/etc. keys and
  * requires a Firebase ID token. Without auth / on 401·403·429·503 → null (heuristic).
+ * App Check header is not attached here: JS `firebase/app-check` has no getAppCheck,
+ * and initializing a provider would break Expo Go. Server App Check stays opt-in
+ * (`MULTI_IA_REQUIRE_APP_CHECK=1`) until a custom/dev client wires it.
  */
 async function liveProxyVote(
   engine: IaEngineId,
@@ -152,7 +158,7 @@ async function liveProxyVote(
   const t0 = Date.now();
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const timer = setTimeout(() => ctrl.abort(), LIVE_PROXY_ABORT_MS);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Authorization: bearer,

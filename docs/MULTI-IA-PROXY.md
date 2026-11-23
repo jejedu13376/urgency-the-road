@@ -85,7 +85,7 @@ cd ../..
 1. Deploy once without keys (function comes up; engines return `503` until keys exist).
 2. Cloud Console → **Cloud Functions** → `multiIa` → **Edit** → Runtime → **Environment variables** or **Secrets**.
 3. Add provider key names from the table above (exact spelling).
-4. Until Expo App Check is wired, also set `MULTI_IA_REQUIRE_APP_CHECK=0` (email_verified + rate/global caps still apply).
+4. App Check is **off by default** (email_verified + rate/global caps still apply). Only set `MULTI_IA_REQUIRE_APP_CHECK=1` after Expo sends `X-Firebase-AppCheck`.
 5. Deploy revision.
 
 **B — Firebase Secret Manager + bind in code**
@@ -128,7 +128,7 @@ App: Module 15 sign-in → Module 6 Multi-IA → run diagnostic → expect `sour
 - Provider keys stay on the server; the Expo bundle only gets the proxy URL.
 - POST requires Firebase ID token with **`email_verified`**. Module 15 sends `sendEmailVerification` on signup; Multi-IA surfaces “vérifie ton email” + resend when unverified.
   - Staging/emulator only: `MULTI_IA_ALLOW_UNVERIFIED_EMAIL=1` (never in production).
-- **App Check required outside the Functions emulator** by default. Until Expo App Check is wired, set `MULTI_IA_REQUIRE_APP_CHECK=0` on the function (temporary). Production should send `X-Firebase-AppCheck`.
+- **App Check is opt-in** (`MULTI_IA_REQUIRE_APP_CHECK=1`). Default is off so a normal deploy + provider keys works without Expo App Check. When you wire App Check in a custom/dev client, set the flag to `1` and send `X-Firebase-AppCheck`.
 - Prompt/context length capped server-side (~4k chars each).
 - Upstream provider failures → generic `Engine request failed` — **never** echo provider error bodies to clients or logs.
 - Spend caps (Firestore `multiIaRateLimits/*`, client R/W denied in rules):

@@ -97,7 +97,7 @@ function clientIp(req: {
 
 /**
  * Multi-IA proxy — POST JSON `{ engine, prompt, context }`
- * Auth: Firebase ID token (email_verified) + App Check (prod default)
+ * Auth: Firebase ID token (email_verified); App Check opt-in via MULTI_IA_REQUIRE_APP_CHECK=1
  * Spend: per-UID + per-IP window + project-wide daily cap
  * Client env: `EXPO_PUBLIC_MULTI_IA_PROXY_URL`
  *
@@ -106,7 +106,7 @@ function clientIp(req: {
 export const multiIa = onRequest(
   {
     cors: false,
-    invoker: 'public', // auth + App Check verified in-handler
+    invoker: 'public', // auth (+ optional App Check) verified in-handler
     secrets: BOUND_SECRETS,
   },
   async (req, res) => {
