@@ -7,6 +7,7 @@ Dernière mise à jour : 2026-11-23 (UTC)
 - Clés PayPal rangées dans `.env` (`PAYPAL_CLIENT_ID`, `PAYPAL_SECRET`) — ne pas coller dans le chat
 - Clé YouTube rangée (`EXPO_PUBLIC_YOUTUBE_API_KEY`)
 - Config Firebase web rangée (`EXPO_PUBLIC_FIREBASE_*` + alias `FIREBASE_*`) ; snippet CDN/npm dans `FIREBASE-CDN.md`
+- Wiring app vérifié : `src/firebase/config.ts` = 7 clés `EXPO_PUBLIC_FIREBASE_*` (aligné CDN) ; dep `firebase@^13.4.0` ; Analytics RN non branché (volontaire)
 - PR #1 mergée dans `main` — merge `933be454ce03d3d784235709fcd54c132fa4d1fd` — https://github.com/jejedu13376/urgency-the-road/pull/1
 - PR #2 mergée (`d654d59`) — SUIVI + gitignore
 - PR #3 mergée (`d92795c`) — remint QR médical
@@ -20,7 +21,14 @@ Dernière mise à jour : 2026-11-23 (UTC)
 
 ## Reste (Urgency Road)
 
-- **BLOCKER Lorenzo** : déployer les rules Firestore — `firebase login` puis `firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes` (voir `docs/FIREBASE-DEPLOY.md`). Cloud agent ne peut pas auth.
+- **BLOCKER Lorenzo (machine locale)** : login OK chez Lorenzo, mais **pas** sur le cloud agent — re-deploy agent 2026-11-23 ~05:49 UTC → encore `Failed to authenticate` / `Could not load the default credentials` ; `login:list` = aucune session ; project cible `urgency-road` ; rien déployé (ni rules, ni indexes, ni hosting). **Lorenzo doit lancer sur SA machine déjà loguée :**
+
+```bash
+cd /path/to/urgency-the-road
+firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes --project urgency-road
+```
+
+  Pour que l’agent puisse déployer plus tard : `firebase login:ci` → injecter `FIREBASE_TOKEN`, ou `GOOGLE_APPLICATION_CREDENTIALS` (voir `docs/FIREBASE-DEPLOY.md`).
 - Proxy Multi-IA côté serveur (clés LLM jamais en `EXPO_PUBLIC_*`)
 - Merge / finaliser PR #4 (BLE/gate/hosting/perf)
 - Stubs restants : vidéo CDN, OBD BLE hardware, paiements (scaffolds sans faux succès)
@@ -55,3 +63,5 @@ Dernière mise à jour : 2026-11-23 (UTC)
 | 2026-11-22 ~23:37 | PR #5 questionnaire busy guard `3399694` |
 | 2026-11-23 ~05:40 UTC | PR #5 Approval Agent OK ; mergée dans `main` (`6fdf9d153db1c88cede9c5f6c8d4a65babe1b6f7`) ; head branch conservée |
 | 2026-11-23 ~05:41 UTC | Fin stream PR #5 ; blocker restant = deploy Firebase par Lorenzo (`FIREBASE-DEPLOY.md`) |
+| 2026-11-23 ~05:48 UTC | Agent : `firebase deploy --only firestore:rules,firestore:indexes` → auth fail ; CDN wiring OK ; docs alternatives CI token / SA |
+| 2026-11-23 ~05:49 UTC | Lorenzo login OK (local) ; agent re-try deploy → même auth fail (session non partagée) ; commande à lancer en local documentée |
