@@ -1,9 +1,11 @@
 /**
  * Module 6 — multi-IA diagnostic router.
- * - Parallel engine votes (local heuristics always available)
- * - Optional live providers when EXPO_PUBLIC_* keys or MULTI_IA_PROXY are set
- * - Consensus synthesis + confidence — never throws
+ * - Parallel heuristic engine votes (always available, no secrets)
+ * - Optional LIVE votes ONLY via EXPO_PUBLIC_MULTI_IA_PROXY_URL (server holds LLM keys)
+ * - Never reads provider API keys from EXPO_PUBLIC_* — those would ship in the JS bundle
  */
+
+import { getFirebase } from '../../firebase/config';
 
 export type IaEngineId = 'Claude' | 'Gemini' | 'GPT-4o' | 'Grok' | 'Mistral' | 'DeepSeek';
 
@@ -33,31 +35,8 @@ export type MultiIaResult = {
 
 const ALL: IaEngineId[] = ['Claude', 'Gemini', 'GPT-4o', 'Grok', 'Mistral', 'DeepSeek'];
 
-function env(name: string): string {
-  return (process.env[name] ?? '').trim();
-}
-
 function proxyUrl(): string {
-  return env('EXPO_PUBLIC_MULTI_IA_PROXY_URL');
-}
-
-function providerKey(engine: IaEngineId): string {
-  switch (engine) {
-    case 'Claude':
-      return env('EXPO_PUBLIC_ANTHROPIC_API_KEY');
-    case 'Gemini':
-      return env('EXPO_PUBLIC_GEMINI_API_KEY');
-    case 'GPT-4o':
-      return env('EXPO_PUBLIC_OPENAI_API_KEY');
-    case 'Grok':
-      return env('EXPO_PUBLIC_GROK_API_KEY');
-    case 'Mistral':
-      return env('EXPO_PUBLIC_MISTRAL_API_KEY');
-    case 'DeepSeek':
-      return env('EXPO_PUBLIC_DEEPSEEK_API_KEY');
-    default:
-      return '';
-  }
+  return (process.env.EXPO_PUBLIC_MULTI_IA_PROXY_URL ?? '').trim();
 }
 
 /** Keyword → parts / severity heuristics (deterministic per engine bias). */
@@ -102,7 +81,6 @@ function heuristicVote(engine: IaEngineId, prompt: string, context: string): IaE
     parts.push('Filtre à air', 'Bougies / injecteurs', 'Capteur O2');
   }
 
-  // Light engine-specific bias so “croisement” is visible without live APIs
   const bias: Record<IaEngineId, string> = {
     Claude: 'analyse causale structurée',
     Gemini: 'corrélation capteurs / historique',
@@ -123,6 +101,22 @@ function heuristicVote(engine: IaEngineId, prompt: string, context: string): IaE
   };
 }
 
+async function authBearerForProxy(): Promise<string | undefined> {
+  try {
+    const fb = getFirebase();
+    const user = fb?.auth.currentUser;
+    if (!user) return undefined;
+    const token = await user.getIdToken();
+    return token ? `Bearer ${token}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Live vote via server proxy only. Proxy must hold OpenAI/Anthropic/etc. keys
+ * and authenticate callers (Firebase ID token when available).
+ */
 async function liveProxyVote(
   engine: IaEngineId,
   prompt: string,
@@ -134,9 +128,12 @@ async function liveProxyVote(
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 8000);
+    const auth = await authBearerForProxy();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (auth) headers.Authorization = auth;
     const res = await fetch(base, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ engine, prompt, context }),
       signal: ctrl.signal,
     });
@@ -179,130 +176,13 @@ async function liveProxyVote(
   }
 }
 
-/** OpenAI-compatible chat (GPT-4o / DeepSeek / Grok / Mistral variants). */
-async function liveOpenAiCompat(
-  engine: IaEngineId,
-  endpoint: string,
-  apiKey: string,
-  model: string,
-  prompt: string,
-  context: string,
-): Promise<IaEngineVote> {
-  const t0 = Date.now();
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 10000);
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 320,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Tu es un technicien auto/PL. Réponds en français, court: causes, pièces, gravité (info|warn|critique).',
-          },
-          { role: 'user', content: `Contexte: ${context || 'n/a'}\nProblème: ${prompt}` },
-        ],
-      }),
-      signal: ctrl.signal,
-    });
-    clearTimeout(timer);
-    const body = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-      error?: { message?: string };
-    };
-    if (!res.ok) {
-      return {
-        engine,
-        ok: false,
-        source: 'error',
-        latencyMs: Date.now() - t0,
-        summary: body.error?.message ?? `HTTP ${res.status}`,
-        likelyParts: [],
-        severity: 'info',
-      };
-    }
-    const summary = body.choices?.[0]?.message?.content?.trim() || `(${engine}) vide`;
-    return {
-      engine,
-      ok: true,
-      source: 'live',
-      latencyMs: Date.now() - t0,
-      summary: summary.slice(0, 600),
-      likelyParts: [],
-      severity: /critique|urgent|danger/i.test(summary) ? 'critique' : 'warn',
-    };
-  } catch (e) {
-    return {
-      engine,
-      ok: false,
-      source: 'error',
-      latencyMs: Date.now() - t0,
-      summary: e instanceof Error ? e.message : String(e),
-      likelyParts: [],
-      severity: 'info',
-    };
-  }
-}
-
-async function liveEngineVote(
+async function engineVote(
   engine: IaEngineId,
   prompt: string,
   context: string,
 ): Promise<IaEngineVote> {
   const viaProxy = await liveProxyVote(engine, prompt, context);
   if (viaProxy) return viaProxy;
-
-  const key = providerKey(engine);
-  if (!key) return heuristicVote(engine, prompt, context);
-
-  if (engine === 'GPT-4o') {
-    return liveOpenAiCompat(
-      engine,
-      'https://api.openai.com/v1/chat/completions',
-      key,
-      'gpt-4o-mini',
-      prompt,
-      context,
-    );
-  }
-  if (engine === 'DeepSeek') {
-    return liveOpenAiCompat(
-      engine,
-      'https://api.deepseek.com/chat/completions',
-      key,
-      'deepseek-chat',
-      prompt,
-      context,
-    );
-  }
-  if (engine === 'Mistral') {
-    return liveOpenAiCompat(
-      engine,
-      'https://api.mistral.ai/v1/chat/completions',
-      key,
-      'mistral-small-latest',
-      prompt,
-      context,
-    );
-  }
-  if (engine === 'Grok') {
-    return liveOpenAiCompat(
-      engine,
-      'https://api.x.ai/v1/chat/completions',
-      key,
-      'grok-beta',
-      prompt,
-      context,
-    );
-  }
-  // Claude / Gemini without SDK: fall back to heuristic unless proxy set
   return heuristicVote(engine, prompt, context);
 }
 
@@ -339,7 +219,7 @@ function synthesize(votes: IaEngineVote[], prompt: string): Pick<
 }
 
 /**
- * Run enabled engines in parallel (Promise.allSettled) with per-engine timeout budget.
+ * Run enabled engines in parallel (Promise.allSettled).
  */
 export async function runMultiIaDiagnostic(opts: {
   prompt: string;
@@ -349,7 +229,11 @@ export async function runMultiIaDiagnostic(opts: {
   const t0 = Date.now();
   const prompt = opts.prompt.trim();
   const context = (opts.context ?? '').trim();
-  const enabled = (opts.enabled?.length ? opts.enabled : ALL).filter((e) => ALL.includes(e));
+  // undefined/omitted → all engines; explicit [] → none (no silent fallback to ALL)
+  const enabled =
+    opts.enabled === undefined
+      ? [...ALL]
+      : opts.enabled.filter((e) => ALL.includes(e));
 
   if (!prompt) {
     return {
@@ -367,8 +251,24 @@ export async function runMultiIaDiagnostic(opts: {
     };
   }
 
+  if (enabled.length === 0) {
+    return {
+      ok: false,
+      prompt,
+      context,
+      engines: [],
+      consensus: 'Aucun moteur activé — réactivez au moins un modèle.',
+      likelyParts: [],
+      severity: 'info',
+      liveCount: 0,
+      heuristicCount: 0,
+      totalMs: Date.now() - t0,
+      label: 'Multi-IA — 0 moteur sélectionné',
+    };
+  }
+
   const settled = await Promise.allSettled(
-    enabled.map((engine) => liveEngineVote(engine, prompt, context)),
+    enabled.map((engine) => engineVote(engine, prompt, context)),
   );
 
   const engines: IaEngineVote[] = settled.map((s, i) => {
@@ -388,7 +288,6 @@ export async function runMultiIaDiagnostic(opts: {
   const liveCount = engines.filter((e) => e.source === 'live' && e.ok).length;
   const heuristicCount = engines.filter((e) => e.source === 'heuristic' && e.ok).length;
   const hasProxy = Boolean(proxyUrl());
-  const hasAnyKey = ALL.some((e) => providerKey(e));
 
   return {
     ok: engines.some((e) => e.ok),
@@ -403,10 +302,10 @@ export async function runMultiIaDiagnostic(opts: {
     totalMs: Date.now() - t0,
     label:
       liveCount > 0
-        ? `Multi-IA LIVE (${liveCount}) + heuristique (${heuristicCount}) · ${Date.now() - t0} ms`
-        : hasProxy || hasAnyKey
-          ? `Multi-IA — clés présentes mais votes live KO · heuristique ${heuristicCount}`
-          : `Multi-IA heuristique croisée (${heuristicCount} moteurs) · proxy/clés optionnels · ${Date.now() - t0} ms`,
+        ? `Multi-IA LIVE proxy (${liveCount}) + heuristique (${heuristicCount}) · ${Date.now() - t0} ms`
+        : hasProxy
+          ? `Multi-IA — proxy KO · heuristique ${heuristicCount}`
+          : `Multi-IA heuristique croisée (${heuristicCount} moteurs) · proxy serveur optionnel · ${Date.now() - t0} ms`,
   };
 }
 

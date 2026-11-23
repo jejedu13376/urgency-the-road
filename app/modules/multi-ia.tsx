@@ -101,7 +101,7 @@ export default function MultiIaScreen() {
         likelyParts: diag.likelyParts,
         make: active?.make,
         model: active?.model,
-        vin: active?.vin,
+        // vin intentionally omitted — never persisted to learnedFailures
       });
     } finally {
       setBusy(false);
@@ -127,12 +127,12 @@ export default function MultiIaScreen() {
     <>
       <Stack.Screen options={{ title: 'Multi-IA' }} />
       <Screen title="Routeur multi-IA" subtitle="Module 6 — coach vocal + chat + YouTube">
-        <StubBanner text="Multi-IA : heuristique croisée live ; proxy/clés optionnels ; recalls NHTSA + YouTube" />
+        <StubBanner text="Multi-IA : heuristique croisée ; LIVE via proxy serveur uniquement ; recalls NHTSA + YouTube" />
 
         <Card title="Moteurs ciblés (routeur)">
           <Text style={styles.hint}>
-            Claude · Gemini · GPT-4o · Grok · Mistral · DeepSeek — votes parallèles + consensus. Clés /
-            EXPO_PUBLIC_MULTI_IA_PROXY_URL optionnels.
+            Claude · Gemini · GPT-4o · Grok · Mistral · DeepSeek — votes parallèles + consensus.
+            Clés LLM côté serveur uniquement (EXPO_PUBLIC_MULTI_IA_PROXY_URL).
           </Text>
           <View style={styles.chips}>
             {ALL_MODELS.map((m) => (

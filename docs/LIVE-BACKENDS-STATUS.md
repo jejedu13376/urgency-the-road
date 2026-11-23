@@ -11,11 +11,11 @@ Updated continuously. **Formations: never touched.**
 | Firebase Auth/Firestore | **LIVE when `.env` set** | `src/firebase/config.ts` + services |
 | Firestore rules | **In repo** — Lorenzo deploys | `docs/FIREBASE-DEPLOY.md` |
 | YouTube search | **LIVE + 15 min cache** | `youtubeSearch.ts` |
-| Multi-IA router | **Heuristique croisée + optional proxy/keys** | `src/services/ai/multiIaRouter.ts` |
+| Multi-IA router | **Heuristique + optional SERVER proxy only** (no client LLM keys) | `src/services/ai/multiIaRouter.ts` |
 | Recalls NHTSA | **LIVE** (free) | `src/services/recalls/nhtsaRecalls.ts` |
 | Weather banner | **LIVE Open-Meteo** (cache 10 min) | `src/services/weather/openMeteo.ts` |
 | Fil texte | **LIVE Firestore** when Auth | `feedService.ts` |
-| Learned failures | **LIVE create** when Auth | `learnedFailuresService.ts` |
+| Learned failures | **Owner-only** (no public read; no VIN field) | `learnedFailuresService.ts` |
 | Payments Stripe/RC | **Scaffold** — no fake success | `paymentsService.ts` |
 | OBD BLE | **Scaffold + Expo Go limit** | `bleScaffold.ts` |
 
@@ -33,7 +33,7 @@ Updated continuously. **Formations: never touched.**
 | Area | Blocker |
 | --- | --- |
 | Firebase rules on server | Lorenzo: `firebase login` + deploy (see `FIREBASE-DEPLOY.md`) |
-| Multi-IA Claude/GPT live | `EXPO_PUBLIC_MULTI_IA_PROXY_URL` or provider keys (prefer proxy) |
+| Multi-IA Claude/GPT live | Server proxy + provider keys **server-side only** (`EXPO_PUBLIC_MULTI_IA_PROXY_URL`) |
 | Stripe / PayPal / RC | Checkout / SDK keys |
 | OBD hardware DTC | Dev Client + BLE |
 | Fil video upload | Storage + moderation |

@@ -53,6 +53,7 @@ export default function DiagnosticIaScreen() {
   const [acousticBars] = useState(() => [4, 10, 6, 14, 8, 12, 5, 11, 7, 13]);
   const [qResult, setQResult] = useState<string | null>(null);
   const [freeResult, setFreeResult] = useState<string | null>(null);
+  const [freeBusy, setFreeBusy] = useState(false);
   const [yt, setYt] = useState<YoutubeVideoHit[]>([]);
   const [ytLabel, setYtLabel] = useState<string | undefined>();
 
@@ -107,9 +108,15 @@ export default function DiagnosticIaScreen() {
     const next = [...answers, yes ? 'oui' : 'non'];
     setAnswers(next);
     if (step + 1 >= QUESTIONS.length) {
-      const r = stubAiDiagnose(`Q:${next.join(',')}`);
-      setQResult(`${r.label}\n${r.data.summary}`);
-      void loadYoutube('bruit moteur voyant diagnostic automobile');
+      const prompt = `Questionnaire diagnostic: ${QUESTIONS.map((q, i) => `${q.q}=${next[i]}`).join(' ; ')}`;
+      const ctx = active
+        ? `${active.make} ${active.model} ${active.year}`
+        : '';
+      void (async () => {
+        const r = await runMultiIaDiagnostic({ prompt, context: ctx });
+        setQResult(`${r.label}\n${r.consensus}\nPièces: ${r.likelyParts.join(', ') || '—'}`);
+        void loadYoutube('bruit moteur voyant diagnostic automobile');
+      })();
     } else setStep(step + 1);
   };
 
@@ -286,22 +293,31 @@ export default function DiagnosticIaScreen() {
             multiline
           />
           <Pressable
-            style={styles.btn}
+            style={[styles.btn, freeBusy && styles.btnDisabled]}
+            disabled={freeBusy}
             onPress={() => {
-              const problem = note || 'panne inconnue';
+              if (freeBusy) return;
+              const problem = note.trim() || 'panne inconnue';
+              setFreeBusy(true);
               void (async () => {
-                const ctx = active
-                  ? `${active.make} ${active.model} ${active.year} ${active.vin ?? ''}`
-                  : '';
-                const r = await runMultiIaDiagnostic({ prompt: problem, context: ctx });
-                setFreeResult(
-                  `${r.label}\n${r.consensus}\nPièces: ${r.likelyParts.join(', ') || '—'}\nBudget indicatif 120–380 ${active?.currency ?? 'EUR'}`,
-                );
-                void loadYoutube(problem);
+                try {
+                  const ctx = active
+                    ? `${active.make} ${active.model} ${active.year}`
+                    : '';
+                  const r = await runMultiIaDiagnostic({ prompt: problem, context: ctx });
+                  setFreeResult(
+                    `${r.label}\n${r.consensus}\nPièces: ${r.likelyParts.join(', ') || '—'}\nBudget indicatif 120–380 ${active?.currency ?? 'EUR'}`,
+                  );
+                  void loadYoutube(problem);
+                } finally {
+                  setFreeBusy(false);
+                }
               })();
             }}
           >
-            <Text style={styles.btnTxt}>Lancer diagnostic</Text>
+            <Text style={styles.btnTxt}>
+              {freeBusy ? 'Analyse en cours…' : 'Lancer diagnostic'}
+            </Text>
           </Pressable>
           {freeResult ? <Text style={styles.result}>{freeResult}</Text> : null}
         </Card>

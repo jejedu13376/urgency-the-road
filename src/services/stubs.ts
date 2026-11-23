@@ -23,16 +23,20 @@ export function stubObdConnect(): StubResult<{ connected: false; protocol: strin
   };
 }
 
-/** @deprecated Prefer `runMultiIaDiagnostic` from `services/ai/multiIaRouter`. */
+/**
+ * User-facing local diagnostic summary (sync). Prefer `runMultiIaDiagnostic` for
+ * full multi-engine routing when async is available.
+ */
 export function stubAiDiagnose(prompt: string): StubResult<{ summary: string; models: string[] }> {
+  const clipped = prompt.trim().slice(0, 100) || 'panne';
   return {
     ok: true,
     data: {
-      summary: `Délègue au routeur Multi-IA pour « ${prompt.slice(0, 80)} » — utiliser runMultiIaDiagnostic.`,
+      summary: `Analyse locale pour « ${clipped} » — croisement multi-moteurs (heuristique). Vérifiez freins, bruits, voyants et consultez le catalogue pièces / OBD.`,
       models: ['Claude', 'Gemini', 'GPT-4o', 'Grok', 'Mistral', 'DeepSeek'],
     },
     stub: true,
-    label: 'Multi-IA — utiliser runMultiIaDiagnostic (heuristique + live optionnel)',
+    label: 'Diagnostic local (heuristique) — Multi-IA async disponible sur description libre',
   };
 }
 

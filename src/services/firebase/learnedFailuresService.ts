@@ -1,7 +1,16 @@
 /**
- * Module 14 — persist resolved failure patterns when signed in.
+ * Module 14 — owner-scoped learned failures (no public VIN dump).
+ * Never persist raw VIN; make/model optional; reads filtered by authorUid.
  */
-import { addDoc, collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
+import {
+  addDoc,
+  collection,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  where,
+} from 'firebase/firestore';
 import { getFirebase, getSignedInUid } from '../../firebase/config';
 import { COLLECTIONS } from '../../types/firestore';
 import { failResult, liveResult, mockResult, ServiceResult } from './result';
@@ -12,13 +21,13 @@ export type LearnedFailure = {
   likelyParts: string[];
   make?: string;
   model?: string;
-  vin?: string;
   createdAt: string;
 };
 
 export async function listLearnedFailures(max = 20): Promise<ServiceResult<LearnedFailure[]>> {
   const fb = getFirebase();
-  if (!fb) {
+  const uid = getSignedInUid();
+  if (!fb || !uid) {
     return mockResult(
       [
         {
@@ -28,14 +37,15 @@ export async function listLearnedFailures(max = 20): Promise<ServiceResult<Learn
           createdAt: new Date().toISOString(),
         },
       ],
-      'MOCK bases — Firebase off',
+      'MOCK bases — Firebase off / non connecté',
     );
   }
   try {
     const q = query(
       collection(fb.db, COLLECTIONS.learnedFailures),
+      where('authorUid', '==', uid),
       orderBy('createdAt', 'desc'),
-      limit(max),
+      limit(Math.min(Math.max(max, 1), 50)),
     );
     const snap = await getDocs(q);
     const items = snap.docs.map((d) => {
@@ -46,7 +56,6 @@ export async function listLearnedFailures(max = 20): Promise<ServiceResult<Learn
         likelyParts: Array.isArray(data.likelyParts) ? (data.likelyParts as string[]) : [],
         make: data.make ? String(data.make) : undefined,
         model: data.model ? String(data.model) : undefined,
-        vin: data.vin ? String(data.vin) : undefined,
         createdAt: String(data.createdAt ?? ''),
       };
     });
@@ -61,32 +70,33 @@ export async function recordLearnedFailure(input: {
   likelyParts: string[];
   make?: string;
   model?: string;
+  /** Ignored — VIN never written to Firestore */
   vin?: string;
 }): Promise<ServiceResult<LearnedFailure | null>> {
   const fb = getFirebase();
   const uid = getSignedInUid();
   const payload: LearnedFailure = {
     id: `local-${Date.now()}`,
-    summary: input.summary.trim(),
-    likelyParts: input.likelyParts,
-    make: input.make,
-    model: input.model,
-    vin: input.vin,
+    summary: input.summary.trim().slice(0, 1800),
+    likelyParts: (input.likelyParts ?? []).slice(0, 12),
+    make: input.make?.trim() || undefined,
+    model: input.model?.trim() || undefined,
     createdAt: new Date().toISOString(),
   };
   if (!fb || !uid) return mockResult(payload, 'MOCK learn — non syncé');
   if (!payload.summary) return failResult(null, 'Résumé requis');
 
   try {
-    const ref = await addDoc(collection(fb.db, COLLECTIONS.learnedFailures), {
+    const doc: Record<string, unknown> = {
       authorUid: uid,
       summary: payload.summary,
       likelyParts: payload.likelyParts,
-      make: payload.make ?? null,
-      model: payload.model ?? null,
-      vin: payload.vin ?? null,
       createdAt: payload.createdAt,
-    });
+    };
+    if (payload.make) doc.make = payload.make;
+    if (payload.model) doc.model = payload.model;
+    // Intentionally omit vin — rules also reject vin keys
+    const ref = await addDoc(collection(fb.db, COLLECTIONS.learnedFailures), doc);
     return liveResult({ ...payload, id: ref.id });
   } catch (e) {
     return failResult(null, e instanceof Error ? e.message : 'Écriture bases refusée');

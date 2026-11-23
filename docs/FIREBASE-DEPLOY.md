@@ -83,3 +83,11 @@ Sign in (Module 15) → save medical fiche / vehicle → no permission-denied on
 | Indexes still Building | Wait; queries needing them fail until Enabled |
 
 **Do not** commit service-account JSON or `.env` secrets.
+
+## Multi-IA keys (Lorenzo) — server only
+
+Never put OpenAI / Anthropic / Gemini / Grok / Mistral / DeepSeek keys in `EXPO_PUBLIC_*` (they ship in the app bundle).
+
+1. Deploy a Cloud Function / backend that holds the provider keys.
+2. Set only `EXPO_PUBLIC_MULTI_IA_PROXY_URL` in the app `.env`.
+3. Proxy should verify the Firebase ID token from `Authorization: Bearer <idToken>` when present.
