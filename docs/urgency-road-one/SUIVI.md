@@ -1,6 +1,6 @@
 # Urgency Road — suivi
 
-Dernière mise à jour : 2026-11-23 ~06:20 UTC
+Dernière mise à jour : 2026-11-23 ~06:24 UTC
 
 ## Fait
 
@@ -24,9 +24,10 @@ Dernière mise à jour : 2026-11-23 ~06:20 UTC
   - Perf: icon compress, YouTube cache/timeout, Screen safe-area (UR-29)
   - Tip merged: `808fb73ccd08e42791992ec7137acda90f5e6624`
 - **Multi-IA server proxy (code)** : PR [#8](https://github.com/jejedu13376/urgency-the-road/pull/8) — Firebase HTTPS `multiIa` + `docs/MULTI-IA-PROXY.md` (UR-35). Host live + secrets = Lorenzo.
-- **Hosting Expo/EAS restore (UR-38)** : PR [#9](https://github.com/jejedu13376/urgency-the-road/pull/9) (`cursor/hosting-eas-restore-f6f5`, tip `d9a0c61`) — rebased onto main post-#4 ; `eas.json` (preview APK + Dev Client), `expo-dev-client` + `react-native-ble-plx`, BLE permissions iOS/Android, docs `HOSTING-RESTORE` / `EAS-RUNBOOK` / `BLE-DEV-CLIENT`. Formations untouched.
+- **Hosting Expo/EAS restore (UR-38)** : PR [#9](https://github.com/jejedu13376/urgency-the-road/pull/9) (`cursor/hosting-eas-restore-f6f5`) — rebased onto main post-#4/#11 ; `eas.json` (preview APK + Dev Client), `expo-dev-client` + `react-native-ble-plx`, BLE permissions iOS/Android, docs `HOSTING-RESTORE` / `EAS-RUNBOOK` / `BLE-DEV-CLIENT`. Reconnect-safe switch re-ported into `bleSession.connectAndInitElm` (`restorePriorSession`) after `097b974` was dropped by rebase — tip `c8360cbbc1ceb3e24e8a4f282c18894c5c7155bd`. Formations untouched.
 - **Stubs deepen (live free APIs)** : PR [#10](https://github.com/jejedu13376/urgency-the-road/pull/10) (`cursor/deepen-stubs-live-apis-1063`, tip `c3bbc4a`) — rebased onto main post-#4 ; mergeable.
 - **Provisional download URL** : https://github.com/jejedu13376/urgency-the-road/releases (stand-in until first EAS APK)
+- PR #11 mergée — SUIVI note #4/#9/#10 rebases (`34a09b3`)
 
 ## Reste (Urgency Road)
 
@@ -82,3 +83,5 @@ firebase deploy --config firebase/firebase.json --only firestore:rules,firestore
 | 2026-11-23 ~06:17 UTC | Approval Agent OK tip `808fb73` ; PR #4 mergée (`1129ea4e3f082fd2e467c8002b68db1721045870`) — UR-27/28/29 livrés via #4 |
 | 2026-11-23 ~06:19 UTC | PR #9 rebase → tip `d9a0c61` (kept main BLE ; skipped superseded BLE Bugbot commits) ; mergeable/unstable |
 | 2026-11-23 ~06:20 UTC | PR #10 rebase → tip `c3bbc4a` (`app.json` BLE+location) ; mergeable/unstable ; #8 unchanged mergeable ; no hearts |
+| 2026-11-23 ~06:21 UTC | Approval Agent OK tip `30070e68` ; PR #11 SUIVI mergée (`34a09b3a4fcba791781d0ec8dfe7fd14dfced9da`) |
+| 2026-11-23 ~06:24 UTC | PR #9 : `097b974` reconnect fix **missing** after rebase onto main BLE path ; re-ported into `bleSession` + rebased onto #11 |

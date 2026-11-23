@@ -135,13 +135,14 @@ export async function connectBleDevice(deviceId: string): Promise<BleConnectResu
       liveSession: false,
     };
   }
-  // Live path: connect + ELM init (default OBD2; screen may re-init with J1939)
+  // Live path: connect + ELM init (default OBD2; screen may re-init with J1939).
+  // Prefer r.deviceId so a restored prior session stays tracked in the UI.
   const { connectAndInitElm } = await import('./bleSession');
   const r = await connectAndInitElm(deviceId, 'OBD2');
   return {
     ok: r.ok,
     connected: r.ok,
-    deviceId,
+    deviceId: r.deviceId ?? deviceId,
     message: r.message,
     liveSession: r.ok,
   };

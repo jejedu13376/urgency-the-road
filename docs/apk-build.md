@@ -1,7 +1,11 @@
 # Test APK build (EAS preview)
 
 **Status on this cloud VM:** blocked — no Expo login / no `EXPO_TOKEN`.  
-`eas.json` is ready with a **preview** profile that outputs an **APK** (no production keystore).
+Full click-by-click: **`docs/EAS-RUNBOOK.md`**. Hosting overview: **`docs/HOSTING-RESTORE.md`**.
+
+**Provisional download link:** https://github.com/jejedu13376/urgency-the-road/releases
+
+`eas.json` is ready with a **preview** profile that outputs an **APK** (no production keystore) and a **development** profile for BLE Dev Client.
 
 ## Free Expo account (exact steps)
 
@@ -16,44 +20,33 @@ npx eas-cli login
 
 3. Complete the browser/device login prompt until `npx eas-cli whoami` prints your username.
 
-**CI alternative (no interactive login):** https://expo.dev/accounts/[account]/settings/access-tokens → create token → set env `EXPO_TOKEN`.
+**CI / cloud-agent alternative:** https://expo.dev/accounts/[account]/settings/access-tokens → create token → set Cursor secret `EXPO_TOKEN` → re-run agent build.
 
 ## Link project + build APK
-
-From the app folder (already contains `eas.json`):
 
 ```powershell
 npx eas-cli build:configure
 npx eas-cli build -p android --profile preview
 ```
 
-- First run may ask to create an EAS project — accept defaults.
-- Profile `preview` → `android.buildType: apk`, `distribution: internal` (Expo-managed debug/internal credentials, **not** a Play production keystore).
-- Wait for the cloud build (~10–20 min). When **Finished**, open the build page.
+- First run may ask to create an EAS project — accept defaults (writes `extra.eas.projectId`).
+- Profile `preview` → `android.buildType: apk`, `distribution: internal`.
+- When **Finished**, open the build page → **Download** `.apk`.
 
-## Download URL
+## Download URL shape
 
-EAS prints a line like:
-
-`https://expo.dev/accounts/<account>/projects/urgency-road-one/builds/<build-id>`
-
-On that page use **Download** for the `.apk` (direct artifact URL is also shown / available via “Install”).
-
-Install on a phone: enable “Install unknown apps” for the browser/files app, then open the APK.
-
-## Verify profile (already in repo)
-
-`eas.json` → `build.preview`:
-
-- `distribution`: `internal`
-- `android.buildType`: `apk`
+```text
+https://expo.dev/accounts/<account>/projects/urgency-road-one/builds/<build-id>
+```
 
 ## What this agent already ran
 
 ```text
+npx eas-cli whoami
+→ Not logged in
+
 eas build -p android --profile preview --non-interactive
 → An Expo user account is required to proceed.
-  Either log in with eas login or set the EXPO_TOKEN ...
 ```
 
-No APK URL until you complete login (or provide `EXPO_TOKEN` as a Cursor secret) and re-run the build.
+No APK URL until login (or `EXPO_TOKEN`) and a successful build.
