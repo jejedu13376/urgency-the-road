@@ -200,13 +200,27 @@ export default function GaragesScreen() {
                       authorUid: profile.uid,
                       stars: 5,
                       comment: 'Bon accueil',
-                    }).then((r) =>
+                    }).then((r) => {
                       setMsg(
                         r.ok === false
                           ? r.stubLabel ?? 'Échec note'
                           : r.stubLabel ?? 'Note envoyée Firestore',
-                      ),
-                    );
+                      );
+                      if (r.ok !== false) {
+                        setPlaces((prev) =>
+                          prev.map((g) => {
+                            if (g.id !== p.id) return g;
+                            const count = (g.ratingCount ?? 0) + 1;
+                            const avg =
+                              g.ratingAvg != null
+                                ? Math.round(((g.ratingAvg * (count - 1) + 5) / count) * 10) / 10
+                                : 5;
+                            return { ...g, ratingAvg: avg, ratingCount: count };
+                          }),
+                        );
+                        void reload();
+                      }
+                    });
                   }}
                 >
                   <Text style={styles.callTxt}>Noter 5★</Text>

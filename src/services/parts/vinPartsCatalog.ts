@@ -149,6 +149,35 @@ function scalePrice(n: number, mult: number): number {
   return Math.round(n * mult);
 }
 
+/** True when SKU is a universal OE/FL template (safe for any make). */
+function isGenericSku(oemSku: string): boolean {
+  const s = oemSku.toUpperCase();
+  return s.startsWith('OE-') || s.startsWith('FL-');
+}
+
+/** Mercedes-style OEM (A000…) — only keep for Mercedes/Benz WMI. */
+function isMercedesSku(oemSku: string): boolean {
+  return /^A\d{3}/i.test(oemSku);
+}
+
+function isHeavyTruckSku(oemSku: string): boolean {
+  return oemSku.toUpperCase().startsWith('PL-');
+}
+
+function makeAllowsSku(oemSku: string, makeKey?: string, isHeavyTruck?: boolean): boolean {
+  if (isHeavyTruckSku(oemSku)) return Boolean(isHeavyTruck);
+  if (isGenericSku(oemSku)) return true;
+  if (isMercedesSku(oemSku)) {
+    const mk = (makeKey ?? '').toLowerCase();
+    return mk.includes('mercedes') || mk.includes('benz');
+  }
+  // Unknown OEM style: keep only without a specific make, else drop foreign SKUs
+  if (!makeKey || makeKey.toLowerCase() === 'générique' || makeKey.toLowerCase() === 'oem') {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Build a VIN-compatible shopping list from local templates + WMI make hint.
  * Labels must stay honest: not a live OEM mondial catalogue.
@@ -173,13 +202,24 @@ export function buildVinPartsCatalog(vin?: string, opts?: { isHeavyTruck?: boole
     ...(opts?.isHeavyTruck ? PL_EXTRAS : []),
   ];
 
-  // Deduplicate by oemSku
+  // Deduplicate by oemSku, then filter by WMI/make BEFORE relabeling
   const bySku = new Map<string, (typeof base)[0]>();
   for (const row of base) {
     if (!bySku.has(row.oemSku)) bySku.set(row.oemSku, row);
   }
 
-  let rows: PartDoc[] = [...bySku.values()].map((p, i) => ({
+  const filteredTemplates = [...bySku.values()].filter((p) => {
+    if (p.category === 'filtre' || p.category === 'fluide') {
+      // Consumables always OK unless make-locked SKU (Mercedes NOx filter AdBlue PL handled below)
+      if (isMercedesSku(p.oemSku) || isHeavyTruckSku(p.oemSku)) {
+        return makeAllowsSku(p.oemSku, makeKey, opts?.isHeavyTruck);
+      }
+      return true;
+    }
+    return makeAllowsSku(p.oemSku, makeKey, opts?.isHeavyTruck);
+  });
+
+  return filteredTemplates.map((p, i) => ({
     id: `vp-${i + 1}-${p.oemSku}`,
     name: makeKey && makeKey !== 'Générique' ? `${p.name} (${makeKey})` : p.name,
     category: p.category,
@@ -196,24 +236,6 @@ export function buildVinPartsCatalog(vin?: string, opts?: { isHeavyTruck?: boole
     vehicleMake: hint?.make,
     updatedAt: new Date().toISOString(),
   }));
-
-  // Prefer fluids/filters always; keep mechanical if make matches or generic
-  if (makeKey && makeKey.toLowerCase() !== 'générique' && makeKey.toLowerCase() !== 'oem') {
-    const mk = makeKey.toLowerCase().slice(0, 4);
-    const filtered = rows.filter(
-      (p) =>
-        p.category === 'filtre' ||
-        p.category === 'fluide' ||
-        p.name.toLowerCase().includes(mk) ||
-        p.vehicleMake?.toLowerCase().includes(mk) ||
-        p.category === 'mecanique' ||
-        p.category === 'electrique' ||
-        p.category === 'carrosserie',
-    );
-    if (filtered.length) rows = filtered;
-  }
-
-  return rows;
 }
 
 export function catalogLabel(vin?: string, source: 'firebase' | 'local' = 'local'): string {

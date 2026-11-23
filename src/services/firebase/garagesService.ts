@@ -1,4 +1,4 @@
-import { addDoc, collection, getDocs, limit, query } from 'firebase/firestore';
+import { addDoc, collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { MOCK_PLACES } from '../../data/mocks';
 import { getFirebase } from '../../firebase/config';
 import type { GarageDoc, GarageRatingDoc } from '../../types/firestore';
@@ -7,6 +7,46 @@ import { FALLBACK_LAT, FALLBACK_LON, getDeviceCoords } from '../geo/deviceLocati
 import { fetchNearbyAutoPlaces, withDistance } from '../osm/overpassPlaces';
 import { fetchPhotonAutoPlaces } from '../osm/photonPlaces';
 import { externalLiveResult, liveResult, mockResult, ServiceResult } from './result';
+
+/** Aggregate Firestore garageRatings onto OSM/Photon docs by garageId (= OSM id). */
+async function joinGarageRatings(places: GarageDoc[]): Promise<GarageDoc[]> {
+  const fb = getFirebase();
+  if (!fb || !places.length) return places;
+  const ids = places.map((p) => p.id).filter(Boolean);
+  const agg = new Map<string, { sum: number; count: number }>();
+  // Firestore `in` max 30 — batch
+  for (let i = 0; i < ids.length; i += 30) {
+    const chunk = ids.slice(i, i + 30);
+    try {
+      const snap = await getDocs(
+        query(collection(fb.db, COLLECTIONS.garageRatings), where('garageId', 'in', chunk)),
+      );
+      for (const d of snap.docs) {
+        const data = d.data() as GarageRatingDoc;
+        const gid = data.garageId;
+        if (!gid) continue;
+        const stars = Number(data.stars);
+        if (!Number.isFinite(stars)) continue;
+        const cur = agg.get(gid) ?? { sum: 0, count: 0 };
+        cur.sum += stars;
+        cur.count += 1;
+        agg.set(gid, cur);
+      }
+    } catch {
+      // Ratings optional — keep OSM list without stars
+    }
+  }
+  if (!agg.size) return places;
+  return places.map((p) => {
+    const hit = agg.get(p.id);
+    if (!hit || !hit.count) return p;
+    return {
+      ...p,
+      ratingAvg: Math.round((hit.sum / hit.count) * 10) / 10,
+      ratingCount: hit.count,
+    };
+  });
+}
 
 function fromMockPlaces(): GarageDoc[] {
   return MOCK_PLACES.filter((p) => p.kind !== 'pesage').map((p) => ({
@@ -54,13 +94,14 @@ export async function listGaragesNearby(): Promise<
         : null;
 
   if (livePlaces) {
-    const withDist = withDistance(livePlaces.places, lat, lon);
+    const rated = await joinGarageRatings(livePlaces.places);
+    const withDist = withDistance(rated, lat, lon);
     const distanceById: NearbyGaragesMeta['distanceById'] = {};
     for (const p of withDist) {
       distanceById[p.id] = { distanceKm: p.distanceKm, etaMin: p.etaMin };
     }
     return {
-      ...externalLiveResult(livePlaces.places, `${livePlaces.label} · ${gpsLabel}`),
+      ...externalLiveResult(rated, `${livePlaces.label} · ${gpsLabel}`),
       meta: { lat, lon, gpsLabel, distanceById },
     };
   }

@@ -86,7 +86,8 @@ export default function RoutiersScreen() {
 
   const onCount = stations.filter((w) => w.status === 'open' && w.litUp).length;
   const offCount = stations.filter((w) => w.status === 'closed').length;
-  const unknownCount = stations.length - onCount - offCount;
+  // Must match UNKNOWN chip: status neither open nor closed (ignore litUp)
+  const unknownCount = stations.filter((w) => w.status !== 'open' && w.status !== 'closed').length;
   const originLat = meta?.lat ?? 50.63;
   const originLon = meta?.lon ?? 3.06;
   const depots = meta?.depots ?? [];

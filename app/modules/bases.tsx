@@ -121,8 +121,8 @@ export default function BasesScreen() {
 
         <Card title="Journal d’auto-apprentissage">
           <Text style={styles.meta}>
-            Pannes résolues — écriture Firestore owner-only quand connecté (pas de VIN stocké). Hors Auth = local
-            mock.
+            Pannes résolues — écriture Firestore owner-only quand connecté (pas de VIN stocké). Hors Auth = journal
+            local AsyncStorage (persistant sur l’appareil).
           </Text>
           <Text style={styles.meta}>Compte : {profile?.email ?? 'non connecté'}</Text>
           <TextInput

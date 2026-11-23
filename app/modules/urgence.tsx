@@ -55,6 +55,7 @@ export default function UrgenceScreen() {
   const [emergencyView, setEmergencyView] = useState<MedicalEmergencyView | null>(null);
   const [scanMsg, setScanMsg] = useState<string | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [sosMsg, setSosMsg] = useState<string | null>(null);
   const [label, setLabel] = useState<string | undefined>();
   const [coords, setCoords] = useState<DeviceCoords | null>(null);
 
@@ -223,18 +224,27 @@ export default function UrgenceScreen() {
             </Pressable>
             <Pressable
               style={styles.share}
-              onPress={() => {
-                const lat = coords?.lat ?? FALLBACK_LAT;
-                const lon = coords?.lon ?? FALLBACK_LON;
-                const src = coords?.source === 'device' ? 'GPS appareil' : 'GPS fallback';
-                void Share.share({
-                  message: `URGENCE — ${src} ${lat}, ${lon}. Code QR : ${scanCode || '—'}.`,
-                });
-              }}
+              onPress={() =>
+                void (async () => {
+                  setSosMsg(null);
+                  const fresh = await getDeviceCoords({ allowFallback: false });
+                  if (!fresh.ok || fresh.data?.source !== 'device') {
+                    const err = !fresh.ok ? fresh.error : 'fallback interdit';
+                    setSosMsg(`Partage SOS refusé — GPS appareil requis (${err}).`);
+                    return;
+                  }
+                  const device = fresh.data;
+                  setCoords(device);
+                  await Share.share({
+                    message: `URGENCE — GPS appareil ${device.lat}, ${device.lon}. Code QR : ${scanCode || '—'}.`,
+                  });
+                })()
+              }
             >
               <Text style={styles.sosTxt}>SMS / partage</Text>
             </Pressable>
           </View>
+          {sosMsg ? <Text style={styles.meta}>{sosMsg}</Text> : null}
         </Card>
 
         <Card title="QR personnel (compte abonné)">
