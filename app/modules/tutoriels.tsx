@@ -14,6 +14,7 @@ import {
   type YoutubeVideoHit,
 } from '../../src/services/youtube/youtubeSearch';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 const EXTRA_TUTORIALS = [
   {
@@ -46,6 +47,7 @@ const EXTRA_TUTORIALS = [
 
 /** Module 11 — schémas locaux + suggestions YouTube (redirection, jamais de vidéo embarquée). */
 export default function TutorielsScreen() {
+  const { t } = useI18n();
   useModuleVisit(11);
   const { active } = useFleet();
   const [query, setQuery] = useState('remplacer plaquettes de frein');
@@ -88,9 +90,9 @@ export default function TutorielsScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Tutoriels' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.tutoriels') }} />
       <Screen
-        variant="stack" title="Tutoriels" subtitle="Module 11 — aucune vidéo embarquée">
+        variant="stack" title={t('moduleTitles.tutoriels')} subtitle={t('moduleTitles.tutorielsSub')}>
         <StubBanner text="Pas de fichier vidéo dans l’app : suggestions YouTube + redirection Watch / recherche" />
 
         <Card title="Rechercher une opération">

@@ -14,6 +14,7 @@ import { OCR_ML_BLOCKED, OEM_CATALOGUE_BLOCKED } from '../../src/services/parts/
 import { parseQuoteTextAmounts } from '../../src/services/quotes/parseQuoteText';
 import type { PartDoc, QuoteDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 const CAT_LABEL: Record<PartDoc['category'], string> = {
   mecanique: 'Mécanique',
@@ -31,6 +32,7 @@ type ScanMode = 'photo' | 'pdf';
 
 /** Module 3 — liste VIN, catalogue, devis pose, tunnel vendeur. */
 export default function PiecesScreen() {
+  const { t } = useI18n();
   useModuleVisit(3);
   const { profile } = useAuth();
   const { active } = useFleet();
@@ -88,11 +90,11 @@ export default function PiecesScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Pièces & devis' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.pieces') }} />
       <Screen
         variant="stack"
-        title="Achats & devis"
-        subtitle={`Module 3 · VIN ${active?.vin ?? '—'} · ${active?.make ?? ''} ${active?.model ?? ''}`}
+        title={t('moduleTitles.pieces')}
+        subtitle={t('moduleTitles.piecesSub')}
       >
         <BackendStatusBanner />
         {label ? <StubBanner text={label} /> : null}

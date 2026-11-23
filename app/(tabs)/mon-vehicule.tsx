@@ -10,7 +10,7 @@ import { VinCameraScanner } from '../../src/components/VinCameraScanner';
 import { useAuth } from '../../src/context/AuthContext';
 import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
-import { fr } from '../../src/i18n/fr';
+import { useI18n } from '../../src/context/I18nContext';
 import { loadCarnet } from '../../src/services/carnet/carnetStorage';
 import { decodeVinRemote } from '../../src/services/firebase';
 import { fetchRecallsByVehicle, type RecallHit } from '../../src/services/recalls/nhtsaRecalls';
@@ -49,6 +49,7 @@ const SEV_FR: Record<string, string> = {
 
 /** Module 1 — onglet obligatoire « Mon véhicule » (CDC). */
 export default function MonVehiculeScreen() {
+  const { t } = useI18n();
   useModuleVisit(1);
   const { profile } = useAuth();
   const { active, vehicles, setActive, upsertVehicle, syncLabel, syncSource } = useFleet();
@@ -194,8 +195,8 @@ export default function MonVehiculeScreen() {
 
   return (
     <Screen
-      title={fr.tabMonVehicule}
-      subtitle="Module 1 — décodage VIN mondial & fiche technique"
+      title={t('tabs.monVehicule')}
+      subtitle={t('monVehicule.subtitle')}
     >
       <BackendStatusBanner />
       <ProgressHero />
@@ -211,7 +212,7 @@ export default function MonVehiculeScreen() {
         onVin={(v) => void onVinFromCamera(v)}
       />
 
-      <Card title="Recherche mondiale par numéro de série (VIN)">
+      <Card title={t('monVehicule.searchTitle')}>
         <Text style={styles.hint}>
           Europe · Amérique du Nord · Australie · Asie — voitures, pick-up et poids lourds.
         </Text>
@@ -253,7 +254,7 @@ export default function MonVehiculeScreen() {
       </Card>
 
       {active ? (
-        <Card title="Fiche technique complète">
+        <Card title={t('monVehicule.ficheTitle')}>
           <Field label="Libellé" value={active.label} />
           <Field label="VIN" value={active.vin ?? '—'} />
           <Field label="Marque" value={active.make} />
@@ -328,13 +329,13 @@ export default function MonVehiculeScreen() {
           )}
         </Card>
       ) : (
-        <Card title="Aucun véhicule actif">
+        <Card title={t('monVehicule.noneTitle')}>
           <Text style={styles.hint}>Décodez un VIN ou ouvrez la flotte (Module 2).</Text>
         </Card>
       )}
 
       {active ? (
-        <Card title="Rappels constructeur (NHTSA recalls)">
+        <Card title={t('monVehicule.recallsTitle')}>
           {recallsLoading ? (
             <Text style={styles.hint}>Chargement NHTSA recallsByVehicle…</Text>
           ) : (
@@ -361,7 +362,7 @@ export default function MonVehiculeScreen() {
       ) : null}
 
       {vehicles.length > 1 ? (
-        <Card title="Basculer rapidement (flotte)">
+        <Card title={t('monVehicule.switchTitle')}>
           <View style={styles.chips}>
             {vehicles.map((v) => (
               <Pressable
@@ -378,7 +379,7 @@ export default function MonVehiculeScreen() {
         </Card>
       ) : null}
 
-      <Card title="Documents & rappels">
+      <Card title={t('monVehicule.docsTitle')}>
         <Text style={styles.hint}>
           Section Mon véhicule — rappels depuis le carnet local (AsyncStorage), pas un mock
           silencieux.

@@ -28,6 +28,7 @@ import {
 import { stubAcoustic } from '../../src/services/stubs';
 import { searchYoutubeVideos, type YoutubeVideoHit } from '../../src/services/youtube/youtubeSearch';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 type PhotoOutcome = {
   kind: 'ok' | 'polite_refuse' | 'captured_pending';
@@ -61,6 +62,7 @@ const HAZARD_KINDS_ACOUSTIC = [
 
 /** Module 4 — diagnostic IA : caméra réelle + Multi-IA texte ; pas de vision fake-success. */
 export default function DiagnosticIaScreen() {
+  const { t } = useI18n();
   useModuleVisit(4);
   const { active } = useFleet();
   const [permission, requestPermission] = useCameraPermissions();
@@ -403,10 +405,10 @@ export default function DiagnosticIaScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Diagnostic IA' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.diagnosticIa') }} />
       <Screen
         variant="stack"
-        title="Diagnostic intelligent"
+        title={t('moduleTitles.diagnosticIa')}
         subtitle={`Module 4 · ${active?.make ?? '—'} ${active?.model ?? ''}`.trim()}
       >
         <StubBanner text={`Caméra LIVE + capture photo · ${VISION_PIXELS_BLOCKED}`} />

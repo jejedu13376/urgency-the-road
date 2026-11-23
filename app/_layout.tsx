@@ -9,6 +9,7 @@ import { StartupGateScreen } from '../src/components/StartupGateScreen';
 import { WeatherBanner } from '../src/components/WeatherBanner';
 import { AuthProvider } from '../src/context/AuthContext';
 import { FleetProvider } from '../src/context/FleetContext';
+import { I18nProvider } from '../src/context/I18nContext';
 import { ProgressProvider } from '../src/context/ProgressContext';
 import { StartupGateProvider, useStartupGate } from '../src/context/StartupGateContext';
 import { colors } from '../src/theme/colors';
@@ -47,15 +48,17 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.paper }}>
       <SafeAreaProvider>
         <AppErrorBoundary>
-          <StartupGateProvider>
-            <AuthProvider>
-              <FleetProvider>
-                <ProgressProvider>
-                  <AppShell />
-                </ProgressProvider>
-              </FleetProvider>
-            </AuthProvider>
-          </StartupGateProvider>
+          <I18nProvider>
+            <StartupGateProvider>
+              <AuthProvider>
+                <FleetProvider>
+                  <ProgressProvider>
+                    <AppShell />
+                  </ProgressProvider>
+                </FleetProvider>
+              </AuthProvider>
+            </StartupGateProvider>
+          </I18nProvider>
         </AppErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>

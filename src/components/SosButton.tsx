@@ -1,16 +1,18 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, usePathname } from 'expo-router';
+import { useI18n } from '../context/I18nContext';
 import { colors } from '../theme/colors';
 
 /** Module 13 — bouton SOS toujours accessible → écran Urgence (112 sur l’écran). */
 export function SosButton() {
   const pathname = usePathname();
+  const { t } = useI18n();
 
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="SOS Urgence médicale — ouvrir le module Urgence"
+        accessibilityLabel={t('sos.a11y')}
         style={({ pressed }) => [styles.btn, pressed && { opacity: 0.85 }]}
         onPress={() => {
           // Already on Urgence → no-op (avoid stacking a duplicate).

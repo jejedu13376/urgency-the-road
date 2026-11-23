@@ -101,6 +101,13 @@
           "cameraPermission": "Urgence Mécanique utilise la caméra pour VIN, diagnostic et devis.",
           "microphonePermission": "Urgence Mécanique utilise le micro pour l’analyseur acoustique moteur (Module 4)."
         }
+      ],
+      [
+        "expo-localization",
+        {
+          "supportsRTL": false,
+          "supportedLocales": ["fr", "en", "es"]
+        }
       ]
     ],
     "scheme": "urgencyroadone",
@@ -111,7 +118,9 @@
       "router": {}
     },
     "locales": {
-      "fr": "./locales/fr.json"
+      "fr": "./locales/fr.json",
+      "en": "./locales/en.json",
+      "es": "./locales/es.json"
     }
   }
 }

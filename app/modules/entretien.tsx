@@ -15,6 +15,7 @@ import {
 } from '../../src/services/carnet/exportCarnet';
 import type { MaintenanceItem } from '../../src/types/modules';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 type AdminReminder = {
   id: string;
@@ -146,6 +147,7 @@ const INITIAL_CARNET: CarnetEntry[] = [
 
 /** Module 10 — entretien prédictif, rappels admin, carnet persisté + share texte/HTML-lite. */
 export default function EntretienScreen() {
+  const { t } = useI18n();
   useModuleVisit(10);
   const { active } = useFleet();
   const km = active?.odometerKm ?? 0;
@@ -258,11 +260,11 @@ export default function EntretienScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Entretien' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.entretien') }} />
       <Screen
         variant="stack"
-        title="Entretien & carnet"
-        subtitle={`Module 10 · ${active?.label ?? 'véhicule'} · ${km.toLocaleString('fr-FR')} km`}
+        title={t('moduleTitles.entretien')}
+        subtitle={t('moduleTitles.entretienSub')}
       >
         <StubBanner text="Carnet persisté + texte/HTML-lite + PDF imprimable LIVE · signature certifiée serveur non branchée" />
 

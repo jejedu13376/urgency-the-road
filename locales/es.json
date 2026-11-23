@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Urgencia Mecánica"
+  },
+  "android": {
+    "app_name": "Urgencia Mecánica"
+  }
+}

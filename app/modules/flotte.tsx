@@ -8,6 +8,7 @@ import { CASCADE } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { colors } from '../../src/theme/colors';
 import type { ContinentCode, Powertrain, VehicleClass, VehicleProfile } from '../../src/types/vehicle';
+import { useI18n } from '../../src/context/I18nContext';
 
 const CASCADE_FAILURES: Record<string, { id: string; title: string; symptoms: string[]; severity: 'faible' | 'moyen' | 'eleve' }[]> = {
   'Renault|Clio V': [
@@ -59,6 +60,7 @@ const CLASS_LABEL: Record<VehicleClass, string> = {
 
 /** Module 2 — sélecteur cascade + multi-flotte. */
 export default function FlotteScreen() {
+  const { t } = useI18n();
   useModuleVisit(2);
   const {
     vehicles,
@@ -153,9 +155,9 @@ export default function FlotteScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Flotte & cascade' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.flotte') }} />
       <Screen
-        variant="stack" title="Sélecteur cascade" subtitle="Module 2 — multi-flotte · Continent → pannes">
+        variant="stack" title={t('moduleTitles.flotte')} subtitle={t('moduleTitles.flotteSub')}>
         <Card title={`Véhicules enregistrés (${vehicles.length})`}>
           <Text style={styles.hint}>
             Activez un véhicule en 1 clic (perso, pick-up, PL). Le véhicule actif alimente VIN / pièces / GPS.
