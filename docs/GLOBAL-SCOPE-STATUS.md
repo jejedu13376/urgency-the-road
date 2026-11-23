@@ -2,12 +2,13 @@
 
 **Scope:** Urgency Road ONLY — Formations never touched.  
 **Repo:** `jejedu13376/urgency-the-road` · store docs `/cursor/stores/self/docs/urgency-road-one/`  
-**Updated:** 2026-11-23 ~13:13 UTC · tip `main` `487204c` (merge #19)
+**Updated:** 2026-11-23 ~13:50 UTC · tip `main` `6d1e127` (merge #22) · #19 `487204c`
 
 ## Code status
 
-**Merged on `main`:** #1–#21 (incl. #19 deferred security/crash, #20 docs sync, #21 Batch E).  
-**Open (deferred bugs):** aucune.
+**Merged on `main`:** #1–#22 (incl. #19 deferred security/crash, #21 Batch E, #22 docs sync).  
+**Open PRs:** aucune.  
+**GitHub Actions:** none configured (no check runs on tip).
 
 | PR | What landed |
 | --- | --- |
@@ -25,6 +26,16 @@
 | #19 | Deferred security/crash — PHI, fleet, appointments, rate-limit, activeId rematch (`487204c`) |
 | #20 | Docs sync post-#12–#18/#16 |
 | #21 | Batch E remaining software stubs |
+| #22 | Docs sync post-#19 (`6d1e127`) |
+
+## Expo local vs deploy tokens
+
+| Without `EXPO_TOKEN` / `FIREBASE_TOKEN` | Needs those (or local login) |
+| --- | --- |
+| `npx expo start` · 17 modules UI | EAS APK (`EXPO_TOKEN` / `eas login`) |
+| Free APIs (NHTSA, Open-Meteo, Photon, Overpass) | `firebase deploy` rules/functions (`FIREBASE_TOKEN` / `firebase login`) |
+| Multi-IA **heuristic** | Live LLM votes (provider keys + proxy URL) |
+| Client Firebase/YouTube via `EXPO_PUBLIC_*` `.env` | — |
 
 ## Deploy / secrets (blocked)
 
