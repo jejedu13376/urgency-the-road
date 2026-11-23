@@ -20,7 +20,7 @@ Dernière mise à jour : 2026-11-23 (UTC)
 
 ## Reste (Urgency Road)
 
-- Déploiement des rules Firestore (`firebase deploy --only firestore:rules` — login Lorenzo requis ; voir `docs/FIREBASE-DEPLOY.md`)
+- **BLOCKER Lorenzo** : déployer les rules Firestore — `firebase login` puis `firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes` (voir `docs/FIREBASE-DEPLOY.md`). Cloud agent ne peut pas auth.
 - Proxy Multi-IA côté serveur (clés LLM jamais en `EXPO_PUBLIC_*`)
 - Merge / finaliser PR #4 (BLE/gate/hosting/perf)
 - Stubs restants : vidéo CDN, OBD BLE hardware, paiements (scaffolds sans faux succès)
@@ -53,4 +53,5 @@ Dernière mise à jour : 2026-11-23 (UTC)
 | 2026-11-22 ~23:29 | PR #3 mergée (`d92795c`) — remint QR médical sur main |
 | 2026-11-22 ~23:30 | PR #4 Bugbot fix `8fdd9bd` ; PR #5 security/Bugbot `5e9fc96` |
 | 2026-11-22 ~23:37 | PR #5 questionnaire busy guard `3399694` |
-| 2026-11-23 ~05:40 UTC | PR #5 Approval Agent OK ; mergée dans `main` (`6fdf9d1`) ; head branch conservée |
+| 2026-11-23 ~05:40 UTC | PR #5 Approval Agent OK ; mergée dans `main` (`6fdf9d153db1c88cede9c5f6c8d4a65babe1b6f7`) ; head branch conservée |
+| 2026-11-23 ~05:41 UTC | Fin stream PR #5 ; blocker restant = deploy Firebase par Lorenzo (`FIREBASE-DEPLOY.md`) |
