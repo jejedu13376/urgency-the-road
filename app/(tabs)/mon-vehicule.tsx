@@ -10,6 +10,7 @@ import { VinCameraScanner } from '../../src/components/VinCameraScanner';
 import { useAuth } from '../../src/context/AuthContext';
 import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
+import { MOCK_MAINTENANCE } from '../../src/data/mocks';
 import { fr } from '../../src/i18n/fr';
 import { decodeVinRemote } from '../../src/services/firebase';
 import { fetchRecallsByVehicle, type RecallHit } from '../../src/services/recalls/nhtsaRecalls';
@@ -350,11 +351,44 @@ export default function MonVehiculeScreen() {
         </Card>
       ) : null}
 
-      <Link href="/modules/flotte" asChild>
-        <Pressable style={styles.linkBtn}>
-          <Text style={styles.linkTxt}>Module 2 — sélecteur cascade & multi-flotte →</Text>
-        </Pressable>
-      </Link>
+      <Card title="Documents & rappels">
+        <Text style={styles.hint}>
+          Section Mon véhicule — infos, flotte, carnet & échéances (mock entretien).
+        </Text>
+        {MOCK_MAINTENANCE.filter((m) => m.status !== 'fait')
+          .slice(0, 3)
+          .map((m) => (
+            <View key={m.id} style={styles.fail}>
+              <Text style={styles.failTitle}>{m.title}</Text>
+              <Text style={styles.failBody}>
+                {m.dueDateIso ? `Échéance ${m.dueDateIso}` : `À ${m.dueKm.toLocaleString('fr-FR')} km`}
+                {' · '}
+                {m.status === 'a_faire' ? 'à faire' : 'planifié'}
+              </Text>
+            </View>
+          ))}
+        <Link href="/modules/entretien" asChild>
+          <Pressable style={styles.linkBtn}>
+            <Text style={styles.linkTxt}>M10 — entretien, documents & carnet PDF →</Text>
+          </Pressable>
+        </Link>
+        <Link href="/modules/flotte" asChild>
+          <Pressable style={styles.linkBtn}>
+            <Text style={styles.linkTxt}>M2 — sélecteur cascade & multi-flotte →</Text>
+          </Pressable>
+        </Link>
+        <Link href="/modules/parametres" asChild>
+          <Pressable style={styles.linkBtn}>
+            <Text style={styles.linkTxt}>Paramètres (préférences · compte) →</Text>
+          </Pressable>
+        </Link>
+        <Link href="/modules/fournitures" asChild>
+          <Pressable style={styles.linkBtn}>
+            <Text style={styles.linkTxt}>Je fournis / L’app fournit →</Text>
+          </Pressable>
+        </Link>
+      </Card>
+
       <Link href="/modules/pieces" asChild>
         <Pressable style={styles.linkBtn}>
           <Text style={styles.linkTxt}>Module 3 — pièces & devis pour ce VIN →</Text>

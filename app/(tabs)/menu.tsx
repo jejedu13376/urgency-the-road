@@ -1,22 +1,24 @@
 import { Link } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
+import { Card } from '../../src/components/Card';
 import { ProgressHero } from '../../src/components/ProgressHero';
 import { Screen } from '../../src/components/Screen';
 import { useProgress } from '../../src/context/ProgressContext';
 import { MODULES } from '../../src/data/modulesMeta';
+import { NAV_SECTIONS } from '../../src/data/navSections';
 import { fr } from '../../src/i18n/fr';
 import { colors } from '../../src/theme/colors';
 import type { ModuleId } from '../../src/types/modules';
 
-/** Menu — parcours vendeur 17 modules + streak / XP / badges (ProgressHero). */
+/** Menu — sections claires + parcours vendeur 17 modules (ProgressHero). */
 export default function MenuScreen() {
   const { visited, streakDays, xp, completionPct, badges } = useProgress();
   const done = new Set(visited);
   const next = MODULES.find((m) => !done.has(m.id as ModuleId));
 
   return (
-    <Screen title={fr.appName} subtitle="Parcours vendeur — 17 modules">
+    <Screen title={fr.appName} subtitle="Sections · parcours vendeur — 17 modules">
       <BackendStatusBanner />
       <ProgressHero />
 
@@ -33,6 +35,29 @@ export default function MenuScreen() {
           <Text style={styles.sellerHint}>Parcours complet — Maître des 17 débloqué.</Text>
         )}
       </View>
+
+      <Text style={styles.section}>{fr.navSectionsTitle}</Text>
+      {NAV_SECTIONS.map((sec) => (
+        <Card key={sec.id} title={sec.title}>
+          <Text style={styles.secSub}>{sec.subtitle}</Text>
+          <Link href={sec.href as never} asChild>
+            <Pressable style={styles.hubBtn}>
+              <Text style={styles.hubTxt}>Ouvrir {sec.title} →</Text>
+            </Pressable>
+          </Link>
+          {sec.links.map((link) => (
+            <Link key={link.id} href={link.href as never} asChild>
+              <Pressable style={styles.linkRow}>
+                {link.moduleTag ? <Text style={styles.id}>{link.moduleTag}</Text> : null}
+                <View style={styles.linkBody}>
+                  <Text style={styles.linkTitle}>{link.title}</Text>
+                  <Text style={styles.linkShort}>{link.short}</Text>
+                </View>
+              </Pressable>
+            </Link>
+          ))}
+        </Card>
+      ))}
 
       <Text style={styles.section}>Continuer le parcours</Text>
       <View style={styles.grid}>
@@ -69,6 +94,28 @@ const styles = StyleSheet.create({
   sellerTxt: { color: colors.ink, fontWeight: '800', fontSize: 13 },
   sellerHint: { color: colors.slate, fontSize: 12, fontWeight: '600' },
   section: { fontWeight: '800', color: colors.ink, fontSize: 14, marginTop: 4 },
+  secSub: { color: colors.muted, fontSize: 12, marginBottom: 4 },
+  hubBtn: {
+    backgroundColor: colors.signalSoft,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.signal,
+    marginBottom: 4,
+  },
+  hubTxt: { color: colors.signal, fontWeight: '800', fontSize: 13 },
+  linkRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+    alignItems: 'flex-start',
+  },
+  linkBody: { flex: 1, gap: 2 },
+  linkTitle: { fontWeight: '700', color: colors.ink, fontSize: 13 },
+  linkShort: { color: colors.muted, fontSize: 11 },
   grid: { gap: 10 },
   tile: {
     backgroundColor: colors.white,
