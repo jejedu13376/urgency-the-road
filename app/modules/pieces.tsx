@@ -90,6 +90,7 @@ export default function PiecesScreen() {
     <>
       <Stack.Screen options={{ title: 'Pièces & devis' }} />
       <Screen
+        variant="stack"
         title="Achats & devis"
         subtitle={`Module 3 · VIN ${active?.vin ?? '—'} · ${active?.make ?? ''} ${active?.model ?? ''}`}
       >
@@ -347,11 +348,20 @@ export default function PiecesScreen() {
                 manualPartPrice: hasManual ? (partOk ? partN : 0) : undefined,
                 manualLaborPrice: hasManual ? (laborOk ? laborN : 0) : undefined,
               }).then((r) => {
+                // Local market compare is always useful; never imply Firestore sync on ok:false.
                 setScanQuote(r.data.quote);
+                const syncBit =
+                  r.ok === false
+                    ? ` · ${r.stubLabel ?? 'SOFT devis — sync refusée (ok:false, comparaison locale)'}`
+                    : !profile
+                      ? ' · local (connectez-vous pour sync)'
+                      : r.stubLabel
+                        ? ` · ${r.stubLabel}`
+                        : '';
                 setScanLabel(
                   `${r.data.scanLabel ?? 'Scan'} · ${scanMode}${
                     hasManual ? ' · saisie manuelle' : ' · heuristique'
-                  }${!profile ? ' · local (connectez-vous pour sync)' : ''}`,
+                  }${syncBit}`,
                 );
               });
             }}

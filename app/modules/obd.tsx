@@ -128,19 +128,31 @@ export default function ObdScreen() {
       const ownerUid = profile?.uid ?? 'mock-local-user';
       const vehicleId = active?.id ?? 'unknown';
       const res = await readObdSnapshot(ownerUid, vehicleId, protocol);
-      setReading(res.data);
-      setLabel(
-        res.stubLabel ??
-          (res.source === 'firebase'
-            ? 'Lecture enregistrée Firestore'
-            : !profile
-              ? 'OBD local — connexion requise pour historique live'
-              : undefined),
-      );
-      setCleared(false);
-      setSelectedDtc(res.data.dtcCodes[0]?.code ?? null);
-      const hist = await listObdHistory(vehicleId, profile?.uid);
-      setHistory(hist.data);
+      if (res.ok === false) {
+        // Soft-fail / permission — do not hydrate mock DTCs as a successful read.
+        setReading(null);
+        setSelectedDtc(null);
+        setHistory([]);
+        setLabel(res.stubLabel ?? 'Lecture OBD refusée (soft-fail)');
+        setCleared(false);
+      } else {
+        setReading(res.data);
+        setLabel(
+          res.stubLabel ??
+            (res.source === 'firebase'
+              ? 'Lecture enregistrée Firestore'
+              : !profile
+                ? 'OBD local — connexion requise pour historique live'
+                : undefined),
+        );
+        setCleared(false);
+        setSelectedDtc(res.data.dtcCodes[0]?.code ?? null);
+        const hist = await listObdHistory(vehicleId, profile?.uid);
+        setHistory(hist.ok === false ? [] : hist.data);
+        if (hist.ok === false && hist.stubLabel) {
+          setLabel((cur) => [cur, hist.stubLabel].filter(Boolean).join(' · '));
+        }
+      }
     } finally {
       setBusy(false);
     }
@@ -220,6 +232,7 @@ export default function ObdScreen() {
     <>
       <Stack.Screen options={{ title: 'Valise OBD' }} />
       <Screen
+        variant="stack"
         title="Diagnostic OBD / PL"
         subtitle={`Module 5 — Bluetooth / Wi-Fi / USB${active ? ` · ${active.make} ${active.model}` : ''}`}
       >

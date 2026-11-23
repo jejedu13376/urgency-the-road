@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useFocusEffect } from 'expo-router';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
 import { ProgressHero } from '../../src/components/ProgressHero';
@@ -10,11 +10,12 @@ import { VinCameraScanner } from '../../src/components/VinCameraScanner';
 import { useAuth } from '../../src/context/AuthContext';
 import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
-import { MOCK_MAINTENANCE } from '../../src/data/mocks';
 import { fr } from '../../src/i18n/fr';
+import { loadCarnet } from '../../src/services/carnet/carnetStorage';
 import { decodeVinRemote } from '../../src/services/firebase';
 import { fetchRecallsByVehicle, type RecallHit } from '../../src/services/recalls/nhtsaRecalls';
 import { colors } from '../../src/theme/colors';
+import type { MaintenanceItem } from '../../src/types/modules';
 import type { VehicleProfile } from '../../src/types/vehicle';
 
 const POWERTRAIN_FR: Record<string, string> = {
@@ -60,11 +61,37 @@ export default function MonVehiculeScreen() {
   const [recallLabel, setRecallLabel] = useState<string | null>(null);
   const [recallsLoading, setRecallsLoading] = useState(false);
   const [odoDraft, setOdoDraft] = useState(active ? String(active.odometerKm) : '');
+  const [reminders, setReminders] = useState<MaintenanceItem[]>([]);
+  const [remindersLabel, setRemindersLabel] = useState<string | null>(null);
 
   useEffect(() => {
     if (active?.vin) setVin(active.vin);
     if (active) setOdoDraft(String(active.odometerKm));
   }, [active?.id, active?.vin, active?.odometerKm]);
+
+  // Reload on focus so returning from Entretien (M10) refreshes AsyncStorage rappels.
+  useFocusEffect(
+    useCallback(() => {
+      const vehicleKey = active?.id ?? active?.vin ?? 'default';
+      let cancelled = false;
+      void (async () => {
+        const stored = await loadCarnet(vehicleKey);
+        if (cancelled) return;
+        const open = (stored?.maintenance ?? []).filter((m) => m.status !== 'fait').slice(0, 3);
+        setReminders(open);
+        setRemindersLabel(
+          stored
+            ? open.length
+              ? null
+              : 'Carnet local — aucun rappel ouvert'
+            : 'Aucun carnet local — ouvrez Entretien (M10) pour en créer un',
+        );
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [active?.id, active?.vin]),
+  );
 
   useEffect(() => {
     if (!active?.make || !active?.model || !active?.year) {
@@ -353,20 +380,22 @@ export default function MonVehiculeScreen() {
 
       <Card title="Documents & rappels">
         <Text style={styles.hint}>
-          Section Mon véhicule — infos, flotte, carnet & échéances (mock entretien).
+          Section Mon véhicule — rappels depuis le carnet local (AsyncStorage), pas un mock
+          silencieux.
         </Text>
-        {MOCK_MAINTENANCE.filter((m) => m.status !== 'fait')
-          .slice(0, 3)
-          .map((m) => (
-            <View key={m.id} style={styles.fail}>
-              <Text style={styles.failTitle}>{m.title}</Text>
-              <Text style={styles.failBody}>
-                {m.dueDateIso ? `Échéance ${m.dueDateIso}` : `À ${m.dueKm.toLocaleString('fr-FR')} km`}
-                {' · '}
-                {m.status === 'a_faire' ? 'à faire' : 'planifié'}
-              </Text>
-            </View>
-          ))}
+        {remindersLabel ? <Text style={styles.hint}>{remindersLabel}</Text> : null}
+        {reminders.map((m) => (
+          <View key={m.id} style={styles.fail}>
+            <Text style={styles.failTitle}>{m.title}</Text>
+            <Text style={styles.failBody}>
+              {m.dueDateIso
+                ? `Échéance ${m.dueDateIso}`
+                : `À ${(m.dueKm ?? 0).toLocaleString('fr-FR')} km`}
+              {' · '}
+              {m.status === 'a_faire' ? 'à faire' : 'planifié'}
+            </Text>
+          </View>
+        ))}
         <Link href="/modules/entretien" asChild>
           <Pressable style={styles.linkBtn}>
             <Text style={styles.linkTxt}>M10 — entretien, documents & carnet PDF →</Text>

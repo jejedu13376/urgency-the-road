@@ -26,7 +26,7 @@ export async function createInsuranceClaim(
     return liveResult({ ...owned, id: ref.id });
   } catch (e) {
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult(owned, 'SOFT insurance — permission/DEV (local)');
+      return failResult(owned, 'SOFT insurance — permission/DEV (local, ok:false)');
     }
     return failResult(owned, e instanceof Error ? e.message : 'Sinistre refusé');
   }
@@ -51,7 +51,7 @@ export async function listInsuranceClaims(
     );
   } catch (e) {
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult([], 'SOFT insurance list — permission/DEV');
+      return failResult([], 'SOFT insurance list — permission/DEV (vide, ok:false)');
     }
     return failResult([], e instanceof Error ? e.message : 'Lecture sinistres refusée');
   }

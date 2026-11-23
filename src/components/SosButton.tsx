@@ -1,17 +1,22 @@
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { router, usePathname } from 'expo-router';
 import { colors } from '../theme/colors';
 
-/** Module 13 — bouton SOS toujours accessible. */
+/** Module 13 — bouton SOS toujours accessible → écran Urgence (112 sur l’écran). */
 export function SosButton() {
+  const pathname = usePathname();
+
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="SOS Urgence médicale"
+        accessibilityLabel="SOS Urgence médicale — ouvrir le module Urgence"
         style={({ pressed }) => [styles.btn, pressed && { opacity: 0.85 }]}
         onPress={() => {
-          // FR défaut — numéro d'urgence européen; pas de géolocalisation live forcée ici
-          void Linking.openURL('tel:112');
+          // Already on Urgence → no-op (avoid stacking a duplicate).
+          if (pathname?.includes('/modules/urgence')) return;
+          // push (not replace) so tab/module history keeps a back path.
+          router.push('/modules/urgence');
         }}
       >
         <Text style={styles.txt}>SOS</Text>

@@ -1,41 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Link, Stack } from 'expo-router';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
+import {
+  DEFAULT_LOCAL_NOTIFS,
+  DEFAULT_LOCAL_PREFS,
+  loadLocalNotifs,
+  loadLocalPrefs,
+  saveLocalNotifs,
+  saveLocalPrefs,
+  type LocalNotifs,
+  type LocalPrefs,
+} from '../../src/services/prefs/localPrefs';
 import { colors } from '../../src/theme/colors';
-
-const PREFS_KEY = 'um.parametres.prefs.v1';
-const NOTIF_KEY = 'um.parametres.notif.v1';
-
-type Prefs = {
-  metricUnits: boolean;
-  darkChrome: boolean;
-  showWeather: boolean;
-};
-
-type Notifs = {
-  entretien: boolean;
-  sos: boolean;
-  fil: boolean;
-  marketing: boolean;
-};
-
-const DEFAULT_PREFS: Prefs = {
-  metricUnits: true,
-  darkChrome: false,
-  showWeather: true,
-};
-
-const DEFAULT_NOTIFS: Notifs = {
-  entretien: true,
-  sos: true,
-  fil: false,
-  marketing: false,
-};
 
 /**
  * Hub Paramètres — préférences / notifications locales + liens Compte (M15) / Bases (M14).
@@ -43,21 +23,18 @@ const DEFAULT_NOTIFS: Notifs = {
  */
 export default function ParametresHub() {
   const { profile } = useAuth();
-  const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
-  const [notifs, setNotifs] = useState<Notifs>(DEFAULT_NOTIFS);
+  const [prefs, setPrefs] = useState<LocalPrefs>(DEFAULT_LOCAL_PREFS);
+  const [notifs, setNotifs] = useState<LocalNotifs>(DEFAULT_LOCAL_NOTIFS);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const [pRaw, nRaw] = await Promise.all([
-          AsyncStorage.getItem(PREFS_KEY),
-          AsyncStorage.getItem(NOTIF_KEY),
-        ]);
+        const [p, n] = await Promise.all([loadLocalPrefs(), loadLocalNotifs()]);
         if (cancelled) return;
-        if (pRaw) setPrefs({ ...DEFAULT_PREFS, ...(JSON.parse(pRaw) as Prefs) });
-        if (nRaw) setNotifs({ ...DEFAULT_NOTIFS, ...(JSON.parse(nRaw) as Notifs) });
+        setPrefs(p);
+        setNotifs(n);
       } catch {
         /* mock local — ignore corrupt */
       } finally {
@@ -69,18 +46,18 @@ export default function ParametresHub() {
     };
   }, []);
 
-  const patchPrefs = useCallback(async (patch: Partial<Prefs>) => {
+  const patchPrefs = useCallback(async (patch: Partial<LocalPrefs>) => {
     setPrefs((prev) => {
       const next = { ...prev, ...patch };
-      void AsyncStorage.setItem(PREFS_KEY, JSON.stringify(next));
+      void saveLocalPrefs(next);
       return next;
     });
   }, []);
 
-  const patchNotifs = useCallback(async (patch: Partial<Notifs>) => {
+  const patchNotifs = useCallback(async (patch: Partial<LocalNotifs>) => {
     setNotifs((prev) => {
       const next = { ...prev, ...patch };
-      void AsyncStorage.setItem(NOTIF_KEY, JSON.stringify(next));
+      void saveLocalNotifs(next);
       return next;
     });
   }, []);
@@ -88,7 +65,11 @@ export default function ParametresHub() {
   return (
     <>
       <Stack.Screen options={{ title: 'Paramètres' }} />
-      <Screen title="Paramètres" subtitle="Préférences · notifications · compte">
+      <Screen
+        variant="stack"
+        title="Paramètres"
+        subtitle="Préférences · notifications · compte"
+      >
         <StubBanner text="MOCK local — préférences / notifications AsyncStorage (pas de push distant)" />
 
         <Card title="Compte">
@@ -98,13 +79,21 @@ export default function ParametresHub() {
               : 'Non connecté — ouvrez Compte pour auth / abonnements.'}
           </Text>
           <Link href="/modules/compte" asChild>
-            <Pressable style={styles.linkRow}>
+            <Pressable
+              style={styles.linkRow}
+              accessibilityRole="button"
+              accessibilityLabel="Ouvrir Compte et abonnements"
+            >
               <Text style={styles.id}>M15</Text>
               <Text style={styles.linkTxt}>Compte & abonnements →</Text>
             </Pressable>
           </Link>
           <Link href="/modules/bases" asChild>
-            <Pressable style={styles.linkRow}>
+            <Pressable
+              style={styles.linkRow}
+              accessibilityRole="button"
+              accessibilityLabel="Ouvrir Bases auto-évolutives"
+            >
               <Text style={styles.id}>M14</Text>
               <Text style={styles.linkTxt}>Bases auto-évolutives (OTA) →</Text>
             </Pressable>
@@ -122,15 +111,19 @@ export default function ParametresHub() {
                 onChange={(v) => void patchPrefs({ metricUnits: v })}
               />
               <ToggleRow
-                label="Chrome sombre (aperçu local)"
+                label="Chrome sombre (stocké — thème pas encore branché)"
                 value={prefs.darkChrome}
                 onChange={(v) => void patchPrefs({ darkChrome: v })}
               />
               <ToggleRow
-                label="Bandeau météo au démarrage"
+                label="Bandeau météo (onglets)"
                 value={prefs.showWeather}
                 onChange={(v) => void patchPrefs({ showWeather: v })}
               />
+              <Text style={styles.hint}>
+                « Bandeau météo » masque le chip sur les onglets. Sur /modules/* le bandeau est
+                déjà masqué pour ne pas chevaucher le header Stack.
+              </Text>
             </>
           )}
         </Card>
@@ -184,6 +177,7 @@ function ToggleRow({
     <View style={styles.toggleRow}>
       <Text style={styles.toggleLabel}>{label}</Text>
       <Switch
+        accessibilityLabel={label}
         value={value}
         onValueChange={onChange}
         trackColor={{ false: colors.line, true: colors.signalSoft }}

@@ -35,9 +35,17 @@ export async function getGpsPrefs(ownerUid: string): Promise<ServiceResult<GpsPr
     if (!snap.exists()) return liveResult(fallback);
     return liveResult({ id: snap.id, ...(snap.data() as Omit<GpsPrefsDoc, 'id'>) });
   } catch (e) {
-    return mockResult(
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return failResult(
+        fallback,
+        isPermissionDenied(e)
+          ? 'SOFT GPS prefs — permission refusée (défauts locaux, ok:false)'
+          : 'SOFT GPS prefs — DEV (défauts locaux, ok:false)',
+      );
+    }
+    return failResult(
       fallback,
-      e instanceof Error ? `GPS prefs mock — ${e.message}` : 'GPS prefs mock',
+      e instanceof Error ? `GPS prefs lecture refusée — ${e.message}` : 'GPS prefs lecture refusée',
     );
   }
 }
@@ -55,7 +63,7 @@ export async function saveGpsPrefs(prefs: GpsPrefsDoc): Promise<ServiceResult<Gp
     return liveResult(owned);
   } catch (e) {
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult(owned, 'SOFT GPS prefs save — permission/DEV (local)');
+      return failResult(owned, 'SOFT GPS prefs save — permission/DEV (local, ok:false)');
     }
     return failResult(owned, e instanceof Error ? e.message : 'GPS prefs save refusé');
   }

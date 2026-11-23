@@ -126,7 +126,8 @@ export default function CompteScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Compte' }} />
-      <Screen title="Compte & abonnements" subtitle="Module 15">
+      <Screen
+        variant="stack" title="Compte & abonnements" subtitle="Module 15">
         <BackendStatusBanner />
         <StubBanner text={paymentsStatusLabel()} />
 

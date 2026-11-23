@@ -26,15 +26,21 @@ export async function listRoadHazards(): Promise<ServiceResult<RoadHazardDoc[]>>
     const snap = await getDocs(
       query(collection(fb.db, COLLECTIONS.roadHazards), orderBy('createdAt', 'desc'), limit(40)),
     );
-    if (snap.empty) return mockResult(MOCK_HAZARDS, 'MOCK hazards — Firestore vide');
+    if (snap.empty) {
+      return liveResult([], 'Signalements Firestore vide — aucune épingle (pas de mock)');
+    }
     return liveResult(
       snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<RoadHazardDoc, 'id'>) })),
     );
   } catch (e) {
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult(MOCK_HAZARDS, 'SOFT hazards — permission/DEV (mock pins)');
+      return failResult(
+        [],
+        isPermissionDenied(e)
+          ? 'SOFT hazards — permission refusée (liste vide, UI charge)'
+          : 'SOFT hazards — DEV (liste vide, pas de pins mock)',
+      );
     }
-    // Empty + ok:false — never ship MOCK pins as a firebase-looking failure (GPS checks ok).
     return failResult([], e instanceof Error ? e.message : 'Lecture signalements refusée');
   }
 }
@@ -60,7 +66,7 @@ export async function reportHazard(
     return liveResult({ ...owned, id: ref.id });
   } catch (e) {
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult(owned, 'SOFT hazard report — permission/DEV (local)');
+      return failResult(owned, 'SOFT hazard report — permission/DEV (local, ok:false)');
     }
     return failResult(owned, e instanceof Error ? e.message : 'Signalement refusé');
   }

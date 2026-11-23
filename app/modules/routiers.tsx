@@ -105,6 +105,7 @@ export default function RoutiersScreen() {
     <>
       <Stack.Screen options={{ title: 'Routiers' }} />
       <Screen
+        variant="stack"
         title="Module routiers"
         subtitle={`Module 8 — pesage & dépôts${active?.vehicleClass === 'poids_lourd' ? ' · véhicule PL actif' : ''}`}
       >

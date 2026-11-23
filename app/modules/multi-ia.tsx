@@ -135,7 +135,8 @@ export default function MultiIaScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Multi-IA' }} />
-      <Screen title="Routeur multi-IA" subtitle="Module 6 — coach vocal + chat + YouTube">
+      <Screen
+        variant="stack" title="Routeur multi-IA" subtitle="Module 6 — coach vocal + chat + YouTube">
         <StubBanner text="Multi-IA : heuristique croisée ; LIVE via proxy serveur uniquement ; recalls NHTSA + YouTube" />
 
         {needVerify ? (
@@ -250,8 +251,9 @@ export default function MultiIaScreen() {
             </Text>
           </Pressable>
           {recallLabel ? <Text style={styles.meta}>{recallLabel}</Text> : null}
-          {recallsVisible
-            ? (recalls.length ? recalls : []).map((r) => (
+          {recallsVisible ? (
+            recalls.length ? (
+              recalls.map((r) => (
                 <View key={r.id} style={styles.recallRow}>
                   <Text style={styles.recallTitle}>{r.title}</Text>
                   <Text style={styles.meta}>
@@ -260,7 +262,12 @@ export default function MultiIaScreen() {
                   </Text>
                 </View>
               ))
-            : null}
+            ) : (
+              <Text style={styles.meta}>
+                Aucun rappel pour ce véhicule / région (NHTSA vide ou non chargé).
+              </Text>
+            )
+          ) : null}
           <Text style={styles.hint}>
             API NHTSA gratuite (NA). EU/AU TSB : à croiser via proxy Multi-IA quand disponible.
           </Text>

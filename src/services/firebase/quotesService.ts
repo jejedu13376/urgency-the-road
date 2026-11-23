@@ -143,7 +143,7 @@ export async function createQuote(
     return liveResult({ ...payload, id: ref.id });
   } catch (e) {
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult(payload, 'SOFT quote — permission/DEV (local)');
+      return failResult(payload, 'SOFT quote — permission/DEV (local, ok:false)');
     }
     return failResult(payload, e instanceof Error ? e.message : 'Création devis refusée');
   }
@@ -186,7 +186,7 @@ export async function listQuotes(ownerUid: string): Promise<ServiceResult<QuoteD
     return liveResult(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<QuoteDoc, 'id'>) })));
   } catch (e) {
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult([], 'SOFT quotes list — permission/DEV (vide mock)');
+      return failResult([], 'SOFT quotes list — permission/DEV (vide, ok:false)');
     }
     return failResult([], e instanceof Error ? e.message : 'Lecture devis refusée');
   }

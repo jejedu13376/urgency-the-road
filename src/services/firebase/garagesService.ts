@@ -166,7 +166,7 @@ export async function submitGarageRating(
     return liveResult({ ...owned, id: ref.id });
   } catch (e) {
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult(owned, 'SOFT garage rating — permission/DEV (local)');
+      return failResult(owned, 'SOFT garage rating — permission/DEV (local, ok:false)');
     }
     return failResult(owned, e instanceof Error ? e.message : 'Note garage refusée');
   }

@@ -194,6 +194,15 @@ export default function FilMecaniqueScreen() {
         {uploadMsg ? <Text style={styles.warn}>{uploadMsg}</Text> : null}
       </Card>
 
+      {posts.length === 0 ? (
+        <Card title="Fil vide">
+          <Text style={styles.meta}>
+            Aucune publication pour l’instant — écrivez un conseil ci-dessus ou tirez pour
+            rafraîchir. Soft-fail Firebase n’injecte plus de posts mock.
+          </Text>
+        </Card>
+      ) : null}
+
       {posts.map((p) => {
         const isLocalVideo =
           p.mediaKind === 'video_local' ||

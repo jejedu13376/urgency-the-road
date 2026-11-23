@@ -82,7 +82,8 @@ export default function BasesScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Bases & OTA' }} />
-      <Screen title="Bases évolutives" subtitle="Module 14 — auto-apprentissage & OTA">
+      <Screen
+        variant="stack" title="Bases évolutives" subtitle="Module 14 — auto-apprentissage & OTA">
         <StubBanner
           text={
             label ??
