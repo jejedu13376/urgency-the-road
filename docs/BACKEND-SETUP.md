@@ -1,6 +1,7 @@
 # Backend setup — Urgence Mécanique (Lorenzo)
 
-**Project:** `/home/ubuntu/Axarel/urgency-road-one` (mirror: `/cursor/stores/self/urgency-road-one/`)  
+**Repo:** `jejedu13376/urgency-the-road` (clone path e.g. `/path/to/urgency-the-road`)  
+**Store mirror:** `/cursor/stores/self/urgency-road-one/` · docs `/cursor/stores/self/docs/urgency-road-one/`  
 **Formations:** untouched — separate project.  
 **Code is already wired.** Once you paste keys into `.env` and restart Expo, Auth / Firestore / YouTube connect **without further code changes**.
 
@@ -34,7 +35,7 @@
 ### 5. Paste into `.env` (placeholders only in repo)
 
 ```bash
-cd /home/ubuntu/Axarel/urgency-road-one   # or your Windows store path
+cd /path/to/urgency-the-road
 cp .env.example .env
 ```
 
@@ -50,17 +51,19 @@ Fill **only** these (leave empty in git; never commit real values):
 | `appId` | `EXPO_PUBLIC_FIREBASE_APP_ID` |
 | `measurementId` (optional) | `EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID` |
 
+CDN/npm field reference (web snippets only): store `FIREBASE-CDN.md` / repo `docs/urgency-road-one/FIREBASE-CDN.md`.
+
 ### 6. Deploy rules (once CLI is installed)
 
-**Full guide:** `docs/FIREBASE-DEPLOY.md` (exact `firebase deploy --only firestore:rules` steps).
+**Full guide:** `docs/FIREBASE-DEPLOY.md`. Post-secrets order: `docs/DEPLOY-CHECKLIST.md`.
 
 ```bash
-cd /home/ubuntu/Axarel/urgency-road-one
+cd /path/to/urgency-the-road
 npm i -g firebase-tools
 firebase login
 firebase use   # reads firebase/.firebaserc (default: urgency-road) or:
 # firebase use "$(grep '^EXPO_PUBLIC_FIREBASE_PROJECT_ID=' .env | cut -d= -f2)"
-firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes
+firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes --project urgency-road
 ```
 
 ### 7. Restart the app
@@ -92,17 +95,10 @@ Banner should show **Firebase configuré**. Module 15 → S’inscrire / Connexi
 
 ### 3. Paste into `.env`
 
-Same variable as `docs/ENV-YOUTUBE.env` / store `ENV-YOUTUBE.env`:
+Same variable as `.env.example` (and the store helper `ENV-YOUTUBE.env` — **placeholder only**; never commit a real key there):
 
 ```bash
 EXPO_PUBLIC_YOUTUBE_API_KEY=
-```
-
-Or copy:
-
-```bash
-# from store docs helper
-# EXPO_PUBLIC_YOUTUBE_API_KEY=<paste>
 ```
 
 Restart: `npx expo start -c`. Banner shows **YouTube API clé OK**. Modules 6 / 11 call `search.list` and open `youtube.com/watch?v=…` (no embedded files).
@@ -131,11 +127,11 @@ Without the key → fallback YouTube **search results URL** only (no fake video 
 
 Code ships in `firebase/functions/` (HTTPS `multiIa`). **Do not** put LLM keys in `EXPO_PUBLIC_*`.
 
-Full steps + exact secret names: **`docs/MULTI-IA-PROXY.md`**.
+Full steps + exact secret names: **`docs/MULTI-IA-PROXY.md`**. Deploy order: **`docs/DEPLOY-CHECKLIST.md`**.
 
 ```bash
 cd firebase/functions && npm install && npm run build && cd ../..
-firebase deploy --config firebase/firebase.json --only functions:multiIa
+firebase deploy --config firebase/firebase.json --only functions:multiIa --project urgency-road
 # then in app .env:
 # EXPO_PUBLIC_MULTI_IA_PROXY_URL=https://us-central1-<PROJECT_ID>.cloudfunctions.net/multiIa
 ```
@@ -145,6 +141,7 @@ Live votes require Module 15 sign-in (Firebase ID token). Without proxy URL → 
 ## E) Optional later
 
 - Payments: `EXPO_PUBLIC_STRIPE_CHECKOUT_BASE` / `EXPO_PUBLIC_PAYPAL_CHECKOUT_BASE` (Module 15).
+- Install share: `EXPO_PUBLIC_INSTALL_URL` (Module 16) — set after EAS APK.
 - OBD BLE: Dev Client + `react-native-ble-plx` (Module 5).
 - Prefer moving YouTube key to a Cloud Function before production scale.
 

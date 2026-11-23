@@ -74,7 +74,7 @@ firebase deploy --config firebase/firebase.json --only firestore:rules,firestore
 ### 3. Select project
 
 ```bash
-cd /path/to/urgency-road-one   # or Axarel / store clone
+cd /path/to/urgency-the-road   # GitHub repo jejedu13376/urgency-the-road
 # Option A — use .firebaserc
 firebase use
 
@@ -85,8 +85,10 @@ firebase use "$(grep '^EXPO_PUBLIC_FIREBASE_PROJECT_ID=' .env | cut -d= -f2)"
 ### 4. Deploy rules + indexes only
 
 ```bash
-firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes
+firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes --project urgency-road
 ```
+
+> **Hosting:** `firebase/firebase.json` has no Firebase Hosting target. Installable builds = EAS (`docs/EAS-RUNBOOK.md` / `docs/HOSTING-RESTORE.md`). Full post-secrets order: `docs/DEPLOY-CHECKLIST.md`.
 
 Success looks like:
 

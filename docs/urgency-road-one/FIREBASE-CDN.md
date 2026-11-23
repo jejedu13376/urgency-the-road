@@ -2,6 +2,8 @@
 
 Reference only — Expo app uses `EXPO_PUBLIC_FIREBASE_*` from local `.env` (gitignored). **Never commit real keys.** Placeholders only below.
 
+**Not a deploy guide.** CLI deploy (rules / indexes / functions) → repo `docs/FIREBASE-DEPLOY.md`. Post-secrets order → `docs/DEPLOY-CHECKLIST.md`.
+
 App wiring: `src/firebase/config.ts` reads the same seven `EXPO_PUBLIC_FIREBASE_*` keys (Auth + Firestore). Analytics via CDN/`getAnalytics` is **web-only**; the RN app does not call it.
 
 ## CDN

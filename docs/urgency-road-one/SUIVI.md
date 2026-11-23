@@ -1,58 +1,75 @@
 # Urgency Road — suivi
 
-Dernière mise à jour : 2026-11-23 ~06:24 UTC
+Dernière mise à jour : 2026-11-23 ~11:45 UTC
 
-## Fait
+## Fait (code sur `main`)
 
-- Clés PayPal rangées dans `.env` (`PAYPAL_CLIENT_ID`, `PAYPAL_SECRET`) — ne pas coller dans le chat
-- Clé YouTube rangée (`EXPO_PUBLIC_YOUTUBE_API_KEY`)
-- Config Firebase web rangée (`EXPO_PUBLIC_FIREBASE_*` + alias `FIREBASE_*`) ; snippet CDN/npm dans `FIREBASE-CDN.md`
-- Wiring app vérifié : `src/firebase/config.ts` = 7 clés `EXPO_PUBLIC_FIREBASE_*` (aligné CDN) ; dep `firebase@^13.4.0` ; Analytics RN non branché (volontaire)
-- PR #1 mergée dans `main` — merge `933be454ce03d3d784235709fcd54c132fa4d1fd` — https://github.com/jejedu13376/urgency-the-road/pull/1
-- PR #2 mergée (`d654d59`) — SUIVI + gitignore
-- PR #3 mergée (`d92795c`) — remint QR médical
-- PR #5 mergée dans `main` — merge `6fdf9d153db1c88cede9c5f6c8d4a65babe1b6f7` — https://github.com/jejedu13376/urgency-the-road/pull/5
-  - Docs deploy Firestore + `.firebaserc`
-  - Multi-IA proxy-only + NHTSA recalls + Open-Meteo
-  - Fil texte Firestore ; learnedFailures owner-only (pas de VIN)
-  - Perf : YouTube cache, Firestore memory cache, icon compressée
-- Formations en **standby** (site inchangé) ; 100 formations + optimisation **prévues** mais en pause
-- PR #4 mergée dans `main` — merge `1129ea4e3f082fd2e467c8002b68db1721045870` — https://github.com/jejedu13376/urgency-the-road/pull/4
-  - BLE OBD live path (ELM327/J1939) + shared BleManager / PoweredOn / Android perms
-  - Startup gate + permanent red spinner (UR-27)
-  - Hosting restore docs (UR-28)
-  - Perf: icon compress, YouTube cache/timeout, Screen safe-area (UR-29)
-  - Tip merged: `808fb73ccd08e42791992ec7137acda90f5e6624`
-- **Multi-IA server proxy (code)** : PR [#8](https://github.com/jejedu13376/urgency-the-road/pull/8) — Firebase HTTPS `multiIa` + `docs/MULTI-IA-PROXY.md` (UR-35). Host live + secrets = Lorenzo.
-- **Hosting Expo/EAS restore (UR-38)** : PR [#9](https://github.com/jejedu13376/urgency-the-road/pull/9) (`cursor/hosting-eas-restore-f6f5`) — rebased onto main post-#4/#11 ; `eas.json` (preview APK + Dev Client), `expo-dev-client` + `react-native-ble-plx`, BLE permissions iOS/Android, docs `HOSTING-RESTORE` / `EAS-RUNBOOK` / `BLE-DEV-CLIENT`. Reconnect-safe switch re-ported into `bleSession.connectAndInitElm` (`restorePriorSession`) after `097b974` was dropped by rebase — tip `c8360cbbc1ceb3e24e8a4f282c18894c5c7155bd`. Formations untouched.
-- **Stubs deepen (live free APIs)** : PR [#10](https://github.com/jejedu13376/urgency-the-road/pull/10) (`cursor/deepen-stubs-live-apis-1063`, tip `c3bbc4a`) — rebased onto main post-#4 ; mergeable.
-- **Provisional download URL** : https://github.com/jejedu13376/urgency-the-road/releases (stand-in until first EAS APK)
-- PR #11 mergée — SUIVI note #4/#9/#10 rebases (`34a09b3`)
+Tous les PRs code Urgency sont mergés. **Pas de hearts** — blockers restants = Lorenzo / secrets seulement.
 
-## Reste (Urgency Road)
+| PR | Merge SHA | Contenu |
+| --- | --- | --- |
+| #1 | `933be45` | base wiring |
+| #2 | `d654d59` | SUIVI + gitignore |
+| #3 | `d92795c` | remint QR médical |
+| #5 | `6fdf9d1` | Multi-IA proxy-only client, recalls, Fil, perf |
+| #7 | `6d9c4ab` | Firebase deploy docs / blocker |
+| **#4** | `1129ea4` | BLE OBD live + gate/spinner + hosting docs + perf (UR-27/28/29) |
+| **#9** | `041eb36` | EAS restore (`eas.json`, Dev Client, ble-plx, runbooks) — tip `81a9cfc` |
+| **#10** | `03a4efd` | Stubs deepen live free APIs — tip `9f8ff7c` |
+| **#11** | `34a09b3` | SUIVI tracking |
+| **#8** | `8b44d35` | Multi-IA Firebase Functions proxy — tip `d7f2674` |
 
-- **BLOCKER Lorenzo (machine locale)** : login OK chez Lorenzo, mais **pas** sur le cloud agent — re-deploy agent 2026-11-23 ~05:49 UTC → encore `Failed to authenticate` / `Could not load the default credentials` ; `login:list` = aucune session ; project cible `urgency-road` ; rien déployé (ni rules, ni indexes, ni hosting). **Lorenzo doit lancer sur SA machine déjà loguée :**
+Aussi fait côté secrets/config (ne pas coller dans le chat) :
+
+- PayPal / YouTube / Firebase web `EXPO_PUBLIC_*` dans store `.env` (noms présents ; ne jamais coller les valeurs)
+- Wiring `src/firebase/config.ts` + dep `firebase@^13.4.0`
+- Formations en **standby** (site inchangé)
+
+**Provisional download URL** : https://github.com/jejedu13376/urgency-the-road/releases (stand-in until first EAS APK)
+
+## Deploy — blocked on secrets
+
+Code ready ; **deploy bloqué tant que les secrets manquent**.
+
+| Item | État |
+| --- | --- |
+| `EXPO_TOKEN` | **Absent** |
+| Multi-IA provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`) | **Absent** du store `.env` |
+| `FIREBASE_TOKEN` / ADC sur cloud agents | Absent |
+| Secrets worker | **in progress** — `bc-b182fbed-bef2-5a50-9b96-c060c8fc419d` (pas encore de rapport final) |
+| Deploy worker | peut aussi tourner — `bc-8dc7803d-5d62-5c25-b208-72fe20652a29` |
+
+Checklist post-secrets : **`docs/DEPLOY-CHECKLIST.md`** (miroir store `docs/urgency-road-one/DEPLOY-CHECKLIST.md`).
+
+## Reste — Lorenzo only (pas agent)
+
+1. **Secrets** — fournir / confirmer ce que le secrets worker ne peut pas inventer (`EXPO_TOKEN`, provider Multi-IA, éventuellement `FIREBASE_TOKEN`). Ne jamais coller les valeurs dans le chat.
+
+2. **Firebase deploy** (machine locale déjà loguée, ou token CI) — rules + indexes + functions :
 
 ```bash
 cd /path/to/urgency-the-road
-firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes --project urgency-road
+firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes,functions:multiIa --project urgency-road
 ```
 
-  Pour que l’agent puisse déployer plus tard : `firebase login:ci` → injecter `FIREBASE_TOKEN`, ou `GOOGLE_APPLICATION_CREDENTIALS` (voir `docs/FIREBASE-DEPLOY.md`).
-- **BLOCKER Lorenzo** : déployer proxy Multi-IA + secrets — `firebase deploy --config firebase/firebase.json --only functions:multiIa` puis coller l’URL dans `EXPO_PUBLIC_MULTI_IA_PROXY_URL` (voir `docs/MULTI-IA-PROXY.md`). Secrets exacts (ceux utilisés seulement) : `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`.
-- Stubs restants : vidéo CDN, OBD BLE hardware (dongle + Dev Client), paiements (scaffolds sans faux succès)
-- Build Dev Client pour BLE réel + dongle physique (code BLE déjà sur main via #4)
-- **BLOCKER Lorenzo (EAS)** : `eas-cli whoami` → Not logged in sur cloud agent ; pas de `EXPO_TOKEN`. Pour APK réel : Path A `eas login` + `eas build -p android --profile preview` **ou** Path B token Expo → secret Cursor `EXPO_TOKEN` puis re-run agent (voir `docs/EAS-RUNBOOK.md` dans le repo).
+Puis coller l’URL `multiIa` dans `EXPO_PUBLIC_MULTI_IA_PROXY_URL`. Secrets serveur (ceux utilisés seulement) : `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY` (voir `docs/MULTI-IA-PROXY.md`).
+
+3. **Install URL + EAS APK** — Path A `eas login` + `eas build -p android --profile preview`, ou Path B secret Cursor `EXPO_TOKEN` (voir `docs/EAS-RUNBOOK.md`). Après build, coller l’URL dans `EXPO_PUBLIC_INSTALL_URL`.
+
+**Hosting note:** `firebase/firebase.json` n’a **pas** de cible Firebase Hosting. L’installable = EAS / Expo (voir `docs/HOSTING-RESTORE.md`), pas `firebase deploy --only hosting`.
+
+Optionnel plus tard (hardware / marchands) : dongle BLE + Dev Client ; Stripe / Apple Pay / Google Pay.
+
+Pour que l’agent puisse déployer Firebase plus tard : `firebase login:ci` → `FIREBASE_TOKEN`, ou `GOOGLE_APPLICATION_CREDENTIALS` (`docs/FIREBASE-DEPLOY.md`).
 
 ## Décisions
 
 - Stripe / Apple Pay / Google Pay : comptes marchands + clés encore côté Lorenzo (PayPal déjà noté)
-- Formations ≠ Urgency Road (projets stricts séparés)
-- CDN Firebase + `npm install firebase` notés pour réutilisation (`FIREBASE-CDN.md`)
-- Bugbot : corriger automatiquement sur branche dédiée + push, sans attendre le feu vert
-- Qualité d’abord (zéro régression) avant livraison
+- Formations ≠ Urgency Road (projets stricts séparés) — Formations **standby**
 - Multi-IA live = `EXPO_PUBLIC_MULTI_IA_PROXY_URL` seulement (pas de clés provider dans le bundle)
 - Proxy Multi-IA = Firebase Functions dans le repo ; agent ship code+docs, Lorenzo login/secrets/deploy
+- Bugbot : auto-fix sur branche ; merge seulement si Approval Agent OK sur tip courant
+- Hearts seulement quand blockers Lorenzo ci-dessus sont levés
 
 ## Journal
 
@@ -62,26 +79,18 @@ firebase deploy --config firebase/firebase.json --only firestore:rules,firestore
 | 2026-11-22 ~23:14 | Formations standby ; focus Urgency Road |
 | 2026-11-22 ~23:15 | Optimisation app ajoutée aux priorités |
 | 2026-11-22 ~23:18 | Ce fichier `SUIVI.md` créé ; sauvegarde GitHub demandée |
-| 2026-11-22 ~23:19 | Audit clés : `.env` gitignoré ; `FIREBASE-CDN.md` / `ENV-YOUTUBE.env` docs nettoyés (placeholders) ; PayPal secret jamais dans git |
+| 2026-11-22 ~23:19 | Audit clés : `.env` gitignoré ; docs nettoyés (placeholders) |
 | 2026-11-22 ~23:20 | PR #2 SUIVI GitHub ; PR #3 Bugbot remint ; PR #4 BLE/gate/hosting/perf ouverte |
-| 2026-11-22 ~23:22 | PR #2 : gitignore durci ; ENV-YOUTUBE retiré du repo ; historique sans secrets |
-| 2026-11-22 ~23:23 | Branche stubs/Multi-IA/rules docs `12d3f5b` ; deploy Firebase = login Lorenzo |
-| 2026-11-22 ~23:23 | PR #5 ouverte (rules docs, Multi-IA, stubs) |
-| 2026-11-22 ~23:26 | PR #2 mergée (`d654d59`) — SUIVI + gitignore sur main |
-| 2026-11-22 ~23:28 | Bugbot PR #4 (7) + Security PR #5 (LLM keys / learnedFailures) → auto-fix |
-| 2026-11-22 ~23:29 | PR #3 mergée (`d92795c`) — remint QR médical sur main |
-| 2026-11-22 ~23:30 | PR #4 Bugbot fix `8fdd9bd` ; PR #5 security/Bugbot `5e9fc96` |
-| 2026-11-22 ~23:37 | PR #5 questionnaire busy guard `3399694` |
-| 2026-11-23 ~05:40 UTC | PR #5 Approval Agent OK ; mergée dans `main` (`6fdf9d153db1c88cede9c5f6c8d4a65babe1b6f7`) ; head branch conservée |
-| 2026-11-23 ~05:41 UTC | Fin stream PR #5 ; blocker restant = deploy Firebase par Lorenzo (`FIREBASE-DEPLOY.md`) |
-| 2026-11-23 ~05:48 UTC | Agent : `firebase deploy --only firestore:rules,firestore:indexes` → auth fail ; CDN wiring OK ; docs alternatives CI token / SA |
-| 2026-11-23 ~05:49 UTC | Lorenzo login OK (local) ; agent re-try deploy → même auth fail (session non partagée) ; commande à lancer en local documentée |
-| 2026-11-23 ~05:50 UTC | PR #7 mergée dans `main` — merge `6d9c4ab0b7b7ee423560990676bb2ffa1c19914b` — https://github.com/jejedu13376/urgency-the-road/pull/7 ; deploy Firestore toujours = Lorenzo local |
-| 2026-11-23 ~05:55 UTC | UR-35 Multi-IA proxy code : PR #8 `cursor/multi-ia-server-proxy-da7d` — Firebase `multiIa` + docs secrets ; host live = Lorenzo |
-| 2026-11-23 ~05:56 UTC | PR #8 Bugbot auto-fix : sanitize upstream errors ; heuristic si pas de token / 401·403·503 |
-| 2026-11-23 ~06:00 UTC | UR-38 hosting restore : PR #9 ouverte ; EAS/Dev Client/BLE config + runbook ; `eas build` bloqué (pas Expo login) ; provisional download = GitHub Releases |
-| 2026-11-23 ~06:17 UTC | Approval Agent OK tip `808fb73` ; PR #4 mergée (`1129ea4e3f082fd2e467c8002b68db1721045870`) — UR-27/28/29 livrés via #4 |
-| 2026-11-23 ~06:19 UTC | PR #9 rebase → tip `d9a0c61` (kept main BLE ; skipped superseded BLE Bugbot commits) ; mergeable/unstable |
-| 2026-11-23 ~06:20 UTC | PR #10 rebase → tip `c3bbc4a` (`app.json` BLE+location) ; mergeable/unstable ; #8 unchanged mergeable ; no hearts |
-| 2026-11-23 ~06:21 UTC | Approval Agent OK tip `30070e68` ; PR #11 SUIVI mergée (`34a09b3a4fcba791781d0ec8dfe7fd14dfced9da`) |
-| 2026-11-23 ~06:24 UTC | PR #9 : `097b974` reconnect fix **missing** after rebase onto main BLE path ; re-ported into `bleSession` + rebased onto #11 |
+| 2026-11-22 ~23:26 | PR #2 mergée (`d654d59`) |
+| 2026-11-22 ~23:29 | PR #3 mergée (`d92795c`) |
+| 2026-11-23 ~05:40 UTC | PR #5 mergée (`6fdf9d1`) |
+| 2026-11-23 ~05:50 UTC | PR #7 mergée (`6d9c4ab`) ; deploy Firestore = Lorenzo local |
+| 2026-11-23 ~05:55 UTC | PR #8 ouverte (Multi-IA Functions) |
+| 2026-11-23 ~06:00 UTC | PR #9 ouverte (EAS) ; provisional = GitHub Releases |
+| 2026-11-23 ~06:17 UTC | PR #4 mergée (`1129ea4`) — UR-27/28/29 |
+| 2026-11-23 ~06:21 UTC | PR #11 SUIVI mergée (`34a09b3`) |
+| 2026-11-23 ~06:39 UTC | PR #9 mergée (`041eb36`) — EAS ; `EXPO_TOKEN` unset |
+| 2026-11-23 ~06:52 UTC | PR #10 mergée (`03a4efd`) — stubs live APIs |
+| 2026-11-23 ~07:04 UTC | PR #8 mergée (`8b44d35`) — Multi-IA proxy code on main |
+| 2026-11-23 ~07:05 UTC | **Tous PRs code Urgency mergés** (#4/#8/#9/#10/#11). Reste Lorenzo : Firebase deploy + functions/secrets + EXPO_TOKEN. Formations standby. **Pas de hearts.** |
+| 2026-11-23 ~11:45 UTC | Docs sync : GLOBAL-SCOPE + SUIVI à jour ; deploy blocked on secrets ; secrets worker **in progress** (`bc-b182fbed…`) ; deploy worker may run (`bc-8dc7803d…`) ; `EXPO_TOKEN` + Multi-IA provider keys absent store `.env` ; `DEPLOY-CHECKLIST.md` ajouté. Formations standby. |
