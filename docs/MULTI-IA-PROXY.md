@@ -126,7 +126,12 @@ App: Module 15 sign-in → Module 6 Multi-IA → run diagnostic → expect `sour
 - Provider keys stay on the server; the Expo bundle only gets the proxy URL.
 - Unsigned callers get `401` — required so strangers cannot burn your LLM budget.
 - Prompt/context length capped server-side (~4k chars each).
-- Upstream provider failures → `502`; missing key → `503`.
+- Upstream provider failures → generic `502` (`Engine request failed`) — **never** echo provider error bodies to clients or logs.
+- Per-UID rate limit (default **30 POSTs / 60s**) + daily quota (default **200 POSTs / UTC day**) in Firestore `multiIaRateLimits/{uid}`.
+  - Env overrides: `MULTI_IA_RATE_LIMIT_MAX`, `MULTI_IA_RATE_LIMIT_WINDOW_MS`, `MULTI_IA_DAILY_MAX`.
+  - One Module 6 diagnostic can fire up to 6 parallel POSTs — keep the window limit ≥ ~12.
+- Optional App Check: set `MULTI_IA_REQUIRE_APP_CHECK=1` and send `X-Firebase-AppCheck` (after wiring App Check in the Expo app).
+- Missing provider key → `503`; rate exceeded → `429` + `Retry-After`.
 
 ---
 

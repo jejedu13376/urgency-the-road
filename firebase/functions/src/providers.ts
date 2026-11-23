@@ -68,9 +68,9 @@ async function fetchJson(
     const res = await fetch(url, { ...init, signal: ctrl.signal });
     const text = await res.text();
     if (!res.ok) {
-      // Never forward upstream body to clients (may contain provider diagnostics).
-      console.error(`[${label}] upstream HTTP ${res.status} bodyLen=${text.length}`);
-      const err = new Error(`${label} upstream error (HTTP ${res.status})`);
+      // Never log or return upstream bodies (may include key prefixes / org ids).
+      console.error(`[${label}] upstream HTTP ${res.status}`);
+      const err = new Error('Engine request failed');
       (err as Error & { status: number; code: string }).status = 502;
       (err as Error & { status: number; code: string }).code = 'provider/upstream';
       throw err;
@@ -78,8 +78,8 @@ async function fetchJson(
     try {
       return JSON.parse(text) as unknown;
     } catch {
-      console.error(`[${label}] non-JSON response bodyLen=${text.length}`);
-      const err = new Error(`${label} returned non-JSON`);
+      console.error(`[${label}] upstream non-JSON`);
+      const err = new Error('Engine request failed');
       (err as Error & { status: number; code: string }).status = 502;
       (err as Error & { status: number; code: string }).code = 'provider/bad-json';
       throw err;
