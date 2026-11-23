@@ -25,11 +25,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    let cancelled = false;
+    const boot = () => {
+      void refresh().finally(() => {
+        if (!cancelled) setReady(true);
+      });
+    };
     const unsub = watchAuth(() => {
-      void refresh().finally(() => setReady(true));
+      boot();
     });
-    void refresh().finally(() => setReady(true));
-    return unsub;
+    const t = setTimeout(boot, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+      unsub();
+    };
   }, []);
 
   const value = useMemo(() => ({ profile, ready, refresh }), [profile, ready]);

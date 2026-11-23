@@ -75,7 +75,10 @@ export default function TutorielsScreen() {
   );
 
   useEffect(() => {
-    void load(query);
+    const t = setTimeout(() => {
+      void load(query);
+    }, 0);
+    return () => clearTimeout(t);
   }, [load, query]);
 
   const openSearchFallback = () => {

@@ -18,7 +18,7 @@ export type RoutePoint = { lat: number; lon: number };
 export type VehicleRouteResult = {
   ok: boolean;
   mode: GpsVehicleMode;
-  coords: Array<[number, number]>;
+  coords: [number, number][];
   distanceKm: number;
   durationMin: number;
   source: 'valhalla-auto' | 'valhalla-truck' | 'none';
@@ -35,7 +35,7 @@ export type TruckDims = {
 type ValhallaTrip = {
   trip?: {
     summary?: { length?: number; time?: number };
-    legs?: Array<{ shape?: string }>;
+    legs?: { shape?: string }[];
   };
   error?: string;
   error_code?: number;

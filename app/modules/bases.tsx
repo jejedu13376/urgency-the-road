@@ -42,7 +42,10 @@ export default function BasesScreen() {
   }, []);
 
   useEffect(() => {
-    void reload();
+    const t = setTimeout(() => {
+      void reload();
+    }, 0);
+    return () => clearTimeout(t);
   }, [reload, profile?.uid]);
 
   const addLearned = async () => {

@@ -61,12 +61,12 @@ export async function fetchRecallsByVehicle(opts: {
       return result;
     }
     const body = (await res.json()) as {
-      results?: Array<{
+      results?: {
         NHTSACampaignNumber?: string;
         Component?: string;
         Summary?: string;
         Consequence?: string;
-      }>;
+      }[];
       Count?: number;
     };
     const items: RecallHit[] = (body.results ?? []).slice(0, 8).map((r, i) => {

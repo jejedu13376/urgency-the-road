@@ -33,7 +33,7 @@ export type WeighListMeta = {
   lat: number;
   lon: number;
   gpsLabel: string;
-  depots: Array<GarageDoc & { distanceKm: number; etaMin: number }>;
+  depots: (GarageDoc & { distanceKm: number; etaMin: number })[];
   depotLabel: string;
 };
 

@@ -61,7 +61,7 @@ export interface PartDoc {
   region: string;
   buyUrlStub?: string;
   /** Real web search URLs (Google / Amazon / retailer) — not OEM API deep-links */
-  buyUrls?: Array<{ label: string; url: string }>;
+  buyUrls?: { label: string; url: string }[];
   updatedAt: string;
 }
 
@@ -157,7 +157,7 @@ export interface GpsPrefsDoc {
   truckWidthM?: number;
   truckPtacT?: number;
   hazmat: boolean;
-  preferApps: Array<'google' | 'waze' | 'apple'>;
+  preferApps: ('google' | 'waze' | 'apple')[];
   updatedAt: string;
 }
 

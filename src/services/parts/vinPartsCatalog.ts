@@ -57,9 +57,7 @@ function pricingForMakeHint(make?: string, countryHint?: string, currencyOverrid
   return { currency: 'EUR', region: 'EU-FR', laborRate: 85, multiplier: 1 };
 }
 
-const EXTRA_TEMPLATES: Array<
-  Omit<PartDoc, 'id' | 'currency' | 'region' | 'laborRate' | 'updatedAt' | 'buyUrlStub' | 'buyUrls' | 'vinPrefix' | 'vehicleMake' | 'vehicleModel'>
-> = [
+const EXTRA_TEMPLATES: Omit<PartDoc, 'id' | 'currency' | 'region' | 'laborRate' | 'updatedAt' | 'buyUrlStub' | 'buyUrls' | 'vinPrefix' | 'vehicleMake' | 'vehicleModel'>[] = [
   {
     name: 'Filtre à air',
     category: 'filtre',
@@ -182,7 +180,7 @@ const PL_EXTRAS: typeof EXTRA_TEMPLATES = [
   },
 ];
 
-function buildBuyUrls(name: string, oemSku: string, make?: string, model?: string, year?: number): Array<{ label: string; url: string }> {
+function buildBuyUrls(name: string, oemSku: string, make?: string, model?: string, year?: number): { label: string; url: string }[] {
   const qCore = [make, model, year ? String(year) : '', oemSku, name].filter(Boolean).join(' ');
   const qShort = [make, oemSku, name, 'pièce auto'].filter(Boolean).join(' ');
   return [

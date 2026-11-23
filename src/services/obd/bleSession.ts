@@ -43,14 +43,14 @@ type SessionState = {
   id: number;
   deviceId: string;
   protocol: ObdProtocol;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   manager: any;
   writeUuid: string;
   serviceUuid: string;
   notifyBuf: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   monitorSub: { remove?: () => void } | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   disconnectSub: { remove?: () => void } | null;
 };
 
@@ -89,7 +89,7 @@ async function teardownUnlocked(cur: SessionState | null): Promise<void> {
 }
 
 async function releaseAttempt(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   manager: any,
   deviceId: string,
   monitorSub: { remove?: () => void } | null,
