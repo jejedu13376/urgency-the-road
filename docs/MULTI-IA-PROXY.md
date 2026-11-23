@@ -84,7 +84,9 @@ cd ../..
 
 1. Deploy once without keys (function comes up; engines return `503` until keys exist).
 2. Cloud Console → **Cloud Functions** → `multiIa` → **Edit** → Runtime → **Environment variables** or **Secrets**.
-3. Add names from the table above (exact spelling) → Deploy revision.
+3. Add provider key names from the table above (exact spelling).
+4. Until Expo App Check is wired, also set `MULTI_IA_REQUIRE_APP_CHECK=0` (email_verified + rate/global caps still apply).
+5. Deploy revision.
 
 **B — Firebase Secret Manager + bind in code**
 
@@ -124,13 +126,19 @@ App: Module 15 sign-in → Module 6 Multi-IA → run diagnostic → expect `sour
 ## Security notes
 
 - Provider keys stay on the server; the Expo bundle only gets the proxy URL.
-- Unsigned callers get `401` — required so strangers cannot burn your LLM budget.
+- POST requires Firebase ID token with **`email_verified`** (set `MULTI_IA_ALLOW_UNVERIFIED_EMAIL=1` only for emulator/dev).
+- **App Check required outside the Functions emulator** by default. Until Expo App Check is wired, set `MULTI_IA_REQUIRE_APP_CHECK=0` on the function (temporary). Production should send `X-Firebase-AppCheck`.
 - Prompt/context length capped server-side (~4k chars each).
-- Upstream provider failures → generic `502` (`Engine request failed`) — **never** echo provider error bodies to clients or logs.
-- Per-UID rate limit (default **30 POSTs / 60s**) + daily quota (default **200 POSTs / UTC day**) in Firestore `multiIaRateLimits/{uid}`.
-  - Env overrides: `MULTI_IA_RATE_LIMIT_MAX`, `MULTI_IA_RATE_LIMIT_WINDOW_MS`, `MULTI_IA_DAILY_MAX`.
-  - One Module 6 diagnostic can fire up to 6 parallel POSTs — keep the window limit ≥ ~12.
-- Optional App Check: set `MULTI_IA_REQUIRE_APP_CHECK=1` and send `X-Firebase-AppCheck` (after wiring App Check in the Expo app).
+- Upstream provider failures → generic `Engine request failed` — **never** echo provider error bodies to clients or logs.
+- Spend caps (Firestore `multiIaRateLimits/*`, client R/W denied in rules):
+  | Scope | Default | Env |
+  | --- | ---: | --- |
+  | Per-UID / window | 30 / 60s | `MULTI_IA_RATE_LIMIT_MAX`, `MULTI_IA_RATE_LIMIT_WINDOW_MS` |
+  | Per-UID / UTC day | 200 | `MULTI_IA_DAILY_MAX` |
+  | Per-IP hash / window | 60 / 60s | `MULTI_IA_IP_RATE_LIMIT_MAX` |
+  | **Global / UTC day** | **2000** | `MULTI_IA_GLOBAL_DAILY_MAX` |
+  - One Module 6 diagnostic can fire up to 6 parallel POSTs — keep UID window ≥ ~12.
+- Unauthenticated `GET` returns generic health + engine **names** only — **not** which keys are configured. Authenticated `GET` may include `enginesConfigured`.
 - Missing provider key → `503`; rate exceeded → `429` + `Retry-After`.
 
 ---

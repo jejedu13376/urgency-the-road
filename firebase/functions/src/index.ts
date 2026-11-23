@@ -4,6 +4,7 @@ import { onRequest } from 'firebase-functions/v2/https';
 import { assertAppCheckIfRequired } from './appCheck';
 import { requireFirebaseUser } from './auth';
 import { parseProxyBody } from './parse';
+import { ALL_ENGINES } from './types';
 import { configuredEngines, runProvider } from './providers';
 import { assertWithinRateLimit } from './rateLimit';
 import { BOUND_SECRETS } from './secrets';
@@ -63,25 +64,32 @@ function clientSafeMessage(code: unknown, status: number): string {
   if (c.startsWith('appcheck/')) return 'App Check required';
   if (c.startsWith('rate/')) return 'Rate limit exceeded';
   if (c.startsWith('bad-request/')) return 'Invalid request';
-  if (c.startsWith('provider/') || status === 502) return 'Engine request failed';
+  if (c.startsWith('provider/') || status === 502 || status === 504) {
+    return 'Engine request failed';
+  }
   if (status === 503) return 'Engine unavailable';
   if (status === 429) return 'Rate limit exceeded';
   return 'Internal error';
 }
 
+function clientIp(req: { ip?: string; get: (h: string) => string | undefined }): string {
+  const fwd = req.get('x-forwarded-for') ?? '';
+  if (fwd) return fwd.split(',')[0]!.trim();
+  return (req.ip ?? '').trim() || 'unknown';
+}
+
 /**
  * Multi-IA proxy — POST JSON `{ engine, prompt, context }`
- * Auth: `Authorization: Bearer <Firebase ID token>` (required)
- * Spend guards: per-UID window + daily quota (Firestore); optional App Check
- * Client env: `EXPO_PUBLIC_MULTI_IA_PROXY_URL` → this function URL
+ * Auth: Firebase ID token (email_verified) + App Check (prod default)
+ * Spend: per-UID + per-IP window + project-wide daily cap
+ * Client env: `EXPO_PUBLIC_MULTI_IA_PROXY_URL`
  *
- * Provider keys from process.env / Secret Manager (never EXPO_PUBLIC_*).
- * See docs/MULTI-IA-PROXY.md for deploy + exact secret names.
+ * See docs/MULTI-IA-PROXY.md
  */
 export const multiIa = onRequest(
   {
     cors: false,
-    invoker: 'public', // Firebase ID token verified in-handler
+    invoker: 'public', // auth + App Check verified in-handler
     secrets: BOUND_SECRETS,
   },
   async (req, res) => {
@@ -93,15 +101,23 @@ export const multiIa = onRequest(
     }
 
     if (req.method === 'GET') {
-      res.status(200).json({
+      // Public health — never disclose which paid engines have keys.
+      const publicBody = {
         ok: true,
         service: 'urgency-road-multi-ia-proxy',
-        enginesConfigured: configuredEngines(),
-        auth: 'Bearer Firebase ID token required on POST',
-        rateLimit:
-          'per-UID window + daily quota (MULTI_IA_RATE_LIMIT_* / MULTI_IA_DAILY_MAX)',
-        appCheck: 'optional via MULTI_IA_REQUIRE_APP_CHECK=1',
-      });
+        engines: [...ALL_ENGINES],
+        auth: 'Bearer Firebase ID token (email verified) required on POST',
+      };
+      // Authenticated GET may include configured engine names (ops only).
+      try {
+        await requireFirebaseUser(req);
+        res.status(200).json({
+          ...publicBody,
+          enginesConfigured: configuredEngines(),
+        });
+      } catch {
+        res.status(200).json(publicBody);
+      }
       return;
     }
 
@@ -113,7 +129,7 @@ export const multiIa = onRequest(
     try {
       await assertAppCheckIfRequired(req);
       const caller = await requireFirebaseUser(req);
-      await assertWithinRateLimit(caller.uid);
+      await assertWithinRateLimit(caller.uid, clientIp(req));
       const { engine, prompt, context } = parseProxyBody(req.body);
       const result = await runProvider(engine, prompt, context);
       res.status(200).json(result);
@@ -128,19 +144,13 @@ export const multiIa = onRequest(
         err.name === 'AbortError' ||
         (typeof DOMException !== 'undefined' && e instanceof DOMException);
       const status =
-        typeof err.status === 'number'
-          ? err.status
-          : aborted
-            ? 504
-            : 500;
-      // AbortError/Firestore use numeric `code` — only keep string codes for clients.
+        typeof err.status === 'number' ? err.status : aborted ? 504 : 500;
       const code =
         typeof err.code === 'string' && err.code.length > 0
           ? err.code
           : aborted
             ? 'provider/timeout'
             : 'internal';
-      // Log code + status only — never err.message if it might contain upstream text.
       console.error(`[multiIa] code=${code} status=${status}`);
       sendError(
         res,
