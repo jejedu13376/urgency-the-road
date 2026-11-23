@@ -201,8 +201,12 @@ export async function upsertVehicle(
     await setDoc(ref, payload, { merge: true });
     return liveResult({ ...vehicle, id: ref.id });
   } catch (e) {
+    // ok:false — FleetContext must not treat this as a completed cloud write/migrate.
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult(vehicle, 'SOFT vehicles upsert — permission/DEV (local)');
+      return failResult(
+        vehicle,
+        'SOFT vehicles upsert — permission/DEV (local conservé, cloud non sync)',
+      );
     }
     return failResult(vehicle, e instanceof Error ? e.message : 'Upsert véhicule refusé');
   }
@@ -215,8 +219,12 @@ export async function removeVehicle(id: string): Promise<ServiceResult<null>> {
     await deleteDoc(doc(fb.db, COLLECTIONS.vehicles, id));
     return liveResult(null);
   } catch (e) {
+    // ok:false — do not fake cloud delete success for migrate/UI labels.
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult(null, 'SOFT vehicles delete — permission/DEV (local)');
+      return failResult(
+        null,
+        'SOFT vehicles delete — permission/DEV (refus cloud, pas de succès fictif)',
+      );
     }
     return failResult(null, e instanceof Error ? e.message : 'Suppression véhicule refusée');
   }
