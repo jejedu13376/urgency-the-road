@@ -97,21 +97,30 @@ type ScanIndexDoc = {
   updatedAt: string;
 };
 
+/** Firestore rejects `undefined` — omit optional empties. */
+function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out as T;
+}
+
 function indexFromCard(card: MedicalCardDoc): ScanIndexDoc {
-  return {
+  return stripUndefined({
     scanCode: card.scanCode,
     ownerUid: card.ownerUid,
     cardId: card.id,
     fullName: card.fullName,
     address: card.address,
-    allergies: card.allergies,
-    conditions: card.conditions,
-    medications: card.medications,
-    emergencyContacts: card.emergencyContacts,
+    allergies: card.allergies ?? [],
+    conditions: card.conditions ?? [],
+    medications: card.medications ?? [],
+    emergencyContacts: card.emergencyContacts ?? [],
     bloodType: card.bloodType,
     notes: card.notes,
     updatedAt: card.updatedAt,
-  };
+  }) as ScanIndexDoc;
 }
 
 /** Ensure one personal QR per subscriber (unique scanCode + index doc). */
@@ -185,25 +194,34 @@ export async function upsertMedicalCard(
 
   try {
     const cardRef = doc(fb.db, COLLECTIONS.medicalCards, card.id);
+    const indexRef = doc(fb.db, COLLECTIONS.medicalScanIndex, scanCode);
     const existingCard = await getDoc(cardRef);
+
     if (existingCard.exists()) {
       const prev = existingCard.data() as MedicalCardDoc;
       // Enforce immutability client-side (rules also enforce)
       payload.scanCode = prev.scanCode;
     } else {
-      const indexRef = doc(fb.db, COLLECTIONS.medicalScanIndex, scanCode);
+      // Collision check before any write (index doc id == scanCode)
       const clash = await getDoc(indexRef);
-      if (clash.exists() && clash.data()?.ownerUid !== uid) {
+      if (clash.exists()) {
         return failResult(payload, 'scanCode déjà utilisé — collision / hijack bloqué');
       }
-      await setDoc(indexRef, indexFromCard(payload));
     }
 
-    await setDoc(cardRef, payload, { merge: true });
-    // Refresh index PHI for rescuer scan-get (same scanCode)
-    await setDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode), indexFromCard(payload), {
-      merge: true,
-    });
+    // Card FIRST, then index — create rule requires index absent at card create time.
+    const cardPayload = stripUndefined({ ...payload } as Record<string, unknown>);
+    await setDoc(cardRef, cardPayload, { merge: true });
+
+    const indexPayload = indexFromCard({ ...payload, scanCode: payload.scanCode });
+    const indexSnap = await getDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode));
+    if (indexSnap.exists()) {
+      await setDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode), indexPayload, {
+        merge: true,
+      });
+    } else {
+      await setDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode), indexPayload);
+    }
     return liveResult(payload);
   } catch (e) {
     return failResult(

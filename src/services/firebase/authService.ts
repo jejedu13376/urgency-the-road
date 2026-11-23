@@ -42,15 +42,24 @@ function authErrorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/** Firestore rejects `undefined` field values — omit them. */
+function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out as T;
+}
+
 function profileFromAuth(
   uid: string,
   email: string,
   displayName?: string | null,
 ): UserDoc {
-  return {
+  const name = displayName?.trim();
+  const base: UserDoc = {
     uid,
     email,
-    displayName: displayName ?? undefined,
     role: 'user',
     subscription: 'free',
     subscriptionActive: false,
@@ -59,6 +68,8 @@ function profileFromAuth(
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+  if (name) base.displayName = name;
+  return base;
 }
 
 /** Ensure users/{uid} exists so refresh() does not wipe a successful sign-in. */
@@ -72,11 +83,14 @@ async function ensureUserDoc(
   const snap = await getDoc(ref);
   if (snap.exists()) return snap.data() as UserDoc;
   const profile = profileFromAuth(uid, email, displayName);
-  await setDoc(ref, {
-    ...profile,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+  await setDoc(
+    ref,
+    stripUndefined({
+      ...profile,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }),
+  );
   return profile;
 }
 
