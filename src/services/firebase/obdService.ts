@@ -1,6 +1,6 @@
 import { addDoc, collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { MOCK_DTC } from '../../data/mocks';
-import { getFirebase } from '../../firebase/config';
+import { getFirebase, getSignedInUid } from '../../firebase/config';
 import type { ObdProtocol, ObdReadingDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
 import { stubObdConnect } from '../stubs';
@@ -33,25 +33,31 @@ export async function readObdSnapshot(
 ): Promise<ServiceResult<ObdReadingDoc>> {
   const reading = mockReading(ownerUid, vehicleId, protocol);
   const fb = getFirebase();
-  if (!fb) {
-    return mockResult(reading, 'MOCK OBD — pas de valise physique / BT');
+  const uid = getSignedInUid();
+  if (!fb || !uid) {
+    return mockResult(reading, 'MOCK OBD — pas de valise physique / BT (ou non connecté)');
   }
-  const ref = await addDoc(collection(fb.db, COLLECTIONS.obdReadings), reading);
-  return liveResult({ ...reading, id: ref.id, source: 'stub' });
+  const payload = { ...reading, ownerUid: uid };
+  const ref = await addDoc(collection(fb.db, COLLECTIONS.obdReadings), payload);
+  return liveResult({ ...payload, id: ref.id, source: 'stub' });
 }
 
 export async function listObdHistory(
   vehicleId: string,
+  ownerUid?: string,
 ): Promise<ServiceResult<ObdReadingDoc[]>> {
   const fb = getFirebase();
-  if (!fb) {
+  const uid = getSignedInUid() ?? ownerUid;
+  if (!fb || !uid || uid === 'mock-local-user') {
     return mockResult(
-      [mockReading('mock', vehicleId, 'J1939')],
+      [mockReading(uid ?? 'mock', vehicleId, 'J1939')],
       'MOCK OBD history',
     );
   }
+  // Rules require ownerUid match — query must constrain to allowed docs.
   const q = query(
     collection(fb.db, COLLECTIONS.obdReadings),
+    where('ownerUid', '==', uid),
     where('vehicleId', '==', vehicleId),
     orderBy('recordedAt', 'desc'),
     limit(20),

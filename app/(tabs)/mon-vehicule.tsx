@@ -60,13 +60,17 @@ export default function MonVehiculeScreen() {
   }, [active?.id, active?.vin]);
 
   const applyDecoded = async (decoded: VehicleProfile, stub?: string) => {
-    const ownerUid = profile?.uid ?? 'mock-local-user';
     const merged: VehicleProfile = {
       ...decoded,
       label: active?.label && active.vin === decoded.vin ? active.label : decoded.label,
     };
     upsertVehicle(merged);
-    const remote = await upsertVehicleRemote(ownerUid, merged);
+    if (!profile?.uid) {
+      setSourceLabel(stub ?? 'Local — connectez-vous pour sync Firestore');
+      setMsg(`Fiche locale : ${merged.make} ${merged.model} ${merged.year}`);
+      return;
+    }
+    const remote = await upsertVehicleRemote(profile.uid, merged);
     setSourceLabel(remote.stubLabel ?? stub ?? (remote.source === 'firebase' ? 'Firestore' : undefined));
     setMsg(`Fiche enregistrée : ${merged.make} ${merged.model} ${merged.year}`);
   };

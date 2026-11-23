@@ -10,7 +10,7 @@ import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getFirebase, isFirebaseConfigured } from '../../firebase/config';
 import type { UserDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
-import { liveResult, mockResult, ServiceResult } from './result';
+import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 const MOCK_USER: UserDoc = {
   uid: 'mock-local-user',
@@ -25,20 +25,32 @@ const MOCK_USER: UserDoc = {
   updatedAt: new Date().toISOString(),
 };
 
-export async function signUpEmail(
-  email: string,
-  password: string,
-  displayName?: string,
-): Promise<ServiceResult<UserDoc>> {
-  const fb = getFirebase();
-  if (!fb) return mockResult({ ...MOCK_USER, email, displayName }, 'MOCK Auth — inscription locale');
+function authErrorMessage(e: unknown): string {
+  const code =
+    e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
+  const map: Record<string, string> = {
+    'auth/email-already-in-use': 'Cet email est déjà inscrit.',
+    'auth/invalid-credential': 'Email ou mot de passe incorrect.',
+    'auth/invalid-email': 'Email invalide.',
+    'auth/weak-password': 'Mot de passe trop faible.',
+    'auth/user-not-found': 'Compte introuvable.',
+    'auth/wrong-password': 'Mot de passe incorrect.',
+    'auth/too-many-requests': 'Trop de tentatives — réessayez plus tard.',
+    'auth/network-request-failed': 'Réseau indisponible.',
+  };
+  if (code && map[code]) return map[code];
+  return e instanceof Error ? e.message : String(e);
+}
 
-  const cred = await createUserWithEmailAndPassword(fb.auth, email, password);
-  if (displayName) await updateProfile(cred.user, { displayName });
-  const profile: UserDoc = {
-    uid: cred.user.uid,
+function profileFromAuth(
+  uid: string,
+  email: string,
+  displayName?: string | null,
+): UserDoc {
+  return {
+    uid,
     email,
-    displayName,
+    displayName: displayName ?? undefined,
     role: 'user',
     subscription: 'free',
     subscriptionActive: false,
@@ -47,35 +59,71 @@ export async function signUpEmail(
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-  await setDoc(doc(fb.db, COLLECTIONS.users, cred.user.uid), {
+}
+
+/** Ensure users/{uid} exists so refresh() does not wipe a successful sign-in. */
+async function ensureUserDoc(
+  uid: string,
+  email: string,
+  displayName?: string | null,
+): Promise<UserDoc> {
+  const fb = getFirebase()!;
+  const ref = doc(fb.db, COLLECTIONS.users, uid);
+  const snap = await getDoc(ref);
+  if (snap.exists()) return snap.data() as UserDoc;
+  const profile = profileFromAuth(uid, email, displayName);
+  await setDoc(ref, {
     ...profile,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-  return liveResult(profile);
+  return profile;
+}
+
+export async function signUpEmail(
+  email: string,
+  password: string,
+  displayName?: string,
+): Promise<ServiceResult<UserDoc>> {
+  const fb = getFirebase();
+  if (!fb) return mockResult({ ...MOCK_USER, email, displayName }, 'MOCK Auth — inscription locale');
+
+  try {
+    const cred = await createUserWithEmailAndPassword(fb.auth, email, password);
+    if (displayName) await updateProfile(cred.user, { displayName });
+    const profile = await ensureUserDoc(cred.user.uid, email, displayName);
+    return liveResult(profile);
+  } catch (e) {
+    return failResult(MOCK_USER, authErrorMessage(e));
+  }
 }
 
 export async function signInEmail(email: string, password: string): Promise<ServiceResult<UserDoc>> {
   const fb = getFirebase();
   if (!fb) return mockResult({ ...MOCK_USER, email }, 'MOCK Auth — connexion locale');
 
-  const cred = await signInWithEmailAndPassword(fb.auth, email, password);
-  const snap = await getDoc(doc(fb.db, COLLECTIONS.users, cred.user.uid));
-  if (snap.exists()) return liveResult(snap.data() as UserDoc);
-  const profile: UserDoc = {
-    ...MOCK_USER,
-    uid: cred.user.uid,
-    email: cred.user.email ?? email,
-    displayName: cred.user.displayName ?? undefined,
-  };
-  return liveResult(profile);
+  try {
+    const cred = await signInWithEmailAndPassword(fb.auth, email, password);
+    const profile = await ensureUserDoc(
+      cred.user.uid,
+      cred.user.email ?? email,
+      cred.user.displayName,
+    );
+    return liveResult(profile);
+  } catch (e) {
+    return failResult(MOCK_USER, authErrorMessage(e));
+  }
 }
 
 export async function signOutUser(): Promise<ServiceResult<null>> {
   const fb = getFirebase();
   if (!fb) return mockResult(null, 'MOCK Auth — déconnexion locale');
-  await signOut(fb.auth);
-  return liveResult(null);
+  try {
+    await signOut(fb.auth);
+    return liveResult(null);
+  } catch (e) {
+    return failResult(null, authErrorMessage(e));
+  }
 }
 
 export function watchAuth(cb: (user: User | null) => void): () => void {
@@ -92,6 +140,10 @@ export async function getCurrentUserProfile(): Promise<ServiceResult<UserDoc | n
   const fb = getFirebase()!;
   const u = fb.auth.currentUser;
   if (!u) return liveResult(null);
-  const snap = await getDoc(doc(fb.db, COLLECTIONS.users, u.uid));
-  return liveResult(snap.exists() ? (snap.data() as UserDoc) : null);
+  try {
+    const profile = await ensureUserDoc(u.uid, u.email ?? '', u.displayName);
+    return liveResult(profile);
+  } catch (e) {
+    return failResult(null, authErrorMessage(e));
+  }
 }

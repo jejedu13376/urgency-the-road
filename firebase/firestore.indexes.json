@@ -12,6 +12,7 @@
       "collectionGroup": "obdReadings",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "ownerUid", "order": "ASCENDING" },
         { "fieldPath": "vehicleId", "order": "ASCENDING" },
         { "fieldPath": "recordedAt", "order": "DESCENDING" }
       ]

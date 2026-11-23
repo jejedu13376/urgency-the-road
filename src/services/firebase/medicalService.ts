@@ -1,9 +1,8 @@
 /**
- * Module 13 — personal QR per subscriber account + controlled access.
- * - public_limited: anonymous camera scan → SOS hint only (no medical PHI)
- * - emergency_full: authorized rescuer → name, address, emergency contact, full fiche
- * Printed QR sticker/card only — not an electronic beacon product.
- * Distinct from OBD valise (M5) and vehicle diagnostic hardware (future).
+ * Module 13 — personal QR per subscriber + scan-scoped rescuer access.
+ * - public_limited: SOS hint only (no medical PHI from Firestore)
+ * - emergency_full: active rescuer get(medicalScanIndex/{scanCode}) only — never list all cards
+ * Printed QR sticker/card only — not AirTag/NFC beacon.
  */
 import {
   collection,
@@ -14,7 +13,7 @@ import {
   setDoc,
   where,
 } from 'firebase/firestore';
-import { getFirebase } from '../../firebase/config';
+import { getFirebase, getSignedInUid } from '../../firebase/config';
 import type {
   MedicalCardDoc,
   MedicalEmergencyView,
@@ -22,7 +21,7 @@ import type {
   UserDoc,
 } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
-import { liveResult, mockResult, ServiceResult } from './result';
+import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 const MOCK_CARD: MedicalCardDoc = {
   id: 'mock-med-1',
@@ -39,9 +38,13 @@ const MOCK_CARD: MedicalCardDoc = {
   updatedAt: new Date().toISOString(),
 };
 
-function personalQrForUid(uid: string): string {
-  const slug = uid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12).toUpperCase() || 'LOCAL';
-  return `UM-QR-${slug}`;
+/** Unpredictable scan code — avoids collision/hijack from uid-derived codes. */
+function mintScanCode(): string {
+  const rand =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID().replace(/-/g, '').slice(0, 16).toUpperCase()
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`.toUpperCase();
+  return `UM-QR-${rand}`;
 }
 
 function canRescuerFull(profile: UserDoc | null | undefined): boolean {
@@ -79,7 +82,39 @@ function toPublicPreview(scanCode: string): MedicalPublicPreview {
   };
 }
 
-/** Ensure one personal QR code per subscriber account (mint / persist). */
+type ScanIndexDoc = {
+  scanCode: string;
+  ownerUid: string;
+  cardId: string;
+  fullName: string;
+  address?: string;
+  allergies: string[];
+  conditions: string[];
+  medications: string[];
+  emergencyContacts: { name: string; phone: string }[];
+  bloodType?: string;
+  notes?: string;
+  updatedAt: string;
+};
+
+function indexFromCard(card: MedicalCardDoc): ScanIndexDoc {
+  return {
+    scanCode: card.scanCode,
+    ownerUid: card.ownerUid,
+    cardId: card.id,
+    fullName: card.fullName,
+    address: card.address,
+    allergies: card.allergies,
+    conditions: card.conditions,
+    medications: card.medications,
+    emergencyContacts: card.emergencyContacts,
+    bloodType: card.bloodType,
+    notes: card.notes,
+    updatedAt: card.updatedAt,
+  };
+}
+
+/** Ensure one personal QR per subscriber (unique scanCode + index doc). */
 export async function ensurePersonalQr(
   ownerUid: string,
   subscriberActive: boolean,
@@ -102,7 +137,7 @@ export async function ensurePersonalQr(
     return liveResult({ scanCode: existing.data.scanCode, card: existing.data });
   }
 
-  const scanCode = personalQrForUid(ownerUid);
+  const scanCode = mintScanCode();
   const card: MedicalCardDoc = {
     id: `med-${ownerUid}`,
     ownerUid,
@@ -117,39 +152,78 @@ export async function ensurePersonalQr(
     updatedAt: new Date().toISOString(),
   };
   const saved = await upsertMedicalCard(card);
+  if (saved.ok === false) {
+    return failResult(
+      { scanCode: '', card },
+      saved.stubLabel ?? 'Échec création QR (collision scanCode ?)',
+    );
+  }
   return {
-    data: { scanCode, card: saved.data },
+    data: { scanCode: saved.data.scanCode, card: saved.data },
     source: saved.source,
     stubLabel: saved.stubLabel ?? 'QR personnel créé pour ce compte abonné',
+    ok: true,
   };
 }
 
-/** Module 13 — owner write. */
+/** Module 13 — owner write. Keeps medicalScanIndex/{scanCode} in sync; scanCode immutable. */
 export async function upsertMedicalCard(
   card: Omit<MedicalCardDoc, 'updatedAt'>,
 ): Promise<ServiceResult<MedicalCardDoc>> {
+  const fb = getFirebase();
+  const uid = getSignedInUid();
+  const scanCode = (card.scanCode || mintScanCode()).trim().toUpperCase();
   const payload: MedicalCardDoc = {
     ...card,
-    scanCode: card.scanCode || personalQrForUid(card.ownerUid),
+    scanCode,
     updatedAt: new Date().toISOString(),
   };
-  const fb = getFirebase();
-  if (!fb) return mockResult(payload, 'MOCK medical — QR/fiche locale');
 
-  await setDoc(doc(fb.db, COLLECTIONS.medicalCards, card.id), payload, { merge: true });
-  return liveResult(payload);
+  if (!fb || !uid || uid !== card.ownerUid) {
+    return mockResult(payload, 'MOCK medical — QR/fiche locale (ou non connecté)');
+  }
+
+  try {
+    const cardRef = doc(fb.db, COLLECTIONS.medicalCards, card.id);
+    const existingCard = await getDoc(cardRef);
+    if (existingCard.exists()) {
+      const prev = existingCard.data() as MedicalCardDoc;
+      // Enforce immutability client-side (rules also enforce)
+      payload.scanCode = prev.scanCode;
+    } else {
+      const indexRef = doc(fb.db, COLLECTIONS.medicalScanIndex, scanCode);
+      const clash = await getDoc(indexRef);
+      if (clash.exists() && clash.data()?.ownerUid !== uid) {
+        return failResult(payload, 'scanCode déjà utilisé — collision / hijack bloqué');
+      }
+      await setDoc(indexRef, indexFromCard(payload));
+    }
+
+    await setDoc(cardRef, payload, { merge: true });
+    // Refresh index PHI for rescuer scan-get (same scanCode)
+    await setDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode), indexFromCard(payload), {
+      merge: true,
+    });
+    return liveResult(payload);
+  } catch (e) {
+    return failResult(
+      payload,
+      e instanceof Error ? e.message : 'Échec écriture fiche médicale',
+    );
+  }
 }
 
 export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult<MedicalCardDoc | null>> {
   const fb = getFirebase();
-  if (!fb) {
+  const uid = getSignedInUid();
+  if (!fb || !uid) {
     return mockResult(
-      { ...MOCK_CARD, ownerUid, scanCode: personalQrForUid(ownerUid) },
+      { ...MOCK_CARD, ownerUid, scanCode: MOCK_CARD.scanCode },
       'MOCK medical card — QR personnel démo',
     );
   }
 
-  const q = query(collection(fb.db, COLLECTIONS.medicalCards), where('ownerUid', '==', ownerUid));
+  const q = query(collection(fb.db, COLLECTIONS.medicalCards), where('ownerUid', '==', uid));
   const snap = await getDocs(q);
   if (snap.empty) return liveResult(null);
   const d = snap.docs[0];
@@ -158,30 +232,20 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
 
 /**
  * Anonymous / public camera scan → limited preview only (no PHI).
+ * Does not list or read medicalCards — static SOS payload for any UM-QR-* code.
  */
 export async function scanMedicalPublic(
   scanCode: string,
 ): Promise<ServiceResult<MedicalPublicPreview | null>> {
   const code = scanCode.trim().toUpperCase();
   if (!code) return mockResult(null, 'Code QR vide');
-
-  const fb = getFirebase();
-  if (!fb) {
-    if (code === MOCK_CARD.scanCode.toUpperCase() || code.startsWith('UM-QR-')) {
-      return mockResult(toPublicPreview(code), 'Vue publique limitée (mock)');
-    }
-    return mockResult(null, 'QR inconnu');
-  }
-
-  const q = query(collection(fb.db, COLLECTIONS.medicalCards), where('scanCode', '==', code));
-  const snap = await getDocs(q);
-  if (snap.empty) return liveResult(null);
-  return liveResult(toPublicPreview(code));
+  if (!code.startsWith('UM-QR-')) return mockResult(null, 'QR inconnu');
+  return liveResult(toPublicPreview(code), 'Vue publique limitée — pas de PHI');
 }
 
 /**
- * Authorized emergency scan → name, address, emergency contact, full medical fiche.
- * Client gate + Firestore isActiveRescuer() rules.
+ * Authorized emergency scan → get(medicalScanIndex/{scanCode}) only.
+ * Rules deny list on that collection — rescuer cannot dump all cards.
  */
 export async function scanMedicalEmergency(
   scanCode: string,
@@ -203,12 +267,30 @@ export async function scanMedicalEmergency(
     return mockResult(null, 'QR inconnu');
   }
 
-  const q = query(collection(fb.db, COLLECTIONS.medicalCards), where('scanCode', '==', code));
-  const snap = await getDocs(q);
-  if (snap.empty) return liveResult(null);
-  const d = snap.docs[0];
-  const card = { id: d.id, ...(d.data() as Omit<MedicalCardDoc, 'id'>) };
-  return liveResult(toEmergencyView(card));
+  try {
+    // Exact document get by scanCode — not a collection list
+    const snap = await getDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, code));
+    if (!snap.exists()) return liveResult(null);
+    const idx = snap.data() as ScanIndexDoc;
+    return liveResult(
+      toEmergencyView({
+        id: idx.cardId,
+        ownerUid: idx.ownerUid,
+        scanCode: idx.scanCode,
+        fullName: idx.fullName,
+        address: idx.address,
+        allergies: idx.allergies ?? [],
+        conditions: idx.conditions ?? [],
+        medications: idx.medications ?? [],
+        emergencyContacts: idx.emergencyContacts ?? [],
+        bloodType: idx.bloodType,
+        notes: idx.notes,
+        updatedAt: idx.updatedAt,
+      }),
+    );
+  } catch (e) {
+    return failResult(null, e instanceof Error ? e.message : 'Scan urgence refusé');
+  }
 }
 
 /** @deprecated Prefer scanMedicalEmergency — kept for older screens. */
@@ -218,7 +300,7 @@ export async function scanMedicalCardAsRescuer(
 ): Promise<ServiceResult<MedicalCardDoc | null>> {
   const full = await scanMedicalEmergency(scanCode, rescuerProfile);
   if (!full.data) {
-    return { data: null, source: full.source, stubLabel: full.stubLabel };
+    return { data: null, source: full.source, stubLabel: full.stubLabel, ok: full.ok };
   }
   const card: MedicalCardDoc = {
     id: `view-${full.data.scanCode}`,
@@ -234,15 +316,27 @@ export async function scanMedicalCardAsRescuer(
     notes: full.data.notes,
     updatedAt: new Date().toISOString(),
   };
-  return { data: card, source: full.source, stubLabel: full.stubLabel };
+  return { data: card, source: full.source, stubLabel: full.stubLabel, ok: full.ok };
 }
 
+/** Owner-only get by id — rescuers must use scanMedicalEmergency(scanCode). */
 export async function getMedicalCardById(
   id: string,
-  _reader: UserDoc | null,
+  reader: UserDoc | null,
 ): Promise<ServiceResult<MedicalCardDoc | null>> {
   const fb = getFirebase();
-  if (!fb) return mockResult(id === MOCK_CARD.id ? MOCK_CARD : null, 'MOCK medical get');
-  const snap = await getDoc(doc(fb.db, COLLECTIONS.medicalCards, id));
-  return liveResult(snap.exists() ? ({ id: snap.id, ...snap.data() } as MedicalCardDoc) : null);
+  const uid = getSignedInUid();
+  if (!fb || !uid) return mockResult(id === MOCK_CARD.id ? MOCK_CARD : null, 'MOCK medical get');
+  if (reader && reader.role === 'rescuer' && reader.uid !== uid) {
+    return failResult(null, 'Rescuer: utiliser le scan QR (scanCode), pas getById');
+  }
+  try {
+    const snap = await getDoc(doc(fb.db, COLLECTIONS.medicalCards, id));
+    if (!snap.exists()) return liveResult(null);
+    const card = { id: snap.id, ...snap.data() } as MedicalCardDoc;
+    if (card.ownerUid !== uid) return failResult(null, 'Accès fiche médicale refusé');
+    return liveResult(card);
+  } catch (e) {
+    return failResult(null, e instanceof Error ? e.message : 'Lecture fiche refusée');
+  }
 }

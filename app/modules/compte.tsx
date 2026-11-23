@@ -77,9 +77,31 @@ export default function CompteScreen() {
       setAuthMsg('Inscription bloquée — mot de passe non conforme.');
       return;
     }
-    const r = await signUpEmail(email, pw);
-    setAuthMsg(r.stubLabel ?? `Compte ${r.data.email}`);
-    await refresh();
+    try {
+      const r = await signUpEmail(email, pw);
+      if (r.ok === false) {
+        setAuthMsg(r.stubLabel ?? 'Inscription échouée');
+        return;
+      }
+      setAuthMsg(r.stubLabel ?? `Compte ${r.data.email}`);
+      await refresh();
+    } catch (e) {
+      setAuthMsg(e instanceof Error ? e.message : 'Inscription échouée');
+    }
+  };
+
+  const onSignIn = async () => {
+    try {
+      const r = await signInEmail(email, pw);
+      if (r.ok === false) {
+        setAuthMsg(r.stubLabel ?? 'Connexion échouée');
+        return;
+      }
+      setAuthMsg(r.stubLabel ?? `Connecté ${r.data.email}`);
+      await refresh();
+    } catch (e) {
+      setAuthMsg(e instanceof Error ? e.message : 'Connexion échouée');
+    }
   };
 
   return (
@@ -121,15 +143,7 @@ export default function CompteScreen() {
             <Pressable style={[styles.btn, { flex: 1 }]} onPress={() => void onSignUp()}>
               <Text style={styles.btnTxt}>S’inscrire</Text>
             </Pressable>
-            <Pressable
-              style={[styles.btnDark, { flex: 1 }]}
-              onPress={() =>
-                void signInEmail(email, pw).then(async (r) => {
-                  setAuthMsg(r.stubLabel ?? `Connecté ${r.data.email}`);
-                  await refresh();
-                })
-              }
-            >
+            <Pressable style={[styles.btnDark, { flex: 1 }]} onPress={() => void onSignIn()}>
               <Text style={styles.btnTxt}>Connexion</Text>
             </Pressable>
           </View>
