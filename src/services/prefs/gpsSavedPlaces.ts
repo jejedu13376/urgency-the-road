@@ -50,29 +50,53 @@ export async function loadSavedPlaces(): Promise<GpsPlaceRef[]> {
   }
 }
 
+export function savedPlaceId(lat: number, lon: number): string {
+  return placeId(lat, lon);
+}
+
+export async function findSavedPlace(lat: number, lon: number): Promise<GpsPlaceRef | null> {
+  const id = placeId(lat, lon);
+  const prev = await loadSavedPlaces();
+  return prev.find((p) => p.id === id) ?? null;
+}
+
+/**
+ * Persist a place. `tag`:
+ * - omit / `undefined` → keep any existing étiquette
+ * - `null` → clear étiquette
+ * - string → set étiquette
+ */
 export async function savePlace(input: {
   lat: number;
   lon: number;
   label: string;
-  tag?: string;
+  tag?: string | null;
 }): Promise<{ ok: true; place: GpsPlaceRef } | { ok: false; error: string }> {
   if (!isFiniteCoord(input.lat) || !isFiniteCoord(input.lon)) {
     return { ok: false, error: 'Coordonnées invalides' };
   }
   const label = input.label.trim().slice(0, 160);
   if (!label) return { ok: false, error: 'Libellé requis' };
-  const tag = input.tag?.trim().slice(0, 48) || undefined;
   const id = placeId(input.lat, input.lon);
-  const place: GpsPlaceRef = {
-    id,
-    lat: input.lat,
-    lon: input.lon,
-    label,
-    tag,
-    savedAt: new Date().toISOString(),
-  };
   try {
     const prev = await loadSavedPlaces();
+    const existing = prev.find((p) => p.id === id);
+    let tag: string | undefined;
+    if (input.tag === null) {
+      tag = undefined;
+    } else if (typeof input.tag === 'string') {
+      tag = input.tag.trim().slice(0, 48) || undefined;
+    } else {
+      tag = existing?.tag;
+    }
+    const place: GpsPlaceRef = {
+      id,
+      lat: input.lat,
+      lon: input.lon,
+      label,
+      tag,
+      savedAt: new Date().toISOString(),
+    };
     const next = [place, ...prev.filter((p) => p.id !== id)].slice(0, 100);
     await AsyncStorage.setItem(GPS_SAVED_PLACES_KEY, JSON.stringify(next));
     return { ok: true, place };
@@ -95,7 +119,8 @@ export async function updatePlaceTag(
     lat,
     lon,
     label: existing?.label ?? fallbackLabel,
-    tag: trimmed || undefined,
+    /** Empty draft clears the tag; non-empty sets it. */
+    tag: trimmed.length ? trimmed : null,
   });
 }
 

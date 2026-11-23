@@ -29,14 +29,18 @@ export type GpsDestinationSelection = {
   tag?: string;
 };
 
+/** Route state for Démarrer — never conflate pending vs failed. */
+export type GpsRouteStatus = 'pending' | 'ready' | 'failed';
+
 type Props = {
   visible: boolean;
   destination: GpsDestinationSelection | null;
   /** Live device fix for « Partager ma location » — read at tap time (ref-safe). */
   getMyLocation: () => { lat: number; lon: number } | null;
-  routeReady: boolean;
+  routeStatus: GpsRouteStatus;
   onClose: () => void;
-  onStartNavigation: () => void;
+  /** Returns true only when map navigation actually started. */
+  onStartNavigation: () => boolean;
   onLabelUpdated?: (place: GpsPlaceRef) => void;
   onFeedback?: (note: string) => void;
 };
@@ -48,7 +52,7 @@ export function GpsDestinationMenu({
   visible,
   destination,
   getMyLocation,
-  routeReady,
+  routeStatus,
   onClose,
   onStartNavigation,
   onLabelUpdated,
@@ -58,9 +62,19 @@ export function GpsDestinationMenu({
   const [tagModal, setTagModal] = useState(false);
   const [tagDraft, setTagDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  /** In-sheet note — hudNote sits under the Modal and is easy to miss. */
+  const [sheetNote, setSheetNote] = useState<string | null>(null);
+
+  const dismiss = useCallback(() => {
+    setSheetNote(null);
+    setPlusOpen(false);
+    setTagModal(false);
+    onClose();
+  }, [onClose]);
 
   const feedback = useCallback(
     (note: string) => {
+      setSheetNote(note);
       onFeedback?.(note);
     },
     [onFeedback],
@@ -68,13 +82,25 @@ export function GpsDestinationMenu({
 
   const onStart = useCallback(() => {
     if (!destination) return;
-    if (!routeReady) {
+    if (routeStatus === 'pending') {
       feedback('Calcul itinéraire en cours — réessayez dans un instant');
       return;
     }
-    onStartNavigation();
-    onClose();
-  }, [destination, routeReady, onStartNavigation, onClose, feedback]);
+    if (routeStatus === 'failed') {
+      feedback('Itinéraire indisponible — choisissez une autre adresse ou réessayez');
+      return;
+    }
+    if (!getMyLocation()) {
+      feedback('Démarrer — GPS appareil requis');
+      return;
+    }
+    const started = onStartNavigation();
+    if (!started) {
+      feedback('Navigation non démarrée — GPS ou itinéraire manquant');
+      return;
+    }
+    dismiss();
+  }, [destination, routeStatus, getMyLocation, onStartNavigation, dismiss, feedback]);
 
   const onShareMyLocation = useCallback(async () => {
     const myLocation = getMyLocation();
@@ -101,11 +127,11 @@ export function GpsDestinationMenu({
     if (!destination) return;
     setBusy(true);
     try {
+      // Omit tag → preserve any existing étiquette (do not wipe on re-save).
       const r = await savePlace({
         lat: destination.lat,
         lon: destination.lon,
         label: destination.label,
-        tag: destination.tag,
       });
       if (!r.ok) {
         feedback(r.error);
@@ -157,6 +183,13 @@ export function GpsDestinationMenu({
     [feedback],
   );
 
+  const startHint =
+    routeStatus === 'pending'
+      ? 'itinéraire…'
+      : routeStatus === 'failed'
+        ? 'indisponible'
+        : undefined;
+
   if (!destination) return null;
 
   return (
@@ -165,9 +198,9 @@ export function GpsDestinationMenu({
         visible={visible}
         animationType="slide"
         transparent
-        onRequestClose={onClose}
+        onRequestClose={dismiss}
       >
-        <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Fermer le menu destination" />
+        <Pressable style={styles.backdrop} onPress={dismiss} accessibilityLabel="Fermer le menu destination" />
         <View style={styles.sheet} accessibilityLabel="Actions destination">
           <View style={styles.handle} />
           <Text style={styles.title} numberOfLines={2}>
@@ -178,12 +211,18 @@ export function GpsDestinationMenu({
             {destination.lat.toFixed(5)}, {destination.lon.toFixed(5)}
           </Text>
 
+          {sheetNote ? (
+            <View style={styles.sheetNote} accessibilityLiveRegion="polite">
+              <Text style={styles.sheetNoteTxt}>{sheetNote}</Text>
+            </View>
+          ) : null}
+
           <ActionRow
             label="Démarrer"
             emphasis
             disabled={busy}
             onPress={onStart}
-            hint={routeReady ? undefined : 'itinéraire…'}
+            hint={startHint}
           />
           <ActionRow label="Partager ma location" disabled={busy} onPress={() => void onShareMyLocation()} />
           <ActionRow label="Enregistrer le lieu" disabled={busy} onPress={() => void onSavePlace()} />
@@ -232,7 +271,7 @@ export function GpsDestinationMenu({
             </View>
           ) : null}
 
-          <Pressable style={styles.closeBtn} onPress={onClose}>
+          <Pressable style={styles.closeBtn} onPress={dismiss}>
             <Text style={styles.closeTxt}>Fermer</Text>
           </Pressable>
         </View>
@@ -331,6 +370,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     marginBottom: 12,
+  },
+  sheetNote: {
+    backgroundColor: colors.mist,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  sheetNoteTxt: {
+    color: colors.slate,
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 16,
   },
   row: {
     flexDirection: 'row',

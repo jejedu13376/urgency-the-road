@@ -42,7 +42,9 @@ import { buildGpsMapHtml } from './buildGpsMapHtml';
 import {
   GpsDestinationMenu,
   type GpsDestinationSelection,
+  type GpsRouteStatus,
 } from './GpsDestinationMenu';
+import { findSavedPlace } from '../../services/prefs/gpsSavedPlaces';
 
 /** RN WebView prop intersection can collapse to `never` under strict TS — cast for SDK 58. */
 type WebViewHandle = {
@@ -698,19 +700,29 @@ export function GpsFullMap() {
       setSearchOpen(false);
       setSearchHits([]);
       setSearchQ(hit.label);
-      const dest: GpsDestinationSelection = {
-        lat: hit.lat,
-        lon: hit.lon,
-        label: hit.label,
-      };
-      setDestSelection(dest);
+      setDestSelection({ lat: hit.lat, lon: hit.lon, label: hit.label });
       setLastRoute(null);
       proposeDestination(hit.lat, hit.lon, hit.label);
       setDestMenuOpen(true);
       setHudNote(`Destination · ${hit.label}`);
+      void (async () => {
+        const saved = await findSavedPlace(hit.lat, hit.lon);
+        if (!saved?.tag) return;
+        setDestSelection((prev) =>
+          prev && prev.lat === hit.lat && prev.lon === hit.lon
+            ? { ...prev, tag: saved.tag }
+            : prev,
+        );
+      })();
     },
     [proposeDestination],
   );
+
+  const destRouteStatus: GpsRouteStatus = !lastRoute
+    ? 'pending'
+    : lastRoute.ok
+      ? 'ready'
+      : 'failed';
 
   /** One-tap Police = AsyncStorage local pin only — never auto-upload GPS/uid. */
   const dropPoliceReport = useCallback(() => {
@@ -922,15 +934,17 @@ export function GpsFullMap() {
         getMyLocation={() =>
           gpsOk ? (lastWatchRef.current ?? liveOriginRef.current) : null
         }
-        routeReady={!!lastRoute?.ok}
+        routeStatus={destRouteStatus}
         onClose={() => setDestMenuOpen(false)}
         onStartNavigation={() => {
+          if (!gpsOk || !lastRoute?.ok) return false;
           startNavigation();
           setHudNote(
             modeLabel === 'camion'
               ? 'Navigation camion — marqueur = GPS live'
               : 'Navigation voiture — marqueur = GPS live',
           );
+          return true;
         }}
         onLabelUpdated={(place) => {
           setDestSelection((prev) =>
