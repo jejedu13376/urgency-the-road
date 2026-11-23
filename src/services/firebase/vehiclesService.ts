@@ -16,11 +16,25 @@ import type { VehicleProfile } from '../../types/vehicle';
 import { decodeVinNhtsa } from '../vin/nhtsaDecode';
 import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
+/** Local-only temp ids — must not be used as Firestore doc ids (would create orphans on retry). */
+function isLocalTempId(id: string): boolean {
+  return (
+    id.startsWith('cascade-') ||
+    id.startsWith('decoded-') ||
+    id.startsWith('nhtsa-')
+  );
+}
+
+function normalizeVin(vin: string | undefined): string {
+  return (vin ?? '').trim().toUpperCase();
+}
+
 function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { id?: string } {
+  const vin = normalizeVin(v.vin);
   return {
     id: v.id,
     ownerUid,
-    vin: v.vin,
+    vin: vin || v.vin,
     label: v.label,
     continent: v.continent,
     country: v.country,
@@ -86,10 +100,27 @@ export async function upsertVehicle(
 
   const payload = toDoc(vehicle, uid);
   try {
-    if (vehicle.id && !vehicle.id.startsWith('decoded-') && !vehicle.id.startsWith('cascade-')) {
+    // Stable Firestore id already → merge update (never addDoc again).
+    if (vehicle.id && !isLocalTempId(vehicle.id)) {
       await setDoc(doc(fb.db, COLLECTIONS.vehicles, vehicle.id), payload, { merge: true });
       return liveResult(vehicle);
     }
+
+    // Local temp id: reuse existing cloud row by VIN when present (heals partial-migrate orphans).
+    // Filter client-side on ownerUid query — no composite index required.
+    const vin = normalizeVin(vehicle.vin);
+    if (vin.length >= 8) {
+      const owned = await getDocs(
+        query(collection(fb.db, COLLECTIONS.vehicles), where('ownerUid', '==', uid)),
+      );
+      const hit = owned.docs.find((d) => normalizeVin((d.data() as { vin?: string }).vin) === vin);
+      if (hit) {
+        const id = hit.id;
+        await setDoc(doc(fb.db, COLLECTIONS.vehicles, id), { ...payload, id }, { merge: true });
+        return liveResult({ ...vehicle, id });
+      }
+    }
+
     const ref = await addDoc(collection(fb.db, COLLECTIONS.vehicles), payload);
     return liveResult({ ...vehicle, id: ref.id });
   } catch (e) {
