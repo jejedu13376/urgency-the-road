@@ -11,7 +11,7 @@ import {
   withDistance,
 } from '../osm/overpassPlaces';
 import { fetchPhotonWeighHints } from '../osm/photonPlaces';
-import { externalLiveResult, liveResult, mockResult, ServiceResult } from './result';
+import { externalLiveResult, failResult, liveResult, mockResult, ServiceResult } from './result';
 
 function mockStations(): WeighStationDoc[] {
   return MOCK_PLACES.filter((p) => p.kind === 'pesage').map((p) => ({
@@ -109,12 +109,25 @@ export async function listWeighStations(opts?: {
 
   const fb = getFirebase();
   if (fb) {
-    const snap = await getDocs(query(collection(fb.db, COLLECTIONS.weighStations), limit(50)));
-    if (!snap.empty) {
+    try {
+      const snap = await getDocs(query(collection(fb.db, COLLECTIONS.weighStations), limit(50)));
+      if (!snap.empty) {
+        return {
+          ...liveResult(
+            snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<WeighStationDoc, 'id'>) })),
+            `Weigh Firestore LIVE · ${gpsLabel}`,
+          ),
+          meta: { lat, lon, gpsLabel, depots, depotLabel },
+        };
+      }
+    } catch (e) {
+      // permission-denied / offline — fail-closed (ok:false); stations are not PHI
       return {
-        ...liveResult(
-          snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<WeighStationDoc, 'id'>) })),
-          `Weigh Firestore LIVE · ${gpsLabel}`,
+        ...failResult(
+          mockStations(),
+          e instanceof Error
+            ? `Weigh Firestore KO — ${e.message}`
+            : 'Weigh Firestore KO — mock stations',
         ),
         meta: { lat, lon, gpsLabel, depots, depotLabel },
       };

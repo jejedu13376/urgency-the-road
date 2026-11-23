@@ -166,7 +166,13 @@ export default function UrgenceScreen() {
 
   const onEmergencyScan = async () => {
     setPublicView(null);
-    if (!badgeId.trim() && profile?.role === 'rescuer') {
+    // DEV soft-path: do not hard-block UI on missing KYC badge (no approve workflow).
+    const softDev =
+      (typeof __DEV__ !== 'undefined' && __DEV__) ||
+      ['1', 'true', 'yes'].includes(
+        (process.env.EXPO_PUBLIC_DEV_SOFT_AUTH ?? '').trim().toLowerCase(),
+      );
+    if (!badgeId.trim() && profile?.role === 'rescuer' && !softDev) {
       setScanMsg('KYC : badge / n° professionnel requis avant vue urgence complète.');
       return;
     }

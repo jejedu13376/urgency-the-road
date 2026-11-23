@@ -1,9 +1,27 @@
 # Deploy Firestore rules — Urgence Mécanique (Lorenzo)
 
-**Repo path:** `firebase/firestore.rules` (+ `firestore.indexes.json`)  
+**Repo path:** `firebase/firestore.rules` (+ `firestore.indexes.json`) + `firebase/storage.rules`  
 **Config:** `firebase/firebase.json`  
 **Project id:** from your `.env` → `EXPO_PUBLIC_FIREBASE_PROJECT_ID` (also mirrored as `firebase/.firebaserc`)  
 **Formations:** never deploy from that project.
+
+## NEVER world-open rules on shared `urgency-road`
+
+**Forbidden:** `allow read, write: if true` on Firestore or Storage for the shared project. Security review treats that as CRITICAL (medical PHI / role fields become world R/W).
+
+**Expo preview without crashing:** use the **client soft-path** only:
+
+- `__DEV__` or `EXPO_PUBLIC_DEV_SOFT_AUTH=1`
+- On `permission-denied`: return `ok: false` + `null` / empty list + clear stubLabel — **never** `mockResult(ok:true)` with medical PHI
+- Secure auth-based `firestore.rules` stay in repo; Storage is **deny-all** until the app has owner/path-bound Storage SDK use (auth-only allow-all was MEDIUM)
+
+Live open rules are **never** the fix for Expo tunnel. Deploy secure rules only:
+
+```bash
+firebase deploy --config firebase/firebase.json --only firestore:rules,storage --project urgency-road
+```
+
+**Cloud-agent deploy status (2026-11-23):** **blocked** — `FIREBASE_TOKEN` unset (*clé d'hier non retrouvable*). No service-account JSON / `GOOGLE_APPLICATION_CREDENTIALS`. Store `.env` has only `EXPO_PUBLIC_FIREBASE_*` client keys.
 
 Cloud agents usually **cannot** complete `firebase login` (no browser). Lorenzo runs these steps once on a machine with Firebase CLI access.
 
@@ -85,7 +103,7 @@ firebase use "$(grep '^EXPO_PUBLIC_FIREBASE_PROJECT_ID=' .env | cut -d= -f2)"
 ### 4. Deploy rules + indexes only
 
 ```bash
-firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes --project urgency-road
+firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes,storage --project urgency-road
 ```
 
 > **Hosting:** `firebase/firebase.json` has no Firebase Hosting target. Installable builds = EAS (`docs/EAS-RUNBOOK.md` / `docs/HOSTING-RESTORE.md`). Full post-secrets order: `docs/DEPLOY-CHECKLIST.md`.

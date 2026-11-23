@@ -13,6 +13,7 @@ import type {
   UserDoc,
 } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
+import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 const MOCK_CARD: MedicalCardDoc = {
@@ -80,12 +81,17 @@ function canReuseScanCode(code: string | null | undefined, uid: string): boolean
 }
 
 function canRescuerFull(profile: UserDoc | null | undefined): boolean {
-  return Boolean(
+  if (
     profile &&
-      profile.role === 'rescuer' &&
-      profile.subscription === 'rescuer' &&
-      profile.subscriptionActive,
-  );
+    profile.role === 'rescuer' &&
+    profile.subscription === 'rescuer' &&
+    profile.subscriptionActive
+  ) {
+    return true;
+  }
+  // DEV soft-path: rescuer role without subscriptionActive / KYC still loads UI
+  // (no hard approve workflow). Non-rescuer stays denied.
+  return Boolean(isDevSoftAuth() && profile?.role === 'rescuer');
 }
 
 function toEmergencyView(card: MedicalCardDoc): MedicalEmergencyView {
@@ -444,6 +450,15 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
     }
     return liveResult(null);
   } catch (e) {
+    // Soft-fail: ok:false + null — NEVER mockResult(ok:true) with PHI.
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return failResult(
+        null,
+        isPermissionDenied(e)
+          ? 'SOFT medical — permission refusée (pas de PHI mock, UI charge)'
+          : 'SOFT medical — DEV (pas de fiche, pas de PHI inventé)',
+      );
+    }
     return failResult(null, e instanceof Error ? e.message : 'Lecture fiche médicale refusée');
   }
 }
@@ -469,10 +484,14 @@ export async function scanMedicalEmergency(
   scanCode: string,
   rescuerProfile: UserDoc | null,
 ): Promise<ServiceResult<MedicalEmergencyView | null>> {
+  const softDev = isDevSoftAuth();
   if (!canRescuerFull(rescuerProfile)) {
-    return mockResult(
+    // Soft deny: ok:false + null — UI loads, no fake PHI.
+    return failResult(
       null,
-      'REFUSÉ — vue urgence complète : rôle rescuer + abonnement secours actif + KYC',
+      softDev
+        ? 'SOFT REFUSÉ — rescuer/KYC (DEV, pas de crash, pas de PHI)'
+        : 'REFUSÉ — vue urgence complète : rôle rescuer + abonnement secours actif + KYC',
     );
   }
 
@@ -483,13 +502,24 @@ export async function scanMedicalEmergency(
     if (code === MOCK_CARD.scanCode.toUpperCase()) {
       return mockResult(toEmergencyView({ ...MOCK_CARD }), 'MOCK vue urgence complète (code démo)');
     }
-    return mockResult(null, 'QR inconnu (mock — seul le code démo renvoie une fiche)');
+    return softDev
+      ? failResult(null, 'SOFT vue urgence — Firebase off / QR non démo (pas de PHI)')
+      : mockResult(null, 'QR inconnu (mock — seul le code démo renvoie une fiche)');
   }
 
   try {
     // Exact document get by scanCode — not a collection list
     const snap = await getDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, code));
-    if (!snap.exists()) return liveResult(null);
+    if (!snap.exists()) {
+      // Demo code only when Firebase empty — never invent PHI for other codes.
+      if (code === MOCK_CARD.scanCode.toUpperCase()) {
+        return mockResult(
+          toEmergencyView({ ...MOCK_CARD }),
+          'MOCK vue urgence — index absent, code démo uniquement',
+        );
+      }
+      return liveResult(null);
+    }
     const idx = snap.data() as ScanIndexDoc;
     return liveResult(
       toEmergencyView({
@@ -508,6 +538,15 @@ export async function scanMedicalEmergency(
       }),
     );
   } catch (e) {
+    // Soft-fail: ok:false + null — NEVER surface MOCK_CARD as live PHI.
+    if (isPermissionDenied(e) || softDev) {
+      return failResult(
+        null,
+        isPermissionDenied(e)
+          ? 'SOFT vue urgence — permission refusée (pas de PHI mock, UI charge)'
+          : 'SOFT vue urgence — DEV (pas de PHI inventé)',
+      );
+    }
     return failResult(null, e instanceof Error ? e.message : 'Scan urgence refusé');
   }
 }
