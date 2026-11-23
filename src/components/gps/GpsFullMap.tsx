@@ -299,6 +299,8 @@ export function GpsFullMap() {
   const announcedWeighIdsRef = useRef<Set<string>>(new Set());
   /** Speak-once keys: `far-turn-N` / `near-turn-N` — never distance-dependent. */
   const spokenTurnBandsRef = useRef<Set<string>>(new Set());
+  /** Last injectHighlightWeigh id — avoid rebuilding all markers every GPS tick. */
+  const highlightedWeighIdRef = useRef<string | null>(null);
   const aqiOnRef = useRef(false);
 
   const enqueueAlerts = useCallback((alerts: RouteAlert[]) => {
@@ -643,8 +645,11 @@ export function GpsFullMap() {
                 const toDestKm = haversineKm(pos.lat, pos.lon, dest.lat, dest.lon);
                 // ~60 m arrival radius — complete trip history + stop nav TTS/alerts.
                 if (toDestKm <= 0.06) {
+                  // Sync clear before any async — HTML may also post `arrived`.
                   navigatingRef.current = false;
                   navDestRef.current = null;
+                  shownAlertIdsRef.current = new Set();
+                  highlightedWeighIdRef.current = null;
                   injectHighlightWeigh(null);
                   setHudNote('Arrivée — GPS live toujours actif');
                   speakArrival(
@@ -652,9 +657,9 @@ export function GpsFullMap() {
                     lastRouteRef.current?.distanceKm,
                   );
                   const tripId = activeTripIdRef.current;
+                  activeTripIdRef.current = null;
                   if (tripId) {
                     void completeTrip(tripId).then(() => {
-                      activeTripIdRef.current = null;
                       void loadTripHistory().then(setTripHistory);
                     });
                   }
@@ -718,7 +723,11 @@ export function GpsFullMap() {
                   },
                 ]);
               }
-              if (highlightId) injectHighlightWeigh(highlightId);
+              // Only rebuild map pins when highlight target changes (incl. clear).
+              if (highlightId !== highlightedWeighIdRef.current) {
+                highlightedWeighIdRef.current = highlightId;
+                injectHighlightWeigh(highlightId);
+              }
             }
           },
           (err) => {
@@ -903,6 +912,9 @@ export function GpsFullMap() {
           }, { excludeLocations: excludes });
           if (reqId !== routeReqId.current) return;
           // Bridge/weight/weather fire IMMEDIATE overlays via trucker brief (not passive HUD).
+          // Reset alert dedupe for this new route so later trips still get overlays;
+          // navigating must NOT clear again (avoids double-speak on Démarrer).
+          shownAlertIdsRef.current = new Set();
           setLastRoute(route);
           lastRouteRef.current = route;
           setHudNote(route.label);
@@ -965,6 +977,8 @@ export function GpsFullMap() {
         if (!navigatingRef.current && !activeTripIdRef.current) return;
         navigatingRef.current = false;
         navDestRef.current = null;
+        shownAlertIdsRef.current = new Set();
+        highlightedWeighIdRef.current = null;
         injectHighlightWeigh(null);
         setTripEnded({
           lat: msg.to.lat,
