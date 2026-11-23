@@ -1,6 +1,7 @@
 /**
- * Couche stub explicite — aucun appel live VIN / OBD / IA / paiement / météo.
- * Remplacer ces fonctions par de vrais clients API plus tard.
+ * Couche stub / labels honnêtes pour écrans encore partiels.
+ * Live paths live elsewhere: NHTSA VIN, Open-Meteo, Multi-IA proxy, Overpass, YouTube.
+ * Keep these helpers for sync UI copy and unpaid / hardware-blocked flows.
  */
 
 export type StubResult<T> = {

@@ -13,7 +13,7 @@ Full click-by-click: **`docs/EAS-RUNBOOK.md`**. Hosting overview: **`docs/HOSTIN
 2. On your PC (or this machine after auth):
 
 ```powershell
-cd C:\Users\Jejedou13376\Axarel\urgency-road-one
+cd /path/to/urgency-the-road
 npm install
 npx eas-cli login
 ```

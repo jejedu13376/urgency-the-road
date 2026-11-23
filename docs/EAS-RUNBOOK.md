@@ -34,7 +34,7 @@ Repo fallback: https://github.com/jejedu13376/urgency-the-road
 ### 2) Login on the machine with the repo
 
 ```powershell
-cd C:\Users\Jejedou13376\Axarel\urgency-road-one
+cd /path/to/urgency-the-road
 # or: git clone https://github.com/jejedu13376/urgency-the-road.git && cd urgency-the-road
 npm install
 npx eas-cli login

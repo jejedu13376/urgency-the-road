@@ -5,6 +5,8 @@
 **Formations:** standby — do not touch.  
 **Never paste secret values into chat or commit them.**
 
+Canonical in GitHub: `docs/DEPLOY-CHECKLIST.md`.
+
 ---
 
 ## 0) Preconditions

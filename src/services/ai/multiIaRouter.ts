@@ -156,9 +156,9 @@ async function liveProxyVote(
   const base = proxyUrl();
   if (!base || !bearer) return null;
   const t0 = Date.now();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), LIVE_PROXY_ABORT_MS);
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), LIVE_PROXY_ABORT_MS);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Authorization: bearer,
@@ -169,7 +169,6 @@ async function liveProxyVote(
       body: JSON.stringify({ engine, prompt, context }),
       signal: ctrl.signal,
     });
-    clearTimeout(timer);
     if (!res.ok) {
       // Auth / rate / missing key → fall back to heuristic (null), not a hard error vote.
       if (
@@ -214,6 +213,8 @@ async function liveProxyVote(
       likelyParts: [],
       severity: 'info',
     };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

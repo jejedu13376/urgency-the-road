@@ -14,12 +14,7 @@ import {
   scanMedicalPublic,
   upsertMedicalCard,
 } from '../../src/services/firebase';
-import {
-  FALLBACK_LAT,
-  FALLBACK_LON,
-  getDeviceCoords,
-  type DeviceCoords,
-} from '../../src/services/geo/deviceLocation';
+import { getDeviceCoords, type DeviceCoords } from '../../src/services/geo/deviceLocation';
 import type {
   MedicalCardDoc,
   MedicalEmergencyView,
@@ -56,6 +51,7 @@ export default function UrgenceScreen() {
   const [scanMsg, setScanMsg] = useState<string | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [sosMsg, setSosMsg] = useState<string | null>(null);
+  const [gpsErr, setGpsErr] = useState<string | null>(null);
   const [label, setLabel] = useState<string | undefined>();
   const [coords, setCoords] = useState<DeviceCoords | null>(null);
 
@@ -76,8 +72,10 @@ export default function UrgenceScreen() {
   }, [seconds]);
 
   useEffect(() => {
-    void getDeviceCoords({ allowFallback: true }).then((r) => {
-      if (r.data) setCoords(r.data);
+    // M13: never seed SOS UI with Lille fallback — device GPS only.
+    void getDeviceCoords({ allowFallback: false }).then((r) => {
+      if (r.ok && r.data?.source === 'device') setCoords(r.data);
+      else setGpsErr(r.ok ? 'fallback interdit' : r.error);
     });
   }, []);
 
@@ -206,13 +204,21 @@ export default function UrgenceScreen() {
               ? `${coords.label} : ${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}${
                   coords.accuracyM != null ? ` · ±${Math.round(coords.accuracyM)} m` : ''
                 }`
-              : `GPS… (fallback ${FALLBACK_LAT}, ${FALLBACK_LON})`}
+              : gpsErr
+                ? `GPS appareil indisponible — ${gpsErr}`
+                : 'GPS appareil…'}
           </Text>
           <Pressable
             style={styles.share}
             onPress={() =>
-              void getDeviceCoords({ allowFallback: true }).then((r) => {
-                if (r.data) setCoords(r.data);
+              void getDeviceCoords({ allowFallback: false }).then((r) => {
+                if (r.ok && r.data?.source === 'device') {
+                  setCoords(r.data);
+                  setGpsErr(null);
+                } else {
+                  setCoords(null);
+                  setGpsErr(r.ok ? 'fallback interdit' : r.error);
+                }
               })
             }
           >
