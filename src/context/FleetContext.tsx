@@ -214,9 +214,18 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
           cloud.map((v) => (v.vin ?? '').trim().toUpperCase()).filter((vin) => vin.length >= 8),
         );
         // Already-migrated temps: cloud docs store original cascade-/decoded-/nhtsa- id here.
-        const cloudClientLocalIds = new Set(
-          cloud.map((v) => v.clientLocalId).filter((id): id is string => Boolean(id)),
+        const cloudByClientLocalId = new Map(
+          cloud
+            .filter((v) => v.clientLocalId)
+            .map((v) => [v.clientLocalId!, v] as const),
         );
+        const cloudByVin = new Map(
+          cloud
+            .map((v) => [(v.vin ?? '').trim().toUpperCase(), v] as const)
+            .filter(([vin]) => vin.length >= 8),
+        );
+        /** old local-temp id → cloud vehicle (same as migrate applyIdRemaps). */
+        const pullRemaps = new Map<string, VehicleProfile>();
         const pendingLocal = vehiclesRef.current.filter((v) => {
           if (!isMigratable(v)) return false;
           const localTemp =
@@ -226,17 +235,32 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
           if (!localTemp) return false;
           if (cloudIds.has(v.id)) return false;
           // Drop temps that already migrated (clientLocalId rematch — never fingerprint).
-          if (cloudClientLocalIds.has(v.id)) return false;
+          const byLocal = cloudByClientLocalId.get(v.id);
+          if (byLocal) {
+            pullRemaps.set(v.id, byLocal);
+            return false;
+          }
           const vin = (v.vin ?? '').trim().toUpperCase();
           // VIN present: drop only when that exact VIN is already on cloud.
-          if (vin.length >= 8) return !cloudVins.has(vin);
+          if (vin.length >= 8) {
+            if (cloudVins.has(vin)) {
+              const byVin = cloudByVin.get(vin);
+              if (byVin) pullRemaps.set(v.id, byVin);
+              return false;
+            }
+            return true;
+          }
           // No VIN and no clientLocalId hit → keep (identical cascade twins stay distinct).
           return true;
         });
         const merged = [...cloud, ...pendingLocal];
         setVehicles(merged);
         setActiveId((cur) => {
-          if (cur && merged.some((v) => v.id === cur)) return cur;
+          if (!cur) return merged[0]?.id ?? null;
+          if (merged.some((v) => v.id === cur)) return cur;
+          // Rematched temp was dropped — follow cloud doc id (same as applyIdRemaps).
+          const remapped = pullRemaps.get(cur);
+          if (remapped) return remapped.id;
           return merged[0]?.id ?? null;
         });
         setSyncSource('firestore');
