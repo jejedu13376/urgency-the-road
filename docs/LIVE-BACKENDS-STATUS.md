@@ -25,7 +25,7 @@ Updated continuously. **Formations: never touched.**
 | Learned failures | **Owner-only** (no public read; no VIN field) | `learnedFailuresService.ts` |
 | Payments Stripe/RC | **Scaffold** — no fake success | `paymentsService.ts` |
 | OBD BLE | **Live path coded** (ELM327 AT + PID/DTC) — needs Dev Client + dongle | `bleScaffold.ts` + `bleSession.ts` + `elm327Protocol.ts` |
-| Red top-left spinner | Kept (also on gate) | `PermanentLeftSpinner.tsx` |
+| Red top-left spinner | Removed | Was `PermanentLeftSpinner.tsx` (deleted) |
 | Startup gate | Kept (session-only) | `StartupGate*` |
 | Hosting restore | Docs | `docs/HOSTING-RESTORE.md` |
 

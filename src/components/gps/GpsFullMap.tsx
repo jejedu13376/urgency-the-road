@@ -9,7 +9,6 @@ import {
   mapsHandoffUrls,
   type VehicleRouteResult,
 } from '../../services/geo/valhallaRoute';
-import { fetchNearbyBridgeClearances } from '../../services/osm/overpassPlaces';
 import {
   loadGpsNavPrefs,
   saveGpsNavPrefs,
@@ -272,24 +271,13 @@ export function GpsFullMap() {
     if (fleetKeyRef.current === key) return;
     fleetKeyRef.current = key;
 
-    const isPl =
-      active?.vehicleClass === 'poids_lourd' || active?.powertrain === 'poids_lourd_diesel';
     void (async () => {
       const prefs = prefsRef.current ?? (await loadGpsNavPrefs());
       // Respect stored voiture/camion — never force camion over an explicit voiture choice.
       const nextMode: GpsVehicleMode = prefs.mode;
       setModeLabel(nextMode);
       applyModeInMap(nextMode, prefs);
-      setHudNote((prev) => {
-        if (prev && /GPS appareil/i.test(prev)) return prev;
-        if (isPl && nextMode === 'voiture') {
-          return 'Véhicule PL — mode voiture conservé (choix enregistré)';
-        }
-        if (isPl && nextMode === 'camion') {
-          return 'Véhicule PL actif — profil camion (carte conservée)';
-        }
-        return 'Profil véhicule mis à jour — carte conservée';
-      });
+      // No HUD toast on fleet/mode sync — orange chip selection is enough.
     })();
   }, [active?.vehicleClass, active?.powertrain, bootHtml, applyModeInMap]);
 
@@ -315,7 +303,7 @@ export function GpsFullMap() {
         void saveGpsNavPrefs({ mode: msg.mode }).then((p) => {
           prefsRef.current = p;
         });
-        setHudNote(msg.mode === 'camion' ? 'Mode camion enregistré' : 'Mode voiture enregistré');
+        // Orange chip selection only — no "mode … enregistré" HUD spam.
         return;
       }
 
@@ -364,40 +352,19 @@ export function GpsFullMap() {
             weightT: msg.truck.weightT,
           });
           if (reqId !== routeReqId.current) return;
-
-          let label = route.label;
-          if (msg.mode === 'camion' && route.ok) {
-            const mid = route.coords[Math.floor(route.coords.length / 2)] ?? [
-              msg.from.lat,
-              msg.from.lon,
-            ];
-            const bridges = await fetchNearbyBridgeClearances(mid[0], mid[1], 12000);
-            if (reqId !== routeReqId.current) return;
-            const risky = bridges.bridges.filter(
-              (b) => b.maxheightM != null && b.maxheightM < (msg.truck.heightM || 4),
-            );
-            if (risky.length) {
-              label = `${route.label} · ⚠ ${risky.length} ouvrage(s) maxheight < ${msg.truck.heightM} m (OSM advisory)`;
-            } else if (bridges.label) {
-              label = `${route.label} · ${bridges.label}`;
-            }
-          }
-
-          if (reqId !== routeReqId.current) return;
-          const enriched = { ...route, label };
-          setLastRoute(enriched);
-          setHudNote(label);
-          injectRoute(enriched);
+          // No gabarit / maxheight alert banner in HUD — route label only (distance/time).
+          setLastRoute(route);
+          setHudNote(route.label);
+          injectRoute(route);
         })();
         return;
       }
 
       if (msg.type === 'navigating' && msg.to) {
         setDest(msg.to);
-        const urls = mapsHandoffUrls(msg.to, msg.mode);
         setHudNote(
           msg.mode === 'camion'
-            ? `Navigation camion (anim) — ${urls.truckNote}`
+            ? 'Navigation camion (animation sur carte)'
             : 'Navigation voiture (animation sur carte)',
         );
         return;
