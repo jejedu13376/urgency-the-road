@@ -1,6 +1,6 @@
 # Urgency Road — suivi
 
-Dernière mise à jour : 2026-11-23 ~11:45 UTC
+Dernière mise à jour : 2026-11-23 ~11:47 UTC
 
 ## Fait (code sur `main`)
 
@@ -27,23 +27,38 @@ Aussi fait côté secrets/config (ne pas coller dans le chat) :
 
 **Provisional download URL** : https://github.com/jejedu13376/urgency-the-road/releases (stand-in until first EAS APK)
 
-## Deploy — blocked on secrets
+## Deploy — blocked on secrets (UR-40 audit done)
 
-Code ready ; **deploy bloqué tant que les secrets manquent**.
+Code ready ; **deploy non lancé** — toutes les clés CI/deploy manquantes (noms seulement ; jamais de valeurs).
 
-| Item | État |
+Sources inspectées : store `docs/urgency-road-one/.env`, mirror `urgency-road-one/.env`, `firebase/functions/.env` (absent), process env agent, Cursor app secrets (vide), `eas whoami` → Not logged in.
+
+| Nom | Statut |
 | --- | --- |
-| `EXPO_TOKEN` | **Absent** |
-| Multi-IA provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`) | **Absent** du store `.env` |
-| `FIREBASE_TOKEN` / ADC sur cloud agents | Absent |
-| Secrets worker | **in progress** — `bc-b182fbed-bef2-5a50-9b96-c060c8fc419d` (pas encore de rapport final) |
-| Deploy worker | peut aussi tourner — `bc-8dc7803d-5d62-5c25-b208-72fe20652a29` |
+| `ANTHROPIC_API_KEY` | **MANQUANT** |
+| `OPENAI_API_KEY` | **MANQUANT** |
+| `GEMINI_API_KEY` | **MANQUANT** |
+| `XAI_API_KEY` | **MANQUANT** |
+| `MISTRAL_API_KEY` | **MANQUANT** |
+| `DEEPSEEK_API_KEY` | **MANQUANT** |
+| `FIREBASE_TOKEN` | **MANQUANT** |
+| `EXPO_TOKEN` / `EXPO_ACCESS_TOKEN` | **MANQUANT** |
+
+Déjà configurés (app, hors CI deploy) : `EXPO_PUBLIC_FIREBASE_*`, `EXPO_PUBLIC_YOUTUBE_API_KEY`, `PAYPAL_CLIENT_ID`, `PAYPAL_SECRET`. Aussi absent : `EXPO_PUBLIC_MULTI_IA_PROXY_URL` (après deploy functions).
+
+| Worker | État |
+| --- | --- |
+| Secrets worker `bc-b182fbed-bef2-5a50-9b96-c060c8fc419d` | **done** — audit final ; rien à configurer (valeurs absentes) |
+| Deploy worker `bc-8dc7803d-5d62-5c25-b208-72fe20652a29` | RUNNING — laissé tranquille (pas de combat Firebase) |
 
 Checklist post-secrets : **`docs/DEPLOY-CHECKLIST.md`** (miroir store `docs/urgency-road-one/DEPLOY-CHECKLIST.md`).
 
 ## Reste — Lorenzo only (pas agent)
 
-1. **Secrets** — fournir / confirmer ce que le secrets worker ne peut pas inventer (`EXPO_TOKEN`, provider Multi-IA, éventuellement `FIREBASE_TOKEN`). Ne jamais coller les valeurs dans le chat.
+1. **Ask Lorenzo — injecter ces noms exacts** (valeurs hors chat ; Dashboard Cursor Cloud Agents Secrets et/ou Firebase Functions secrets) :
+   - `FIREBASE_TOKEN` (via `firebase login:ci`)
+   - `EXPO_TOKEN` (Expo Access Token)
+   - `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY` (ceux utilisés seulement)
 
 2. **Firebase deploy** (machine locale déjà loguée, ou token CI) — rules + indexes + functions :
 
@@ -94,3 +109,5 @@ Pour que l’agent puisse déployer Firebase plus tard : `firebase login:ci` →
 | 2026-11-23 ~07:04 UTC | PR #8 mergée (`8b44d35`) — Multi-IA proxy code on main |
 | 2026-11-23 ~07:05 UTC | **Tous PRs code Urgency mergés** (#4/#8/#9/#10/#11). Reste Lorenzo : Firebase deploy + functions/secrets + EXPO_TOKEN. Formations standby. **Pas de hearts.** |
 | 2026-11-23 ~11:45 UTC | Docs sync : GLOBAL-SCOPE + SUIVI à jour ; deploy blocked on secrets ; secrets worker **in progress** (`bc-b182fbed…`) ; deploy worker may run (`bc-8dc7803d…`) ; `EXPO_TOKEN` + Multi-IA provider keys absent store `.env` ; `DEPLOY-CHECKLIST.md` ajouté. Formations standby. |
+| 2026-11-23 ~11:47 UTC | **UR-40 secrets audit final** (`bc-b182fbed…`) : Multi-IA ×6 + `FIREBASE_TOKEN` + `EXPO_TOKEN`/`EXPO_ACCESS_TOKEN` tous **MANQUANTS** (store/mirror/functions/.env/process/Cursor). Rien à configurer. Deploy Firebase/EAS **non lancé**. Ask Lorenzo = noms ci-dessus. Deploy worker `bc-8dc7803d…` non concurrencé. Formations standby. **Pas de hearts.** |
+| 2026-11-23 ~11:48 UTC | Docs worker (`bc-8c07e5ee…`) : fold UR-40 into GLOBAL-SCOPE + GitHub SUIVI ; PR docs `#12` `cursor/docs-deploy-status-0cdc`. Formations standby. |

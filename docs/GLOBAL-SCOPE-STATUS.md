@@ -29,12 +29,12 @@ Deploy is **blocked on secrets** — not on code.
 | `EXPO_PUBLIC_MULTI_IA_PROXY_URL` | Not set (needs functions deploy first) |
 | `EXPO_PUBLIC_INSTALL_URL` | Not set (set after EAS APK / Releases asset) |
 
-**Workers (do not wait on Lorenzo for their own work):**
+**Workers:**
 
-- Secrets worker **in progress**: `bc-b182fbed-bef2-5a50-9b96-c060c8fc419d`
-- Deploy worker may also run: `bc-8dc7803d-5d62-5c25-b208-72fe20652a29`
+- Secrets worker **done** (UR-40 audit): `bc-b182fbed-bef2-5a50-9b96-c060c8fc419d` — all CI/deploy secrets truly missing; nothing to configure; Firebase/EAS not attempted. Evidence: `/cursor/stores/self/internal/ur40-secrets-audit.md`
+- Deploy worker may also run: `bc-8dc7803d-5d62-5c25-b208-72fe20652a29` (left alone by secrets worker)
 
-Once secrets exist → follow **`docs/DEPLOY-CHECKLIST.md`**.
+Once Lorenzo injects secrets → follow **`docs/DEPLOY-CHECKLIST.md`**.
 
 ## Done vs blocked
 
