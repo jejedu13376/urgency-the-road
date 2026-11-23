@@ -54,6 +54,7 @@ export const fr = {
 
   sos: {
     a11y: 'SOS Urgence médicale — ouvrir le module Urgence',
+    a11yClose: 'SOS Urgence médicale — fermer le module Urgence',
   },
 
   weather: {
