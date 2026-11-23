@@ -2,7 +2,6 @@ import {
   addDoc,
   collection,
   doc,
-  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -69,9 +68,8 @@ export async function listAppointmentsForGarage(
 }
 
 /**
- * Create appointment.
- * - Garage owner: garageOwnerUid must be self.
- * - Client: status=requested + clientUid=self + target garage doc must exist (blocks inbox forge).
+ * Create appointment — garage owner only (garageOwnerUid must be the signed-in uid).
+ * Prevents any account from flooding another Pro inbox. Client booking = Cloud Function later.
  */
 export async function createAppointment(
   input: Omit<AppointmentDoc, 'id' | 'createdAt'>,
@@ -88,32 +86,19 @@ export async function createAppointment(
     return mockResult(payload, 'MOCK appointment create');
   }
 
-  const asGarage = payload.garageOwnerUid === uid;
-  const asClient =
-    payload.clientUid === uid &&
-    payload.status === 'requested' &&
-    payload.garageOwnerUid !== uid;
-
-  if (!asGarage && !asClient) {
+  if (payload.garageOwnerUid !== uid) {
     return failResult(
       payload,
-      'Création RDV refusée — garageOwnerUid doit être vous, ou clientUid=vous + status=requested',
+      'Création RDV refusée — seul le garage (garageOwnerUid=vous) peut écrire dans sa boîte',
     );
   }
 
-  if (asClient) {
-    const garageSnap = await getDoc(doc(fb.db, COLLECTIONS.garages, payload.garageOwnerUid));
-    if (!garageSnap.exists() || garageSnap.data()?.ownerUid !== payload.garageOwnerUid) {
-      return failResult(
-        payload,
-        'Création RDV refusée — garage cible inexistant (anti-forge inbox)',
-      );
-    }
-  }
-
   try {
-    const ref = await addDoc(collection(fb.db, COLLECTIONS.appointments), payload);
-    return liveResult({ ...payload, id: ref.id });
+    const ref = await addDoc(collection(fb.db, COLLECTIONS.appointments), {
+      ...payload,
+      garageOwnerUid: uid,
+    });
+    return liveResult({ ...payload, id: ref.id, garageOwnerUid: uid });
   } catch (e) {
     return failResult(payload, e instanceof Error ? e.message : 'Création RDV échouée');
   }
