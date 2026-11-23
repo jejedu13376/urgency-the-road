@@ -82,16 +82,18 @@ export function GpsDestinationMenu({
 
   const onStart = useCallback(() => {
     if (!destination) return;
+    // GPS first: without a live fix the map never requests a route, so
+    // `pending` would loop forever as « calcul en cours ».
+    if (!getMyLocation()) {
+      feedback('Démarrer — GPS appareil requis');
+      return;
+    }
     if (routeStatus === 'pending') {
       feedback('Calcul itinéraire en cours — réessayez dans un instant');
       return;
     }
     if (routeStatus === 'failed') {
       feedback('Itinéraire indisponible — choisissez une autre adresse ou réessayez');
-      return;
-    }
-    if (!getMyLocation()) {
-      feedback('Démarrer — GPS appareil requis');
       return;
     }
     const started = onStartNavigation();
