@@ -362,6 +362,7 @@ export function GpsFullMap() {
           : stored;
 
       // Never block Carte forever on a hung getCurrentPosition (web / Expo Go).
+      // Timeout must NOT clobber a live watch fix that arrived during the wait.
       const loc = await Promise.race([
         getDeviceCoords({ allowFallback: false }),
         new Promise<{ ok: false; error: string }>((resolve) => {
@@ -370,10 +371,14 @@ export function GpsFullMap() {
       ]);
       if (cancelled) return;
 
-      const deviceOk = loc.ok === true && loc.data?.source === 'device';
-      const origin = deviceOk
-        ? { lat: loc.data.lat, lon: loc.data.lon }
-        : { lat: 46.5, lon: 2.5 };
+      const watchFix = lastWatchRef.current;
+      const oneShotOk = loc.ok === true && loc.data?.source === 'device';
+      const deviceOk = !!watchFix || oneShotOk;
+      const origin = watchFix
+        ? watchFix
+        : oneShotOk
+          ? { lat: loc.data.lat, lon: loc.data.lon }
+          : { lat: 46.5, lon: 2.5 };
 
       prefsRef.current = initial;
       liveOriginRef.current = origin;
@@ -417,6 +422,10 @@ export function GpsFullMap() {
             if (cancelled) return;
             lastWatchRef.current = { lat: pos.lat, lon: pos.lon };
             setGpsOk(true);
+            // Clear boot timeout / permission refusal once live GPS is real.
+            setHudNote((prev) =>
+              prev && /GPS appareil|GPS timeout|localisation/i.test(prev) ? null : prev,
+            );
             injectLivePosition(pos.lat, pos.lon, true, pos.headingDeg, pos.speedMps);
           },
           (err) => {
