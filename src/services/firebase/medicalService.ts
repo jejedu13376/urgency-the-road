@@ -4,7 +4,7 @@
  * - emergency_full: active rescuer get(medicalScanIndex/{scanCode}) only — never list all cards
  * Printed QR sticker/card only — not AirTag/NFC beacon.
  */
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { deleteDoc, deleteField, doc, getDoc, setDoc } from 'firebase/firestore';
 import { getFirebase, getSignedInUid } from '../../firebase/config';
 import type {
   MedicalCardDoc,
@@ -89,30 +89,39 @@ type ScanIndexDoc = {
   updatedAt: string;
 };
 
-/** Firestore rejects `undefined` — omit optional empties. */
-function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (v !== undefined) out[k] = v;
-  }
-  return out as T;
-}
-
-function indexFromCard(card: MedicalCardDoc): ScanIndexDoc {
-  return stripUndefined({
-    scanCode: card.scanCode,
+/** Full replace payload — empty optionals become deleteField so merge cannot keep stale PHI. */
+function cardWritePayload(card: MedicalCardDoc): Record<string, unknown> {
+  return {
     ownerUid: card.ownerUid,
-    cardId: card.id,
+    scanCode: card.scanCode,
     fullName: card.fullName,
-    address: card.address,
     allergies: card.allergies ?? [],
     conditions: card.conditions ?? [],
     medications: card.medications ?? [],
     emergencyContacts: card.emergencyContacts ?? [],
-    bloodType: card.bloodType,
-    notes: card.notes,
+    subscriberActive: card.subscriberActive ?? true,
     updatedAt: card.updatedAt,
-  }) as ScanIndexDoc;
+    address: card.address?.trim() ? card.address.trim() : deleteField(),
+    bloodType: card.bloodType?.trim() ? card.bloodType.trim() : deleteField(),
+    notes: card.notes?.trim() ? card.notes.trim() : deleteField(),
+  };
+}
+
+function indexFromCard(card: MedicalCardDoc): Record<string, unknown> {
+  return {
+    scanCode: card.scanCode,
+    ownerUid: card.ownerUid,
+    cardId: card.id,
+    fullName: card.fullName,
+    allergies: card.allergies ?? [],
+    conditions: card.conditions ?? [],
+    medications: card.medications ?? [],
+    emergencyContacts: card.emergencyContacts ?? [],
+    updatedAt: card.updatedAt,
+    address: card.address?.trim() ? card.address.trim() : deleteField(),
+    bloodType: card.bloodType?.trim() ? card.bloodType.trim() : deleteField(),
+    notes: card.notes?.trim() ? card.notes.trim() : deleteField(),
+  };
 }
 
 /** Ensure one personal QR per subscriber (unique scanCode + index doc). */
@@ -179,14 +188,14 @@ export async function upsertMedicalCard(
 ): Promise<ServiceResult<MedicalCardDoc>> {
   const fb = getFirebase();
   const uid = getSignedInUid();
-  const scanCode = (card.scanCode || mintScanCode()).trim().toUpperCase();
+  const requestedCode = (card.scanCode || '').trim().toUpperCase();
   // Force path under caller's slot — cannot occupy med-{victim}
   const cardId = medicalCardDocId(uid ?? card.ownerUid);
   const payload: MedicalCardDoc = {
     ...card,
     id: cardId,
     ownerUid: uid ?? card.ownerUid,
-    scanCode,
+    scanCode: requestedCode || mintScanCode(),
     updatedAt: new Date().toISOString(),
   };
 
@@ -196,33 +205,54 @@ export async function upsertMedicalCard(
 
   try {
     const cardRef = doc(fb.db, COLLECTIONS.medicalCards, cardId);
-    const indexRef = doc(fb.db, COLLECTIONS.medicalScanIndex, scanCode);
+    const legacyRef = doc(fb.db, COLLECTIONS.medicalCards, uid);
     const existingCard = await getDoc(cardRef);
+    const legacyCard = existingCard.exists() ? null : await getDoc(legacyRef);
 
+    // Prefer existing scanCode from canonical or legacy uid-keyed doc (migrate)
     if (existingCard.exists()) {
       const prev = existingCard.data() as MedicalCardDoc;
-      // Enforce immutability client-side (rules also enforce)
       payload.scanCode = prev.scanCode;
+    } else if (legacyCard?.exists()) {
+      const prev = legacyCard.data() as MedicalCardDoc;
+      payload.scanCode = prev.scanCode || payload.scanCode;
     } else {
-      // Collision check before any write (index doc id == scanCode)
+      const indexRef = doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode);
       const clash = await getDoc(indexRef);
       if (clash.exists()) {
-        return failResult(payload, 'scanCode déjà utilisé — collision / hijack bloqué');
+        const owner = (clash.data() as { ownerUid?: string })?.ownerUid;
+        if (owner === uid) {
+          // Own leftover index — reuse scanCode, migrate card to med-{uid}
+          payload.scanCode = (clash.data() as { scanCode?: string }).scanCode ?? payload.scanCode;
+        } else {
+          return failResult(payload, 'scanCode déjà utilisé — collision / hijack bloqué');
+        }
       }
     }
 
-    // Card FIRST, then index — create rule requires index absent at card create time.
-    const cardPayload = stripUndefined({ ...payload } as Record<string, unknown>);
-    await setDoc(cardRef, cardPayload, { merge: true });
+    // Full set (not merge) so cleared PHI fields are removed via deleteField
+    await setDoc(cardRef, cardWritePayload(payload));
 
+    // Migrate: drop legacy uid-keyed doc after canonical write
+    if (legacyCard?.exists() && legacyRef.id !== cardRef.id) {
+      try {
+        await deleteDoc(legacyRef);
+      } catch {
+        /* non-fatal */
+      }
+    }
+
+    const indexRef = doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode);
+    const indexSnap = await getDoc(indexRef);
     const indexPayload = indexFromCard({ ...payload, id: cardId, scanCode: payload.scanCode });
-    const indexSnap = await getDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode));
     if (indexSnap.exists()) {
-      await setDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode), indexPayload, {
-        merge: true,
-      });
+      const owner = (indexSnap.data() as { ownerUid?: string })?.ownerUid;
+      if (owner && owner !== uid) {
+        return failResult(payload, 'Index scanCode appartient à un autre compte');
+      }
+      await setDoc(indexRef, indexPayload); // full replace — clears stale PHI
     } else {
-      await setDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode), indexPayload);
+      await setDoc(indexRef, indexPayload);
     }
     return liveResult(payload);
   } catch (e) {
