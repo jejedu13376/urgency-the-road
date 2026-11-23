@@ -1,13 +1,23 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, usePathname } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 
-/** Module 13 — bouton SOS toujours accessible → écran Urgence (112 sur l’écran). */
+/**
+ * Module 13 — bouton SOS toujours accessible → écran Urgence (112 sur l’écran).
+ * Sits above the tab bar: safe-area bottom + tab content (~40) + small gap.
+ * Keep in sync with `app/(tabs)/_layout.tsx` TAB_CONTENT / PAD_TOP.
+ */
+const TAB_BAR_CONTENT = 40;
+const FAB_GAP = 12;
+
 export function SosButton() {
   const pathname = usePathname();
+  const insets = useSafeAreaInsets();
+  const bottom = Math.max(insets.bottom, 8) + TAB_BAR_CONTENT + FAB_GAP;
 
   return (
-    <View style={styles.wrap} pointerEvents="box-none">
+    <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="SOS Urgence médicale — ouvrir le module Urgence"
@@ -19,7 +29,9 @@ export function SosButton() {
           router.push('/modules/urgence');
         }}
       >
-        <Text style={styles.txt}>SOS</Text>
+        <Text style={styles.txt} allowFontScaling={false}>
+          SOS
+        </Text>
       </Pressable>
     </View>
   );
@@ -29,7 +41,6 @@ const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
     right: 14,
-    bottom: 92,
     zIndex: 30,
   },
   btn: {
