@@ -267,7 +267,7 @@ export default function EntretienScreen() {
       <Screen
         variant="stack"
         title={t('moduleTitles.entretien')}
-        subtitle={t('moduleTitles.entretienSub')}
+        subtitle={`${t('moduleTitles.entretienSub')} · ${active?.label ?? '—'} · ${km.toLocaleString('fr-FR')} km`}
       >
         <StubBanner text="Carnet persisté + texte/HTML-lite + PDF imprimable LIVE · signature certifiée serveur non branchée" />
 

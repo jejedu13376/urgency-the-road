@@ -89,6 +89,7 @@ export const en: FrDict = {
     bonusClaim: 'Claim +%{xp} XP',
     bonusClaimedA11y: 'Daily bonus already claimed',
     bonusClaimA11y: 'Claim bonus plus %{xp} XP',
+    badgesTitle: 'Seller badges',
     badgePremier: 'First step',
     badgePremierHint: '1 module',
     badgeExplorateur: 'Explorer',

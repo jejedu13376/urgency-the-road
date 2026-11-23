@@ -163,6 +163,11 @@ export function GpsFullMap() {
   const [dest, setDest] = useState<{ lat: number; lon: number } | null>(null);
   const [modeLabel, setModeLabel] = useState<GpsVehicleMode>('voiture');
   const [gpsOk, setGpsOk] = useState(false);
+  /** Survive locale remount — re-inject into the new WebView on map `ready`. */
+  const lastRouteRef = useRef<VehicleRouteResult | null>(null);
+  const destRef = useRef<{ lat: number; lon: number } | null>(null);
+  lastRouteRef.current = lastRoute;
+  destRef.current = dest;
 
   const chromePads = useMemo<ChromePads>(
     () => ({
@@ -215,6 +220,8 @@ export function GpsFullMap() {
     let cancelled = false;
     bootedRef.current = false;
     fleetKeyRef.current = null;
+    // Drop in-flight Valhalla work so a late response cannot paint the new WebView.
+    routeReqId.current += 1;
     void (async () => {
       const stored = await loadGpsNavPrefs();
       const isPl =
@@ -236,15 +243,14 @@ export function GpsFullMap() {
       prefsRef.current = initial;
       setModeLabel(initial.mode);
       setGpsOk(deviceOk);
-      setLastRoute(null);
-      setDest(null);
-      setHudNote(
-        deviceOk
-          ? null
-          : loc.ok === false
+      // Keep lastRoute/dest across locale remount (Maps/Waze + polyline restore on `ready`).
+      if (!deviceOk) {
+        setHudNote(
+          loc.ok === false
             ? t('gps.gpsDeniedWithError', { error: loc.error ?? '' })
             : t('gps.gpsRequired'),
-      );
+        );
+      }
       bootedRef.current = true;
       setBootHtml(
         buildGpsMapHtml({
@@ -288,7 +294,14 @@ export function GpsFullMap() {
       setModeLabel(nextMode);
       applyModeInMap(nextMode, prefs);
       setHudNote((prev) => {
-        if (prev && /GPS/i.test(prev) && /appareil|device|dispositivo/i.test(prev)) return prev;
+        // Keep GPS denial / required notes across FR/EN/ES (incl. ES "GPS denegado").
+        if (
+          prev &&
+          /GPS/i.test(prev) &&
+          /appareil|device|dispositivo|denegado|denied|refus|required|requis|requerido/i.test(prev)
+        ) {
+          return prev;
+        }
         if (isPl && nextMode === 'voiture') return t('gps.fleetKeepCar');
         if (isPl && nextMode === 'camion') return t('gps.fleetTruck');
         return t('gps.fleetUpdated');
@@ -312,6 +325,20 @@ export function GpsFullMap() {
     (raw: string) => {
       const msg = parseMapMsg(raw);
       if (!msg) return;
+
+      if (msg.type === 'ready') {
+        setModeLabel(msg.mode);
+        const kept = lastRouteRef.current;
+        const keptDest = destRef.current;
+        if (kept?.ok && keptDest) {
+          setDest(keptDest);
+          setLastRoute(kept);
+          if (kept.label) setHudNote(kept.label);
+          // Defer one tick so WebView/iframe handlers are registered.
+          setTimeout(() => injectRoute(kept), 0);
+        }
+        return;
+      }
 
       if (msg.type === 'mode') {
         setModeLabel(msg.mode);

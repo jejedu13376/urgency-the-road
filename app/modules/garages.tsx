@@ -103,7 +103,7 @@ export default function GaragesScreen() {
       <Screen
         variant="stack"
         title={t('moduleTitles.garages')}
-        subtitle={t('moduleTitles.garagesSub')}
+        subtitle={`${t('moduleTitles.garagesSub')} · ${places.length} pin(s)${isPl ? ' · PL' : ''}`}
       >
         <BackendStatusBanner />
         {label ? <StubBanner text={label} /> : null}

@@ -91,7 +91,7 @@ export function ProgressHero() {
         </Pressable>
       </View>
 
-      <Text style={styles.badgesTitle}>Badges</Text>
+      <Text style={styles.badgesTitle}>{t('progress.badgesTitle')}</Text>
       <View style={styles.badgeGrid}>
         {badgeMeta.map((b) => {
           const unlocked = badges.includes(b.id);

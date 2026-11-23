@@ -89,6 +89,7 @@ export const es: FrDict = {
     bonusClaim: 'Reclamar +%{xp} XP',
     bonusClaimedA11y: 'Bonus del día ya reclamado',
     bonusClaimA11y: 'Reclamar bonus más %{xp} XP',
+    badgesTitle: 'Insignias vendedor',
     badgePremier: 'Primer paso',
     badgePremierHint: '1 módulo',
     badgeExplorateur: 'Explorador',

@@ -86,6 +86,7 @@ export const fr = {
     bonusClaim: 'Récupérer +%{xp} XP',
     bonusClaimedA11y: 'Bonus du jour déjà réclamé',
     bonusClaimA11y: 'Récupérer bonus plus %{xp} XP',
+    badgesTitle: 'Badges vendeur',
     badgePremier: 'Premier pas',
     badgePremierHint: '1 module',
     badgeExplorateur: 'Explorateur',

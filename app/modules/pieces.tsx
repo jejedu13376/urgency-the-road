@@ -94,7 +94,7 @@ export default function PiecesScreen() {
       <Screen
         variant="stack"
         title={t('moduleTitles.pieces')}
-        subtitle={t('moduleTitles.piecesSub')}
+        subtitle={`${t('moduleTitles.piecesSub')} · VIN ${active?.vin ?? '—'} · ${active?.make ?? ''} ${active?.model ?? ''}`.trim()}
       >
         <BackendStatusBanner />
         {label ? <StubBanner text={label} /> : null}
