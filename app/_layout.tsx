@@ -3,7 +3,6 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
-import { PermanentLeftSpinner } from '../src/components/PermanentLeftSpinner';
 import { SosButton } from '../src/components/SosButton';
 import { StartupGateScreen } from '../src/components/StartupGateScreen';
 import { WeatherBanner } from '../src/components/WeatherBanner';
@@ -22,8 +21,6 @@ function AppShell() {
       <>
         <StatusBar style="light" />
         <StartupGateScreen />
-        {/* Spinner permanent aussi sur le gate (jamais masqué). */}
-        <PermanentLeftSpinner />
       </>
     );
   }
@@ -37,7 +34,6 @@ function AppShell() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="modules" options={{ headerShown: false, presentation: 'card' }} />
       </Stack>
-      <PermanentLeftSpinner />
       <SosButton />
     </>
   );

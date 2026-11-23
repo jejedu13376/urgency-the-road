@@ -24,7 +24,7 @@ function roadLabel(
   }
 }
 
-/** Top-right — leaves top-left free for permanent red spinner. Hidden on /modules/* (Stack header). */
+/** Top-right weather chip. Hidden on /modules/* (Stack header). */
 export function WeatherBanner() {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
