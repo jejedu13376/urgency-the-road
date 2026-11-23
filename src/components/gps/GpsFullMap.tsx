@@ -19,10 +19,14 @@ import {
   fetchPlacesAutocomplete,
   isGooglePlacesConfigured,
   newPlacesSessionToken,
-  resolvePlaceCoords,
   type PlacesSuggestion,
 } from '../../services/geo/googlePlacesAutocomplete';
+import {
+  fetchPlaceDetailsWithReviews,
+  type PlaceDetailsData,
+} from '../../services/geo/googlePlacesDetails';
 import { geocodePlace } from '../../services/geo/openMeteoGeocode';
+import { PlaceReviewsPanel } from './PlaceReviewsPanel';
 import {
   aqiFillColor,
   fetchAirQualityNear,
@@ -280,6 +284,13 @@ export function GpsFullMap() {
   const searchReqIdRef = useRef(0);
   const skipSuggestRef = useRef(false);
   const placesConfigured = isGooglePlacesConfigured();
+  const placeReviewsReqIdRef = useRef(0);
+  /** User dismissed avis card — destination apply may still finish; do not reopen panel. */
+  const placeReviewsDismissedRef = useRef(false);
+  const [placeReviewsOpen, setPlaceReviewsOpen] = useState(false);
+  const [placeReviewsBusy, setPlaceReviewsBusy] = useState(false);
+  const [placeReviewsDetails, setPlaceReviewsDetails] = useState<PlaceDetailsData | null>(null);
+  const [placeReviewsStatus, setPlaceReviewsStatus] = useState<string | null>(null);
   const [destSelection, setDestSelection] = useState<GpsDestinationSelection | null>(null);
   const [destMenuOpen, setDestMenuOpen] = useState(false);
   /** Post-trip CTA → voice logbook (carnet vocal). */
@@ -1129,12 +1140,110 @@ export function GpsFullMap() {
     [clearSearchHits],
   );
 
+  /** Confirm a resolved place: fill search, open dest menu, center map. */
+  const commitDestination = useCallback(
+    (lat: number, lon: number, label: string, noteSuffix?: string) => {
+      applyDestinationLabel(label);
+      setDestSelection({ lat, lon, label });
+      setLastRoute(null);
+      proposeDestination(lat, lon, label);
+      setDestMenuOpen(true);
+      setHudNote(noteSuffix ? `Destination · ${label} · ${noteSuffix}` : `Destination · ${label}`);
+      void (async () => {
+        const saved = await findSavedPlace(lat, lon);
+        if (!saved?.tag) return;
+        setDestSelection((prev) =>
+          prev && prev.lat === lat && prev.lon === lon ? { ...prev, tag: saved.tag } : prev,
+        );
+      })();
+    },
+    [applyDestinationLabel, proposeDestination],
+  );
+
+  /** Hide avis only — do not abandon the in-flight place pick (destination may still land). */
+  const closePlaceReviews = useCallback(() => {
+    placeReviewsDismissedRef.current = true;
+    setPlaceReviewsOpen(false);
+    setPlaceReviewsBusy(false);
+    setPlaceReviewsDetails(null);
+    setPlaceReviewsStatus(null);
+  }, []);
+
+  /**
+   * User started a new search intent — drop any pending Details → destination
+   * and clear a stuck “Chargement des avis…” card (cancelled path never updates UI).
+   */
+  const abandonPendingPlacePick = useCallback(() => {
+    placeReviewsReqIdRef.current += 1;
+    placeReviewsDismissedRef.current = true;
+    setPlaceReviewsOpen(false);
+    setPlaceReviewsBusy(false);
+    setPlaceReviewsDetails(null);
+    setPlaceReviewsStatus(null);
+  }, []);
+
+  /**
+   * Place select → one Place Details (coords + rating + avis), then route via commitDestination.
+   * Returns `cancelled` when a newer pick / search superseded this one (not a real failure).
+   */
+  const applySelectedPlace = useCallback(
+    async (
+      placeId: string,
+      fallbackLabel: string,
+    ): Promise<'ok' | 'error' | 'cancelled'> => {
+      const reqId = ++placeReviewsReqIdRef.current;
+      placeReviewsDismissedRef.current = false;
+      setPlaceReviewsOpen(true);
+      setPlaceReviewsBusy(true);
+      setPlaceReviewsDetails(null);
+      setPlaceReviewsStatus(null);
+
+      const session = placesSessionRef.current;
+      placesSessionRef.current = newPlacesSessionToken();
+
+      const res = await fetchPlaceDetailsWithReviews(placeId, session);
+      if (reqId !== placeReviewsReqIdRef.current) return 'cancelled';
+
+      if (!res.ok || !res.data || !Number.isFinite(res.data.lat) || !Number.isFinite(res.data.lon)) {
+        setHudNote(res.error ?? 'Place Details KO');
+        if (!placeReviewsDismissedRef.current) {
+          setPlaceReviewsBusy(false);
+          setPlaceReviewsDetails(null);
+          setPlaceReviewsStatus(res.error ?? 'Avis Google indisponibles pour ce lieu');
+        }
+        return 'error';
+      }
+
+      if (reqId !== placeReviewsReqIdRef.current) return 'cancelled';
+
+      const label = res.data.label || fallbackLabel;
+      // Destination lands for the current pick — even if avis card was dismissed.
+      commitDestination(res.data.lat, res.data.lon, label);
+
+      if (placeReviewsDismissedRef.current) {
+        return 'ok';
+      }
+
+      setPlaceReviewsBusy(false);
+      setPlaceReviewsDetails(res.data);
+      setPlaceReviewsStatus(
+        typeof res.data.rating !== 'number' && res.data.reviews.length === 0
+          ? 'Aucun avis Google pour ce lieu'
+          : null,
+      );
+      return 'ok';
+    },
+    [commitDestination],
+  );
+
   /** Debounced live Google Places suggestions while typing. */
   useEffect(() => {
     if (skipSuggestRef.current) {
       skipSuggestRef.current = false;
       return;
     }
+    // Real keystrokes abandon a pending Details destination (close-panel alone does not).
+    abandonPendingPlacePick();
     const q = searchQ.trim();
     const reqId = ++searchReqIdRef.current;
     const timer = setTimeout(() => {
@@ -1165,33 +1274,15 @@ export function GpsFullMap() {
     }, 320);
 
     return () => clearTimeout(timer);
-  }, [searchQ, placesConfigured]);
-
-  /** Confirm a resolved place: fill search, open dest menu, center map. */
-  const commitDestination = useCallback(
-    (lat: number, lon: number, label: string, noteSuffix?: string) => {
-      applyDestinationLabel(label);
-      setDestSelection({ lat, lon, label });
-      setLastRoute(null);
-      proposeDestination(lat, lon, label);
-      setDestMenuOpen(true);
-      setHudNote(noteSuffix ? `Destination · ${label} · ${noteSuffix}` : `Destination · ${label}`);
-      void (async () => {
-        const saved = await findSavedPlace(lat, lon);
-        if (!saved?.tag) return;
-        setDestSelection((prev) =>
-          prev && prev.lat === lat && prev.lon === lon ? { ...prev, tag: saved.tag } : prev,
-        );
-      })();
-    },
-    [applyDestinationLabel, proposeDestination],
-  );
+  }, [searchQ, placesConfigured, abandonPendingPlacePick]);
 
   /** Explicit OK: Places resolve if one hit, else Open-Meteo/Photon fallback. */
   const runSearch = useCallback(async () => {
     const q = searchQ.trim();
     if (!q) return;
     searchReqIdRef.current += 1;
+    // Abandon before any await — otherwise a late Details can race during autocomplete.
+    abandonPendingPlacePick();
     setSearchBusy(true);
     setSearchOpen(true);
     try {
@@ -1202,17 +1293,19 @@ export function GpsFullMap() {
         setSearchHits(res.suggestions);
         if (res.suggestions.length === 1) {
           const only = res.suggestions[0];
-          const coords = await resolvePlaceCoords(only.placeId, placesSessionRef.current);
-          placesSessionRef.current = newPlacesSessionToken();
-          if (coords.ok && coords.lat != null && coords.lon != null) {
-            commitDestination(coords.lat, coords.lon, coords.label ?? only.label);
-            return;
-          }
+          const outcome = await applySelectedPlace(only.placeId, only.label);
+          if (outcome === 'error') skipSuggestRef.current = false;
+          return;
         }
         if (!res.ok) setHudNote(res.error ?? 'Adresse introuvable (Places)');
         else setHudNote(`${res.suggestions.length} suggestion(s) · google_places`);
         return;
       }
+
+      setPlaceReviewsOpen(true);
+      setPlaceReviewsStatus(
+        'Avis Google indisponibles — EXPO_PUBLIC_GOOGLE_PLACES_API_KEY manquante',
+      );
 
       const res = await geocodePlace(q, 6);
       if (res.ok && res.hits[0]) {
@@ -1228,7 +1321,13 @@ export function GpsFullMap() {
     } finally {
       setSearchBusy(false);
     }
-  }, [searchQ, placesConfigured, commitDestination]);
+  }, [
+    searchQ,
+    placesConfigured,
+    commitDestination,
+    applySelectedPlace,
+    abandonPendingPlacePick,
+  ]);
 
   const pickSearchHit = useCallback(
     (hit: PlacesSuggestion) => {
@@ -1236,20 +1335,14 @@ export function GpsFullMap() {
         invalidateInFlightSuggest();
         setSearchBusy(true);
         try {
-          const coords = await resolvePlaceCoords(hit.placeId, placesSessionRef.current);
-          placesSessionRef.current = newPlacesSessionToken();
-          if (!coords.ok || coords.lat == null || coords.lon == null) {
-            skipSuggestRef.current = false;
-            setHudNote(coords.error ?? 'Place Details KO');
-            return;
-          }
-          commitDestination(coords.lat, coords.lon, coords.label ?? hit.label);
+          const outcome = await applySelectedPlace(hit.placeId, hit.label);
+          if (outcome === 'error') skipSuggestRef.current = false;
         } finally {
           setSearchBusy(false);
         }
       })();
     },
-    [invalidateInFlightSuggest, commitDestination],
+    [invalidateInFlightSuggest, applySelectedPlace],
   );
 
   const destRouteStatus: GpsRouteStatus = !lastRoute
@@ -1659,6 +1752,28 @@ export function GpsFullMap() {
           stopNavSpeech();
         }}
       />
+
+      {/* Above map .bottom CTA (itinéraire / GPS) — leave room for dest menu. */}
+      <View
+        pointerEvents="box-none"
+        style={{
+          position: 'absolute',
+          left: chromePads.padLeft + 4,
+          right: chromePads.padRight + 4,
+          bottom: chromePads.padBottom + 58,
+          zIndex: 25,
+          elevation: 25,
+        }}
+      >
+        <PlaceReviewsPanel
+          visible={placeReviewsOpen}
+          busy={placeReviewsBusy}
+          details={placeReviewsDetails}
+          statusMessage={placeReviewsStatus}
+          onClose={closePlaceReviews}
+          maxReviews={3}
+        />
+      </View>
     </View>
   );
 }
