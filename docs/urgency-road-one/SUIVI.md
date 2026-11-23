@@ -172,3 +172,4 @@ Deploy CLI : `--config firebase/firebase.json` · project `urgency-road`.
 | ~13:13 | Docs sync post-#19 (#22 pending then merged) ; open deferred PRs = 0 ; Formations standby |
 | ~13:15 | PR #22 mergée `6d1e127` — tip `main` |
 | ~13:50 | Status tonight + secrets guide (store) ; CI = no Actions ; Expo local OK sans deploy tokens |
+| ~22:50 | UR-89 GPS — PR `itinéraire` + menu destination (Share / AsyncStorage / stubs) ; helpers `gpsSavedPlaces` partagés vs Places reviews sibling |

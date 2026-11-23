@@ -39,6 +39,12 @@ import {
 } from '../../services/prefs/gpsNavPrefs';
 import { colors } from '../../theme/colors';
 import { buildGpsMapHtml } from './buildGpsMapHtml';
+import {
+  GpsDestinationMenu,
+  type GpsDestinationSelection,
+  type GpsRouteStatus,
+} from './GpsDestinationMenu';
+import { findSavedPlace } from '../../services/prefs/gpsSavedPlaces';
 
 /** RN WebView prop intersection can collapse to `never` under strict TS — cast for SDK 58. */
 type WebViewHandle = {
@@ -209,6 +215,8 @@ export function GpsFullMap() {
   const [searchHits, setSearchHits] = useState<GeocodeHit[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [destSelection, setDestSelection] = useState<GpsDestinationSelection | null>(null);
+  const [destMenuOpen, setDestMenuOpen] = useState(false);
 
   const chromePads = useMemo<ChromePads>(
     () => ({
@@ -319,6 +327,14 @@ export function GpsFullMap() {
     },
     [injectJs],
   );
+
+  const startNavigation = useCallback(() => {
+    if (Platform.OS === 'web') {
+      postGpsCmd(iframeWinRef.current, { cmd: 'startNavigation' });
+      return;
+    }
+    injectJs(`window.__gpsStartNavigation && window.__gpsStartNavigation()`);
+  }, [injectJs]);
 
   const refreshLayers = useCallback(async () => {
     // Overpass around a real device fix only — never France overview centroid.
@@ -684,11 +700,29 @@ export function GpsFullMap() {
       setSearchOpen(false);
       setSearchHits([]);
       setSearchQ(hit.label);
+      setDestSelection({ lat: hit.lat, lon: hit.lon, label: hit.label });
+      setLastRoute(null);
       proposeDestination(hit.lat, hit.lon, hit.label);
+      setDestMenuOpen(true);
       setHudNote(`Destination · ${hit.label}`);
+      void (async () => {
+        const saved = await findSavedPlace(hit.lat, hit.lon);
+        if (!saved?.tag) return;
+        setDestSelection((prev) =>
+          prev && prev.lat === hit.lat && prev.lon === hit.lon
+            ? { ...prev, tag: saved.tag }
+            : prev,
+        );
+      })();
     },
     [proposeDestination],
   );
+
+  const destRouteStatus: GpsRouteStatus = !lastRoute
+    ? 'pending'
+    : lastRoute.ok
+      ? 'ready'
+      : 'failed';
 
   /** One-tap Police = AsyncStorage local pin only — never auto-upload GPS/uid. */
   const dropPoliceReport = useCallback(() => {
@@ -893,6 +927,34 @@ export function GpsFullMap() {
           </Text>
         </View>
       ) : null}
+
+      <GpsDestinationMenu
+        visible={destMenuOpen}
+        destination={destSelection}
+        getMyLocation={() =>
+          gpsOk ? (lastWatchRef.current ?? liveOriginRef.current) : null
+        }
+        routeStatus={destRouteStatus}
+        onClose={() => setDestMenuOpen(false)}
+        onStartNavigation={() => {
+          if (!gpsOk || !lastRoute?.ok) return false;
+          startNavigation();
+          setHudNote(
+            modeLabel === 'camion'
+              ? 'Navigation camion — marqueur = GPS live'
+              : 'Navigation voiture — marqueur = GPS live',
+          );
+          return true;
+        }}
+        onLabelUpdated={(place) => {
+          setDestSelection((prev) =>
+            prev
+              ? { ...prev, label: place.label, tag: place.tag }
+              : { lat: place.lat, lon: place.lon, label: place.label, tag: place.tag },
+          );
+        }}
+        onFeedback={setHudNote}
+      />
     </View>
   );
 }

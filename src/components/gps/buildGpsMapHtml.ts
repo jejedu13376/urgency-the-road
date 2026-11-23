@@ -58,19 +58,21 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   }
   .bottom{
     position:absolute;z-index:1000;
-    left:calc(10px + var(--pad-left));right:calc(74px + var(--pad-right));
+    left:calc(10px + var(--pad-left));right:auto;
     bottom:calc(14px + var(--pad-bottom));
-    display:flex;gap:8px;pointer-events:none;
+    display:flex;flex-direction:row;align-items:center;gap:8px;pointer-events:none;
   }
   .bottom > *{pointer-events:auto}
+  /* Compact bottom-left CTA — replaces full-width « Suivre GPS ». */
   .go{
-    flex:1;border:0;border-radius:13px;padding:13px;font:750 13px system-ui,sans-serif;
+    border:0;border-radius:13px;padding:12px 16px;font:750 13px system-ui,sans-serif;
     background:var(--signal);color:#fff;box-shadow:0 3px 12px rgba(196,92,38,.38);
     transition:opacity .2s ease,transform .15s ease;
+    letter-spacing:.01em;
   }
   .go:disabled{opacity:.4}
   .ghost{
-    border:0;border-radius:13px;padding:13px 11px;font:650 11px system-ui,sans-serif;
+    border:0;border-radius:13px;padding:12px 11px;font:650 11px system-ui,sans-serif;
     background:rgba(255,255,255,.94);color:var(--ink);
   }
   .vehicle-wrap{
@@ -116,8 +118,8 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   <div class="status" id="status">Choisissez Voiture ou Camion en haut, puis touchez / cherchez une destination</div>
 </div>
 <div class="bottom">
+  <button type="button" class="go" id="btnGo" disabled>itinéraire</button>
   <button type="button" class="ghost" id="btnRecenter">GPS</button>
-  <button type="button" class="go" id="btnGo" disabled>Suivre GPS</button>
 </div>
 <script>
 (function(){
@@ -313,7 +315,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
       map.fitBounds(routeLine.getBounds(), { padding: [52, 52], animate: true, duration: 0.45 });
       ensureVehicleMarker();
       document.getElementById('btnGo').disabled = false;
-      setStatus(payload.label || 'Itinéraire prêt — Suivre GPS = position live');
+      setStatus(payload.label || 'Itinéraire prêt — tapez itinéraire pour le suivi live');
       post({ type: 'routed', mode: mode, distanceKm: payload.distanceKm, durationMin: payload.durationMin, label: payload.label });
     } catch (e) {
       setStatus('Affichage itinéraire KO');
@@ -450,6 +452,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     else if (msg.cmd === 'applyMode') window.__gpsApplyMode(msg.mode, msg.truck);
     else if (msg.cmd === 'setChrome') window.__gpsSetChrome(msg.pads);
     else if (msg.cmd === 'proposeDestination') window.__gpsProposeDestination(msg.lat, msg.lon, msg.label);
+    else if (msg.cmd === 'startNavigation') window.__gpsStartNavigation && window.__gpsStartNavigation();
     else if (msg.cmd === 'setLayers') window.__gpsSetLayers(msg.payload);
   });
 
@@ -457,15 +460,19 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     setDestination(e.latlng);
   });
 
-  document.getElementById('btnCar').onclick = function(){ applyMode('voiture'); };
-  document.getElementById('btnTruck').onclick = function(){ applyMode('camion'); };
-  document.getElementById('btnGo').onclick = function(){
-    if (!routeCoords.length || !gpsOk) return;
+  function startNavigation(){
+    if (!routeCoords.length || !gpsOk || !dest) return false;
     followLive = true;
-    setStatus('Suivi GPS live — marqueur = position appareil (pas de démo polyline)');
+    setStatus('Navigation — marqueur = position appareil (pas de démo polyline)');
     post({ type: 'navigating', mode: mode, to: dest });
     map.panTo([origin.lat, origin.lon], { animate: true, duration: 0.4 });
-  };
+    return true;
+  }
+  window.__gpsStartNavigation = startNavigation;
+
+  document.getElementById('btnCar').onclick = function(){ applyMode('voiture'); };
+  document.getElementById('btnTruck').onclick = function(){ applyMode('camion'); };
+  document.getElementById('btnGo').onclick = function(){ startNavigation(); };
   document.getElementById('btnRecenter').onclick = function(){
     followLive = true;
     post({ type: 'recenter' });
