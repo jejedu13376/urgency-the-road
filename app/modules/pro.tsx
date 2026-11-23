@@ -84,7 +84,10 @@ export default function ProScreen() {
   }, [garageId]);
 
   useEffect(() => {
-    void reload();
+    const t = setTimeout(() => {
+      void reload();
+    }, 0);
+    return () => clearTimeout(t);
   }, [reload]);
 
   useEffect(() => {

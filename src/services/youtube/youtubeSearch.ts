@@ -93,10 +93,10 @@ export async function searchYoutubeVideos(
     const httpStatus = res.status;
     const body = (await res.json()) as {
       error?: { message?: string; errors?: { reason?: string }[] };
-      items?: Array<{
+      items?: {
         id?: { videoId?: string };
         snippet?: { title?: string; channelTitle?: string; thumbnails?: { default?: { url?: string } } };
-      }>;
+      }[];
     };
 
     if (!res.ok) {

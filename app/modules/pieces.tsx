@@ -23,7 +23,7 @@ const CAT_LABEL: Record<PartDoc['category'], string> = {
   filtre: 'Filtre',
 };
 
-const CAT_FILTERS: Array<PartDoc['category'] | 'all'> = [
+const CAT_FILTERS: (PartDoc['category'] | 'all')[] = [
   'all', 'mecanique', 'electrique', 'carrosserie', 'fluide', 'filtre',
 ];
 

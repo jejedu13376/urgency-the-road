@@ -76,13 +76,13 @@ export async function fetchPhotonWeighHints(
   maxKm = WEIGH_MAX_KM,
 ): Promise<{
   ok: boolean;
-  stations: Array<{
+  stations: {
     id: string;
     name: string;
     address: string;
     lat: number;
     lon: number;
-  }>;
+  }[];
   label: string;
 }> {
   try {
@@ -112,13 +112,13 @@ export async function fetchPhotonWeighHints(
           lon: lonP,
         };
       })
-      .filter(Boolean) as Array<{
+      .filter(Boolean) as {
       id: string;
       name: string;
       address: string;
       lat: number;
       lon: number;
-    }>;
+    }[];
     return {
       ok: stations.length > 0,
       stations,
