@@ -132,7 +132,14 @@ type MapMsg =
       mode: GpsVehicleMode;
       from: { lat: number; lon: number };
       to: { lat: number; lon: number };
-      truck: { heightM: number; widthM: number; weightT: number };
+      truck: {
+        heightM: number;
+        widthM: number;
+        weightT: number;
+        lengthM?: number;
+        axleCount?: number;
+        hazmat?: boolean;
+      };
     }
   | { type: 'routed'; mode: GpsVehicleMode; distanceKm?: number; durationMin?: number; label?: string }
   | { type: 'navigating'; mode: GpsVehicleMode; to: { lat: number; lon: number } }
@@ -391,6 +398,9 @@ export function GpsFullMap() {
         heightM: prefs.truckHeightM,
         widthM: prefs.truckWidthM,
         weightT: prefs.truckPtacT,
+        lengthM: prefs.truckLengthM,
+        axleCount: prefs.axleCount,
+        hazmat: prefs.hazmat,
       };
       if (Platform.OS === 'web') {
         postGpsCmd(iframeWinRef.current, { cmd: 'applyMode', mode, truck });
@@ -469,7 +479,14 @@ export function GpsFullMap() {
     const origin = lastWatchRef.current ?? (gpsOk ? liveOriginRef.current : null);
     if (!origin || !bootHtml || !gpsOk) return;
     const prefs = prefsRef.current ?? (await loadGpsNavPrefs());
-    const truck = { heightM: prefs.truckHeightM, weightT: prefs.truckPtacT };
+    const truck = {
+      heightM: prefs.truckHeightM,
+      weightT: prefs.truckPtacT,
+      widthM: prefs.truckWidthM,
+      lengthM: prefs.truckLengthM,
+      axleCount: prefs.axleCount,
+      hazmat: prefs.hazmat,
+    };
     const [bridges, weigh, localReports, cloudHazards] = await Promise.all([
       fetchNearbyBridgeClearances(origin.lat, origin.lon, 18000, truck),
       fetchNearbyWeighStations(origin.lat, origin.lon, 60000),
@@ -885,11 +902,15 @@ export function GpsFullMap() {
         });
         const reqId = ++routeReqId.current;
         void (async () => {
+          const prefs = prefsRef.current;
           await saveGpsNavPrefs({
             mode: msg.mode,
             truckHeightM: msg.truck.heightM,
             truckWidthM: msg.truck.widthM,
             truckPtacT: msg.truck.weightT,
+            truckLengthM: msg.truck.lengthM ?? prefs?.truckLengthM,
+            axleCount: msg.truck.axleCount ?? prefs?.axleCount,
+            hazmat: msg.truck.hazmat ?? prefs?.hazmat,
           }).then((p) => {
             prefsRef.current = p;
           });
@@ -909,10 +930,14 @@ export function GpsFullMap() {
             .slice(0, 8)
             .map((r) => ({ lat: r.lat, lon: r.lon }));
 
+          const livePrefs = prefsRef.current;
           const route = await fetchVehicleRoute(from, msg.to, msg.mode, {
             heightM: msg.truck.heightM,
             widthM: msg.truck.widthM,
             weightT: msg.truck.weightT,
+            lengthM: msg.truck.lengthM ?? livePrefs?.truckLengthM,
+            axleCount: msg.truck.axleCount ?? livePrefs?.axleCount,
+            hazmat: msg.truck.hazmat ?? livePrefs?.hazmat,
           }, { excludeLocations: excludes });
           if (reqId !== routeReqId.current) return;
           // Bridge/weight/weather fire IMMEDIATE overlays via trucker brief (not passive HUD).

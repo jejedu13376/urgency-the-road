@@ -163,6 +163,8 @@ export const es: FrDict = {
       gpsShort: 'Mapa a pantalla completa · ruta Valhalla',
       voiceLog: 'Cuaderno de voz de viajes',
       voiceLogShort: 'Notas de micro al llegar · compartir con camioneros',
+      profilCamion: 'Perfil camión / remolque',
+      profilCamionShort: 'Trek · gálibo · rutas permitidas / restringidas',
     },
     parametres: {
       title: 'Ajustes',

@@ -416,6 +416,11 @@ export default function MonVehiculeScreen() {
             <Text style={styles.linkTxt}>M2 — sélecteur cascade & multi-flotte →</Text>
           </Pressable>
         </Link>
+        <Link href="/modules/profil-camion" asChild>
+          <Pressable style={styles.linkBtn}>
+            <Text style={styles.linkTxt}>Profil camion — trek · remorque · routes autorisées / restreintes →</Text>
+          </Pressable>
+        </Link>
         <Link href="/modules/parametres" asChild>
           <Pressable style={styles.linkBtn}>
             <Text style={styles.linkTxt}>Paramètres (préférences · compte) →</Text>

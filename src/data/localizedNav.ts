@@ -46,6 +46,13 @@ export function localizedNavSections(t: T): NavSection[] {
           href: '/modules/carnet-vocal',
           moduleTag: 'M7+',
         },
+        {
+          id: 'mv-profil-camion',
+          title: t('nav.monVehicule.profilCamion'),
+          short: t('nav.monVehicule.profilCamionShort'),
+          href: '/modules/profil-camion',
+          moduleTag: 'M8',
+        },
       ],
     },
     {

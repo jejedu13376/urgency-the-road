@@ -160,6 +160,8 @@ export const fr = {
       gpsShort: 'Carte plein écran · itinéraire Valhalla',
       voiceLog: 'Carnet vocal trajets',
       voiceLogShort: 'Notes micro après arrivée · partage routiers',
+      profilCamion: 'Profil camion / remorque',
+      profilCamionShort: 'Trek · gabarit · routes autorisées / restreintes',
     },
     parametres: {
       title: 'Paramètres',
