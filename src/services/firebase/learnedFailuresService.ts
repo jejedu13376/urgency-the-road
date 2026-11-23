@@ -1,7 +1,7 @@
 /**
  * Module 14 — owner-scoped learned failures (no public VIN dump).
  * Never persist raw VIN; make/model optional; reads filtered by authorUid.
- * Unsigned path: AsyncStorage journal. On Auth: merge + upload local then clear.
+ * Unsigned path: AsyncStorage journal. On Auth: merge + upload; clear only after list OK.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -36,6 +36,20 @@ const DEMO_SEED: LearnedFailure = {
   createdAt: '2024-01-01T00:00:00.000Z',
 };
 
+type MigrateResult = {
+  /** Remote docs just written (for in-memory merge if list fails). */
+  uploadedRemote: LearnedFailure[];
+  /** Local journal ids successfully written this run. */
+  uploadedLocalIds: string[];
+  /** Local ids already present remotely (migratedFromLocalId). */
+  alreadyRemote: string[];
+  /** Local rows that failed to upload. */
+  failed: LearnedFailure[];
+};
+
+/** Single-flight so overlapping list + record don't double addDoc. */
+let migrateInFlight: Promise<MigrateResult> | null = null;
+
 async function readLocalJournal(): Promise<LearnedFailure[]> {
   try {
     const raw = await AsyncStorage.getItem(LOCAL_KEY);
@@ -58,59 +72,107 @@ async function readLocalJournal(): Promise<LearnedFailure[]> {
 }
 
 async function writeLocalJournal(rows: LearnedFailure[]): Promise<void> {
+  if (!rows.length) {
+    await AsyncStorage.removeItem(LOCAL_KEY);
+    return;
+  }
   await AsyncStorage.setItem(LOCAL_KEY, JSON.stringify(rows.slice(0, 100)));
-}
-
-async function clearLocalJournal(): Promise<void> {
-  await AsyncStorage.removeItem(LOCAL_KEY);
 }
 
 function fingerprint(row: LearnedFailure): string {
   return `${row.summary}|${row.createdAt}|${(row.likelyParts ?? []).join(',')}`;
 }
 
-/** Upload unsigned AsyncStorage rows to Firestore; clear local on full success. */
-async function migrateLocalJournal(
-  db: Firestore,
-  uid: string,
-): Promise<{ uploaded: LearnedFailure[]; remaining: LearnedFailure[] }> {
-  const local = await readLocalJournal();
-  if (!local.length) return { uploaded: [], remaining: [] };
-
-  const uploaded: LearnedFailure[] = [];
-  const remaining: LearnedFailure[] = [];
-
-  for (const row of local) {
-    if (!row.summary.trim()) continue;
+/** Local ids already uploaded (field migratedFromLocalId). */
+async function fetchAlreadyMigratedIds(db: Firestore, localIds: string[]): Promise<Set<string>> {
+  const found = new Set<string>();
+  if (!localIds.length) return found;
+  for (let i = 0; i < localIds.length; i += 30) {
+    const chunk = localIds.slice(i, i + 30);
     try {
-      const doc: Record<string, unknown> = {
-        authorUid: uid,
-        summary: row.summary,
-        likelyParts: row.likelyParts,
-        createdAt: row.createdAt || new Date().toISOString(),
-        migratedFromLocalId: row.id,
-      };
-      if (row.make) doc.make = row.make;
-      if (row.model) doc.model = row.model;
-      const ref = await addDoc(collection(db, COLLECTIONS.learnedFailures), doc);
-      uploaded.push({ ...row, id: ref.id });
+      const snap = await getDocs(
+        query(
+          collection(db, COLLECTIONS.learnedFailures),
+          where('migratedFromLocalId', 'in', chunk),
+        ),
+      );
+      for (const d of snap.docs) {
+        const mid = d.data().migratedFromLocalId;
+        if (typeof mid === 'string') found.add(mid);
+      }
     } catch {
-      remaining.push(row);
+      // Rules/index may block — skip detection; single-flight still prevents parallel doubles
     }
   }
+  return found;
+}
 
-  if (remaining.length === 0) {
-    await clearLocalJournal();
-  } else {
-    await writeLocalJournal(remaining);
-  }
-  return { uploaded, remaining };
+/**
+ * Upload unsigned AsyncStorage rows to Firestore.
+ * Does NOT clear AsyncStorage — caller clears only after a successful list query.
+ */
+async function migrateLocalJournal(db: Firestore, uid: string): Promise<MigrateResult> {
+  if (migrateInFlight) return migrateInFlight;
+
+  migrateInFlight = (async (): Promise<MigrateResult> => {
+    const local = await readLocalJournal();
+    if (!local.length) {
+      return { uploadedRemote: [], uploadedLocalIds: [], alreadyRemote: [], failed: [] };
+    }
+
+    const already = await fetchAlreadyMigratedIds(
+      db,
+      local.map((r) => r.id),
+    );
+    const alreadyRemote = [...already];
+    const uploadedRemote: LearnedFailure[] = [];
+    const uploadedLocalIds: string[] = [];
+    const failed: LearnedFailure[] = [];
+
+    for (const row of local) {
+      if (!row.summary.trim()) continue;
+      if (already.has(row.id)) continue;
+      try {
+        const doc: Record<string, unknown> = {
+          authorUid: uid,
+          summary: row.summary,
+          likelyParts: row.likelyParts,
+          createdAt: row.createdAt || new Date().toISOString(),
+          migratedFromLocalId: row.id,
+        };
+        if (row.make) doc.make = row.make;
+        if (row.model) doc.model = row.model;
+        const ref = await addDoc(collection(db, COLLECTIONS.learnedFailures), doc);
+        already.add(row.id);
+        uploadedLocalIds.push(row.id);
+        uploadedRemote.push({ ...row, id: ref.id });
+      } catch {
+        failed.push(row);
+      }
+    }
+
+    return { uploadedRemote, uploadedLocalIds, alreadyRemote, failed };
+  })().finally(() => {
+    migrateInFlight = null;
+  });
+
+  return migrateInFlight;
 }
 
 function mergeByFingerprint(remote: LearnedFailure[], local: LearnedFailure[]): LearnedFailure[] {
   const seen = new Set(remote.map(fingerprint));
   const extras = local.filter((r) => r.id !== DEMO_SEED.id && !seen.has(fingerprint(r)));
   return [...remote, ...extras].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+}
+
+/** After list succeeds: drop local rows that are on Firestore; keep failures. */
+async function pruneLocalAfterListOk(
+  localBefore: LearnedFailure[],
+  mig: MigrateResult,
+): Promise<void> {
+  const removable = new Set([...mig.alreadyRemote, ...mig.uploadedLocalIds]);
+  const keep = localBefore.filter((r) => !removable.has(r.id));
+  await writeLocalJournal(keep);
 }
 
 export async function listLearnedFailures(max = 20): Promise<ServiceResult<LearnedFailure[]>> {
@@ -133,15 +195,17 @@ export async function listLearnedFailures(max = 20): Promise<ServiceResult<Learn
     );
   }
 
-  // Sign-in path: upload local journal first (best-effort), then list + merge leftovers
-  let migrated = 0;
-  let pendingLocal: LearnedFailure[] = [];
+  const localBefore = await readLocalJournal();
+  let mig: MigrateResult = {
+    uploadedRemote: [],
+    uploadedLocalIds: [],
+    alreadyRemote: [],
+    failed: [],
+  };
   try {
-    const mig = await migrateLocalJournal(fb.db, uid);
-    migrated = mig.uploaded.length;
-    pendingLocal = mig.remaining;
+    mig = await migrateLocalJournal(fb.db, uid);
   } catch {
-    pendingLocal = await readLocalJournal();
+    // keep localBefore intact
   }
 
   try {
@@ -163,9 +227,14 @@ export async function listLearnedFailures(max = 20): Promise<ServiceResult<Learn
         createdAt: String(data.createdAt ?? ''),
       };
     });
+
+    // List succeeded — now safe to prune AsyncStorage of migrated rows
+    await pruneLocalAfterListOk(localBefore, mig);
+    const pendingLocal = await readLocalJournal();
+
     const merged = mergeByFingerprint(items, pendingLocal).slice(0, cap);
     const labelBits = [
-      migrated ? `${migrated} local→Firestore` : null,
+      mig.uploadedLocalIds.length ? `${mig.uploadedLocalIds.length} local→Firestore` : null,
       pendingLocal.length ? `${pendingLocal.length} local restant(s)` : null,
     ].filter(Boolean);
     return liveResult(
@@ -173,14 +242,17 @@ export async function listLearnedFailures(max = 20): Promise<ServiceResult<Learn
       labelBits.length ? `Bases Firestore LIVE · ${labelBits.join(' · ')}` : undefined,
     );
   } catch (e) {
-    // Rules/network fail — still show local journal so unsigned entries aren't hidden
-    const local = pendingLocal.length ? pendingLocal : await readLocalJournal();
-    const merged = [...local];
-    if (!merged.some((r) => r.id === DEMO_SEED.id)) merged.push(DEMO_SEED);
-    merged.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    // Query failed — journal stays intact; merge local + in-memory uploads for UI
+    const merged = mergeByFingerprint(
+      mig.uploadedRemote,
+      localBefore.length ? localBefore : await readLocalJournal(),
+    );
+    if (!merged.some((r) => r.id === DEMO_SEED.id) && !localBefore.length && !mig.uploadedRemote.length) {
+      merged.push(DEMO_SEED);
+    }
     return failResult(
       merged.slice(0, cap),
-      e instanceof Error ? e.message : 'Lecture bases refusée — journal local affiché',
+      e instanceof Error ? e.message : 'Lecture bases refusée — journal local intact',
     );
   }
 }
@@ -212,7 +284,7 @@ export async function recordLearnedFailure(input: {
     return mockResult(payload, 'Journal local AsyncStorage — connectez-vous pour sync Firestore');
   }
 
-  // Flush any pending local rows before writing the new one
+  // Flush pending local rows (no clear — list clears after successful query)
   try {
     await migrateLocalJournal(fb.db, uid);
   } catch {
