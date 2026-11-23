@@ -678,7 +678,8 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     setStatus(mode === 'camion'
       ? 'Mode camion — touchez / cherchez une destination'
       : 'Mode voiture — touchez / cherchez une destination');
-    if (dest && gpsOk) requestRoute();
+    // skipRoute: sync chips/BOOT without posting another route (avoids RN↔map loops).
+    if (dest && gpsOk && !(opts && opts.skipRoute)) requestRoute();
   }
 
   function setDestination(latlng, label){
@@ -795,13 +796,24 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     }
   };
 
-  window.__gpsApplyMode = function(next, truck){
+  window.__gpsApplyMode = function(next, truck, opts){
     if (truck) {
       if (truck.heightM != null) BOOT.truckHeightM = truck.heightM;
       if (truck.widthM != null) BOOT.truckWidthM = truck.widthM;
       if (truck.weightT != null) BOOT.truckPtacT = truck.weightT;
     }
-    applyMode(next === 'camion' ? 'camion' : 'voiture', { silent: true });
+    applyMode(next === 'camion' ? 'camion' : 'voiture', {
+      silent: true,
+      skipRoute: !!(opts && opts.skipRoute),
+    });
+  };
+
+  /** Update BOOT gabarit only — never requestRoute (safe from RN route handler). */
+  window.__gpsSetTruckDims = function(truck){
+    if (!truck) return;
+    if (truck.heightM != null) BOOT.truckHeightM = truck.heightM;
+    if (truck.widthM != null) BOOT.truckWidthM = truck.widthM;
+    if (truck.weightT != null) BOOT.truckPtacT = truck.weightT;
   };
 
   window.__gpsSetChrome = function(p){ applyChrome(p || {}); };
@@ -932,7 +944,8 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     if (msg.cmd === 'applyRoute') window.__gpsApplyRoute(msg.payload);
     else if (msg.cmd === 'setOrigin') window.__gpsSetOrigin(msg.lat, msg.lon, msg.ok);
     else if (msg.cmd === 'updatePosition') window.__gpsUpdatePosition(msg.lat, msg.lon, msg.ok, msg.heading, msg.speed);
-    else if (msg.cmd === 'applyMode') window.__gpsApplyMode(msg.mode, msg.truck);
+    else if (msg.cmd === 'applyMode') window.__gpsApplyMode(msg.mode, msg.truck, msg.opts);
+    else if (msg.cmd === 'setTruckDims') window.__gpsSetTruckDims(msg.truck);
     else if (msg.cmd === 'setChrome') window.__gpsSetChrome(msg.pads);
     else if (msg.cmd === 'proposeDestination') window.__gpsProposeDestination(msg.lat, msg.lon, msg.label);
     else if (msg.cmd === 'startNavigation') window.__gpsStartNavigation && window.__gpsStartNavigation();

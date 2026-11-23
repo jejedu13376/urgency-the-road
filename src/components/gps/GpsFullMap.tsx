@@ -393,7 +393,7 @@ export function GpsFullMap() {
   );
 
   const applyModeInMap = useCallback(
-    (mode: GpsVehicleMode, prefs: GpsNavPrefs) => {
+    (mode: GpsVehicleMode, prefs: GpsNavPrefs, opts?: { skipRoute?: boolean }) => {
       const truck = {
         heightM: prefs.truckHeightM,
         widthM: prefs.truckWidthM,
@@ -403,12 +403,29 @@ export function GpsFullMap() {
         hazmat: prefs.hazmat,
       };
       if (Platform.OS === 'web') {
-        postGpsCmd(iframeWinRef.current, { cmd: 'applyMode', mode, truck });
+        postGpsCmd(iframeWinRef.current, { cmd: 'applyMode', mode, truck, opts });
         return;
       }
       injectJs(
-        `window.__gpsApplyMode && window.__gpsApplyMode(${JSON.stringify(mode)}, ${JSON.stringify(truck)})`,
+        `window.__gpsApplyMode && window.__gpsApplyMode(${JSON.stringify(mode)}, ${JSON.stringify(truck)}, ${JSON.stringify(opts ?? {})})`,
       );
+    },
+    [injectJs],
+  );
+
+  /** Sync Leaflet BOOT gabarit without requestRoute (safe during an in-flight route). */
+  const syncTruckDimsInMap = useCallback(
+    (prefs: GpsNavPrefs) => {
+      const truck = {
+        heightM: prefs.truckHeightM,
+        widthM: prefs.truckWidthM,
+        weightT: prefs.truckPtacT,
+      };
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, { cmd: 'setTruckDims', truck });
+        return;
+      }
+      injectJs(`window.__gpsSetTruckDims && window.__gpsSetTruckDims(${JSON.stringify(truck)})`);
     },
     [injectJs],
   );
@@ -913,17 +930,14 @@ export function GpsFullMap() {
         });
         const reqId = ++routeReqId.current;
         void (async () => {
-          // Prefer AsyncStorage / profil-camion gabarit — map BOOT dims can be stale
-          // after a profile save while Carte stays mounted. Never overwrite height/
-          // width/weight/length/axles/hazmat with boot values from the WebView.
-          const stored = await loadGpsNavPrefs();
-          const livePrefs = await saveGpsNavPrefs({
-            ...stored,
-            mode: msg.mode,
-          });
+          // Persist mode only — saveGpsNavPrefs reloads storage then merges the
+          // patch, so a concurrent saveTruckerProfile cannot be clobbered by a
+          // stale {...stored} snapshot. Never write map BOOT height/width/weight
+          // back. Sync BOOT via setTruckDims (no requestRoute) — never applyModeInMap
+          // here or __gpsApplyMode re-posts route and loops Valhalla/Overpass.
+          const livePrefs = await saveGpsNavPrefs({ mode: msg.mode });
           prefsRef.current = livePrefs;
-          // Keep Leaflet BOOT in sync so a later chip/route does not re-post old dims.
-          applyModeInMap(msg.mode, livePrefs);
+          syncTruckDimsInMap(livePrefs);
           if (reqId !== routeReqId.current) return;
 
           const from = liveOriginRef.current ?? msg.from;
@@ -1064,7 +1078,7 @@ export function GpsFullMap() {
       destSelection?.label,
       injectHighlightWeigh,
       refreshAqi,
-      applyModeInMap,
+      syncTruckDimsInMap,
     ],
   );
 
