@@ -229,12 +229,8 @@ export async function connectAndInitElm(
         log.push(`${at} → ${resp.slice(0, 80)}`);
       }
 
-      // Publish only after successful AT init. Never overwrite a newer live session.
-      if (session && session.id !== id) {
-        await destroyManager(manager, deviceId, monitorSub);
-        return { ok: false, message: 'Session interrompue pendant l’init AT.' };
-      }
-
+      // Publish only after successful AT init. IO lock ensures no concurrent connect
+      // can replace us mid-init; fail path below tears down by this attempt's id only.
       session = pending;
       return {
         ok: true,
@@ -243,7 +239,9 @@ export async function connectAndInitElm(
     } catch (e) {
       await destroyManager(manager, deviceId, monitorSub);
       // Match by this attempt's session.id — never wipe a newer live session.
-      if (session?.id === id) session = null;
+      if (session !== null && session.id === id) {
+        session = null;
+      }
       return { ok: false, message: e instanceof Error ? e.message : 'Échec connectAndInitElm' };
     }
   });
