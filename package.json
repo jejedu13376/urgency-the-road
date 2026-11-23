@@ -30,6 +30,7 @@
     "react-native-safe-area-context": "~5.11.1",
     "react-native-screens": "~4.30.1",
     "react-native-web": "^0.21.4",
+    "react-native-webview": "14.0.1",
     "react-native-worklets": "0.13.0"
   },
   "devDependencies": {
@@ -48,7 +49,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "typecheck:functions": "npm --prefix firebase/functions run typecheck",
-    "test": "tsx --test src/services/osm/openingHours.test.ts src/services/quotes/parseQuoteText.test.ts src/services/firebase/devSoftAuth.test.ts",
+    "test": "tsx --test src/services/osm/openingHours.test.ts src/services/quotes/parseQuoteText.test.ts src/services/firebase/devSoftAuth.test.ts src/services/geo/polyline6.test.ts",
     "lint": "expo lint",
     "eas:whoami": "npx eas-cli whoami",
     "eas:configure": "npx eas-cli build:configure",

@@ -7,7 +7,7 @@ export const MODULES: ModuleMeta[] = [
   { id: 4, title: 'Diagnostic IA', short: 'Photo / questions / son', href: '/modules/diagnostic-ia' },
   { id: 5, title: 'Valise OBD / PL', short: 'DTC & capteurs', href: '/modules/obd' },
   { id: 6, title: 'Multi-IA & coach vocal', short: 'Routeur multi-IA + recalls', href: '/modules/multi-ia' },
-  { id: 7, title: 'Double GPS', short: 'Camion / voiture', href: '/modules/gps' },
+  { id: 7, title: 'Double GPS', short: 'Carte · camion / voiture', href: '/modules/gps' },
   { id: 8, title: 'Module routiers', short: 'Pesage & dépôts PL', href: '/modules/routiers' },
   { id: 9, title: 'Garages & pièces GPS', short: 'Autour de moi', href: '/modules/garages' },
   { id: 10, title: 'Entretien & carnet', short: 'Préditif + PDF', href: '/modules/entretien' },

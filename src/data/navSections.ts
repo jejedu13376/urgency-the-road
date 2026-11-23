@@ -47,6 +47,13 @@ export const NAV_SECTIONS: NavSection[] = [
         href: '/modules/entretien',
         moduleTag: 'M10',
       },
+      {
+        id: 'mv-gps',
+        title: 'GPS voiture / camion',
+        short: 'Carte plein écran · itinéraire Valhalla',
+        href: '/(tabs)/carte',
+        moduleTag: 'M7',
+      },
     ],
   },
   {

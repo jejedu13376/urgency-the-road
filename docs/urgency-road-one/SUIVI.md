@@ -84,7 +84,7 @@ Détail : `docs/MODULES-STATUS.md`.
 | 4 Diagnostic IA | LIVE camera + texte Multi-IA + YouTube | Vision pixels |
 | 5 OBD | Path BLE coded | **Hardware** Dev Client + dongle |
 | 6 Multi-IA | Heuristic + proxy client · rate-limit UID (#19) | **`EXPO_PUBLIC_MULTI_IA_PROXY_URL` + provider keys + deploy** |
-| 7 GPS | LIVE GPS + Open-Meteo + Photon reverse | Graphe PTAC |
+| 7 GPS | LIVE carte plein écran · Valhalla auto/truck · AsyncStorage · OSM maxheight | PTAC commercial |
 | 8 Routiers | LIVE Overpass/Photon | Feed juridiction |
 | 9 Garages | LIVE Overpass/Photon | Places API |
 | 10 Entretien | LIVE carnet + share | PDF certifié |
