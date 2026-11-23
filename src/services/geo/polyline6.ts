@@ -2,12 +2,12 @@
  * Decode Valhalla/OSRM-style encoded polyline with precision 1e6 (polyline6).
  * Returns [lat, lon] pairs.
  */
-export function decodePolyline6(encoded: string): Array<[number, number]> {
+export function decodePolyline6(encoded: string): [number, number][] {
   let index = 0;
   const len = encoded.length;
   let lat = 0;
   let lon = 0;
-  const coordinates: Array<[number, number]> = [];
+  const coordinates: [number, number][] = [];
 
   while (index < len) {
     let b: number;

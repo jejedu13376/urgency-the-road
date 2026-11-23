@@ -16,7 +16,7 @@ export type CameraTextQuote = {
   matchedFromCatalog: boolean;
 };
 
-const KEYWORD_PART: Array<{ re: RegExp; nameHints: string[] }> = [
+const KEYWORD_PART: { re: RegExp; nameHints: string[] }[] = [
   { re: /frein|plaquette|étrier|disque|brake/i, nameHints: ['Plaquettes', 'Disques'] },
   { re: /batterie|alternateur|démarrage/i, nameHints: ['Batterie', 'Alternateur'] },
   { re: /filtre.*(huile|air|habitacle)|huile moteur/i, nameHints: ['Filtre', 'Huile'] },

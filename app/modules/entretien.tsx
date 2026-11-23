@@ -161,31 +161,34 @@ export default function EntretienScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    setHydrated(false);
-    void (async () => {
-      const stored = await loadCarnet(vehicleKey);
-      if (cancelled) return;
-      if (stored) {
-        setCarnet(
-          stored.entries.map((e, i) => ({
-            id: `c-${vehicleKey}-${i}-${e.dateIso}`,
-            title: e.title,
-            km: e.km,
-            dateIso: e.dateIso,
-            cost: e.cost,
-            currency: e.currency,
-            invoiceRef: e.invoiceRef,
-          })),
-        );
-        if (stored.maintenance?.length) setItems(stored.maintenance);
-      } else {
-        setCarnet(INITIAL_CARNET);
-        setItems(DEFAULT_ITEMS);
-      }
-      setHydrated(true);
-    })();
+    const t = setTimeout(() => {
+      setHydrated(false);
+      void (async () => {
+        const stored = await loadCarnet(vehicleKey);
+        if (cancelled) return;
+        if (stored) {
+          setCarnet(
+            stored.entries.map((e, i) => ({
+              id: `c-${vehicleKey}-${i}-${e.dateIso}`,
+              title: e.title,
+              km: e.km,
+              dateIso: e.dateIso,
+              cost: e.cost,
+              currency: e.currency,
+              invoiceRef: e.invoiceRef,
+            })),
+          );
+          if (stored.maintenance?.length) setItems(stored.maintenance);
+        } else {
+          setCarnet(INITIAL_CARNET);
+          setItems(DEFAULT_ITEMS);
+        }
+        setHydrated(true);
+      })();
+    }, 0);
     return () => {
       cancelled = true;
+      clearTimeout(t);
     };
   }, [vehicleKey]);
 
