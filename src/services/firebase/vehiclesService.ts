@@ -129,9 +129,15 @@ export async function listVehicles(ownerUid: string): Promise<ServiceResult<Vehi
     );
     return liveResult(list);
   } catch (e) {
-    // Soft-fail permissions / DEV → mock fleet so M1/M2 still load.
+    // Soft-fail permissions / DEV → ok:false so FleetContext keeps cloud-KO
+    // (not “empty ready to migrate”). Local fleet is preserved by refreshCloud.
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult(MOCK_FLEET, 'SOFT vehicles — permission/DEV (mock flotte)');
+      return failResult(
+        [],
+        isPermissionDenied(e)
+          ? 'SOFT vehicles — permission refusée (flotte locale conservée)'
+          : 'SOFT vehicles — DEV (flotte locale conservée)',
+      );
     }
     // Empty payload + ok:false — never ship MOCK_FLEET as a firebase-looking failure.
     return failResult([], e instanceof Error ? e.message : 'Lecture flotte refusée');
