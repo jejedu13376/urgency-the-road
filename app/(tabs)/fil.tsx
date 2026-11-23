@@ -79,7 +79,10 @@ export default function FilMecaniqueScreen() {
     const res = await createTextFeedPost({
       title: titleDraft.trim() || 'Conseil mécanique',
       caption: captionDraft.trim(),
-      authorName: profile?.displayName || profile?.email || 'Vous',
+      // Never publish email — feedPosts is world-readable
+      authorName:
+        profile?.displayName?.trim() ||
+        (profile?.uid ? `Conducteur-${profile.uid.slice(0, 6)}` : 'Conducteur'),
     });
     setUploadMsg(res.stubLabel ?? (res.ok ? 'Publié' : 'Échec publication'));
     if (res.data) {
@@ -102,7 +105,9 @@ export default function FilMecaniqueScreen() {
     if (!draft.trim()) return;
     const entry: LocalComment = {
       id: `lc-${Date.now()}`,
-      author: profile?.displayName || profile?.email || 'Vous',
+      author:
+        profile?.displayName?.trim() ||
+        (profile?.uid ? `Conducteur-${profile.uid.slice(0, 6)}` : 'Conducteur'),
       text: draft.trim(),
       at: new Date().toISOString(),
     };

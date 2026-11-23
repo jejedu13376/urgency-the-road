@@ -59,7 +59,15 @@ export async function createTextFeedPost(input: {
   const uid = getSignedInUid();
   const title = input.title.trim() || 'Publication';
   const caption = input.caption.trim();
-  const author = input.authorName?.trim() || 'Conducteur';
+  // Defense in depth: never persist email-like author on world-readable feedPosts
+  const rawAuthor = input.authorName?.trim() || '';
+  const looksLikeEmail = /@/.test(rawAuthor);
+  const author =
+    !rawAuthor || looksLikeEmail
+      ? uid
+        ? `Conducteur-${uid.slice(0, 6)}`
+        : 'Conducteur'
+      : rawAuthor;
 
   if (!fb || !uid) {
     const local: FeedPost = {

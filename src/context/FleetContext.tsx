@@ -17,8 +17,13 @@ import {
 } from '../services/firebase/vehiclesService';
 import type { VehicleProfile } from '../types/vehicle';
 
-const STORAGE_KEY = 'um.fleet.v1';
+/** Legacy unscoped key — read once then abandoned (never write back). */
+const LEGACY_STORAGE_KEY = 'um.fleet.v1';
 const MOCK_IDS = new Set(MOCK_FLEET.map((v) => v.id));
+
+function storageKeyFor(uid: string | null | undefined): string {
+  return uid ? `um.fleet.v1:uid:${uid}` : 'um.fleet.v1:local';
+}
 
 type FleetCtx = {
   vehicles: VehicleProfile[];
@@ -28,82 +33,146 @@ type FleetCtx = {
   /** Local AsyncStorage, or Firestore when Auth + Firebase. */
   syncSource: 'local' | 'firestore' | 'pending';
   syncLabel?: string;
+  /** Migratable local rows waiting for explicit upload (never auto). */
+  pendingLocalMigrateCount: number;
   setActive: (id: string) => void;
   upsertVehicle: (v: VehicleProfile) => void;
   removeVehicle: (id: string) => void;
-  /** Force pull from Firestore when signed in. */
+  /** Pull from Firestore only — never auto-uploads another account’s local cache. */
   refreshCloud: () => Promise<void>;
+  /** Explicit user action: upload current account’s local custom vehicles to Firestore. */
+  migrateLocalToCloud: () => Promise<void>;
 };
 
 const Ctx = createContext<FleetCtx | null>(null);
 
 /** Cascade / decoded / custom ids — never push untouched MOCK_FLEET seeds alone. */
 function isMigratable(v: VehicleProfile): boolean {
-  if (v.id.startsWith('cascade-') || v.id.startsWith('decoded-')) return true;
+  if (v.id.startsWith('cascade-') || v.id.startsWith('decoded-') || v.id.startsWith('nhtsa-')) {
+    return true;
+  }
   if (!MOCK_IDS.has(v.id)) return true;
   return false;
 }
 
+function resetToMocks(): { vehicles: VehicleProfile[]; activeId: string | null } {
+  return {
+    vehicles: MOCK_FLEET,
+    activeId: MOCK_FLEET[0]?.id ?? null,
+  };
+}
+
 export function FleetProvider({ children }: { children: React.ReactNode }) {
   const { profile, ready: authReady } = useAuth();
+  const uid = profile?.uid ?? null;
   const [vehicles, setVehicles] = useState<VehicleProfile[]>(MOCK_FLEET);
   const [activeId, setActiveId] = useState<string | null>(MOCK_FLEET[0]?.id ?? null);
   const [ready, setReady] = useState(false);
   const [syncSource, setSyncSource] = useState<'local' | 'firestore' | 'pending'>('pending');
   const [syncLabel, setSyncLabel] = useState<string | undefined>();
-  const localLoaded = useRef(false);
+  const [bucketReady, setBucketReady] = useState(false);
   const vehiclesRef = useRef(vehicles);
-  const activeIdRef = useRef(activeId);
+  const prevUidRef = useRef<string | null | undefined>(undefined);
   vehiclesRef.current = vehicles;
-  activeIdRef.current = activeId;
 
-  // Load AsyncStorage once
+  const pendingLocalMigrateCount = useMemo(
+    () => vehicles.filter(isMigratable).length,
+    [vehicles],
+  );
+
+  // Load / switch AsyncStorage bucket when auth identity changes
   useEffect(() => {
+    if (!authReady) return;
+    let cancelled = false;
+
     (async () => {
+      setBucketReady(false);
+      setReady(false);
+
+      const prev = prevUidRef.current;
+      // Sign-out or account switch: drop in-memory fleet so we never show/write another user’s cars
+      if (prev !== undefined && prev !== uid) {
+        const mocks = resetToMocks();
+        setVehicles(mocks.vehicles);
+        setActiveId(mocks.activeId);
+        setSyncSource('local');
+        setSyncLabel(
+          uid
+            ? 'Compte changé — flotte rechargée pour cet uid'
+            : 'Déconnexion — flotte locale réinitialisée (pas de fuite inter-comptes)',
+        );
+      }
+      prevUidRef.current = uid;
+
+      const key = storageKeyFor(uid);
       try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (raw) {
+        let raw = await AsyncStorage.getItem(key);
+        // One-shot: unsigned bucket may absorb legacy unscoped cache (never into a uid bucket)
+        if (!raw && !uid) {
+          const legacy = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
+          if (legacy) {
+            raw = legacy;
+            await AsyncStorage.setItem(key, legacy);
+            await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
+          }
+        }
+        if (!cancelled && raw) {
           const parsed = JSON.parse(raw) as { vehicles: VehicleProfile[]; activeId: string | null };
           if (parsed.vehicles?.length) {
             setVehicles(parsed.vehicles);
             setActiveId(parsed.activeId ?? parsed.vehicles[0].id);
           }
+        } else if (!cancelled && uid) {
+          // Signed-in with empty uid cache — start from mocks until Firestore pull
+          const mocks = resetToMocks();
+          setVehicles(mocks.vehicles);
+          setActiveId(mocks.activeId);
         }
       } catch {
-        /* keep mocks */
+        /* keep current / mocks */
       } finally {
-        localLoaded.current = true;
-        setReady(true);
-        setSyncSource('local');
-        setSyncLabel('Flotte locale AsyncStorage');
+        if (!cancelled) {
+          setBucketReady(true);
+          setReady(true);
+          if (!uid) {
+            setSyncSource('local');
+            setSyncLabel((cur) => cur ?? 'Flotte locale AsyncStorage (um.fleet.v1:local)');
+          }
+        }
       }
     })();
-  }, []);
 
-  // Persist locally always (cache / offline)
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, uid]);
+
+  // Persist only into the active identity bucket
   useEffect(() => {
-    if (!ready) return;
-    void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ vehicles, activeId }));
-  }, [vehicles, activeId, ready]);
+    if (!ready || !bucketReady || !authReady) return;
+    const key = storageKeyFor(uid);
+    void AsyncStorage.setItem(key, JSON.stringify({ vehicles, activeId }));
+  }, [vehicles, activeId, ready, bucketReady, authReady, uid]);
 
-  const pushLocalToCloud = useCallback(async (list: VehicleProfile[], uid: string) => {
+  const pushLocalToCloud = useCallback(async (list: VehicleProfile[], ownerUid: string) => {
     const mapped: VehicleProfile[] = [];
     for (const v of list) {
-      const res = await upsertVehicleRemote(uid, v);
+      const res = await upsertVehicleRemote(ownerUid, v);
       if (res.data) mapped.push(res.data);
     }
     return mapped.length ? mapped : list;
   }, []);
 
+  /** Pull only — never auto-migrate local → other uid. */
   const refreshCloud = useCallback(async () => {
-    if (!authReady || !profile?.uid) {
+    if (!authReady || !uid) {
       setSyncSource('local');
       setSyncLabel('Flotte locale — connectez-vous pour sync cloud');
       return;
     }
     setSyncSource('pending');
     try {
-      const res = await listVehicles(profile.uid);
+      const res = await listVehicles(uid);
       if (res.source === 'firebase' && res.data.length > 0) {
         setVehicles(res.data);
         setActiveId((cur) => {
@@ -114,37 +183,54 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
         setSyncLabel(res.stubLabel ?? `Flotte Firestore LIVE (${res.data.length})`);
         return;
       }
-      // Remote empty — migrate only user-created local vehicles (not seed mocks)
-      const local = vehiclesRef.current;
-      const custom = local.filter(isMigratable);
-      if (custom.length) {
-        const uploaded = await pushLocalToCloud(custom, profile.uid);
-        setVehicles(uploaded);
-        setActiveId((cur) => {
-          if (cur && uploaded.some((v) => v.id === cur)) return cur;
-          return uploaded[0]?.id ?? null;
-        });
-        setSyncSource('firestore');
-        setSyncLabel(`Flotte migrée locale→Firestore (${uploaded.length})`);
-        return;
-      }
+      const custom = vehiclesRef.current.filter(isMigratable);
       setSyncSource(res.source === 'firebase' ? 'firestore' : 'local');
       setSyncLabel(
-        res.stubLabel ??
-          (res.source === 'firebase'
-            ? 'Flotte Firestore vide — ajoutez via cascade / VIN'
-            : 'Flotte locale (cloud indisponible)'),
+        custom.length
+          ? `Flotte cloud vide — ${custom.length} véhicule(s) locaux prêts (bouton Migrer explicite)`
+          : res.stubLabel ??
+              (res.source === 'firebase'
+                ? 'Flotte Firestore vide — ajoutez via cascade / VIN'
+                : 'Flotte locale (cloud indisponible)'),
       );
     } catch (e) {
       setSyncSource('local');
       setSyncLabel(e instanceof Error ? `Cloud KO — ${e.message}` : 'Cloud KO — flotte locale');
     }
-  }, [authReady, profile?.uid, pushLocalToCloud]);
+  }, [authReady, uid]);
+
+  /** Explicit migrate — only current uid’s bucket contents. */
+  const migrateLocalToCloud = useCallback(async () => {
+    if (!authReady || !uid) {
+      setSyncLabel('Connexion requise pour migrer la flotte');
+      return;
+    }
+    const custom = vehiclesRef.current.filter(isMigratable);
+    if (!custom.length) {
+      setSyncLabel('Rien à migrer (pas de véhicule cascade/VIN local)');
+      return;
+    }
+    setSyncSource('pending');
+    try {
+      const uploaded = await pushLocalToCloud(custom, uid);
+      setVehicles(uploaded);
+      setActiveId((cur) => {
+        if (cur && uploaded.some((v) => v.id === cur)) return cur;
+        return uploaded[0]?.id ?? null;
+      });
+      setSyncSource('firestore');
+      setSyncLabel(`Migration explicite OK — ${uploaded.length} véhicule(s) → Firestore (uid courant)`);
+    } catch (e) {
+      setSyncSource('local');
+      setSyncLabel(e instanceof Error ? `Migration KO — ${e.message}` : 'Migration KO');
+    }
+  }, [authReady, uid, pushLocalToCloud]);
 
   useEffect(() => {
-    if (!ready || !localLoaded.current || !authReady) return;
+    if (!ready || !bucketReady || !authReady) return;
+    if (!uid) return;
     void refreshCloud();
-  }, [ready, authReady, profile?.uid, refreshCloud]);
+  }, [ready, bucketReady, authReady, uid, refreshCloud]);
 
   const setActive = useCallback((id: string) => setActiveId(id), []);
 
@@ -161,16 +247,17 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
       });
       setActiveId(v.id);
 
-      const uid = profile?.uid;
       if (!uid) {
         setSyncSource('local');
         setSyncLabel('Flotte locale — Auth pour sync Firestore');
         return;
       }
+      // Live upsert only for the signed-in uid (current session action)
       void upsertVehicleRemote(uid, v).then((res) => {
         if (res.source === 'firebase' && res.data && res.data.id !== v.id) {
-          // Firestore assigned a new id (cascade-/decoded- → addDoc)
-          setVehicles((prev) => prev.map((x) => (x.id === v.id ? { ...res.data!, id: res.data!.id } : x)));
+          setVehicles((prev) =>
+            prev.map((x) => (x.id === v.id ? { ...res.data!, id: res.data!.id } : x)),
+          );
           setActiveId(res.data.id);
         }
         if (res.source === 'firebase') {
@@ -181,14 +268,14 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
         }
       });
     },
-    [profile?.uid],
+    [uid],
   );
 
   const removeVehicle = useCallback(
     (id: string) => {
       setVehicles((prev) => prev.filter((v) => v.id !== id));
       setActiveId((cur) => (cur === id ? null : cur));
-      if (profile?.uid) {
+      if (uid) {
         void removeVehicleRemote(id).then((res) => {
           if (res.source === 'firebase') {
             setSyncSource('firestore');
@@ -197,7 +284,7 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [profile?.uid],
+    [uid],
   );
 
   const active = useMemo(
@@ -213,10 +300,12 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
       ready,
       syncSource,
       syncLabel,
+      pendingLocalMigrateCount,
       setActive,
       upsertVehicle,
       removeVehicle,
       refreshCloud,
+      migrateLocalToCloud,
     }),
     [
       vehicles,
@@ -224,10 +313,12 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
       ready,
       syncSource,
       syncLabel,
+      pendingLocalMigrateCount,
       setActive,
       upsertVehicle,
       removeVehicle,
       refreshCloud,
+      migrateLocalToCloud,
     ],
   );
 

@@ -60,8 +60,18 @@ const CLASS_LABEL: Record<VehicleClass, string> = {
 /** Module 2 — sélecteur cascade + multi-flotte. */
 export default function FlotteScreen() {
   useModuleVisit(2);
-  const { vehicles, active, setActive, upsertVehicle, removeVehicle, syncSource, syncLabel, refreshCloud } =
-    useFleet();
+  const {
+    vehicles,
+    active,
+    setActive,
+    upsertVehicle,
+    removeVehicle,
+    syncSource,
+    syncLabel,
+    pendingLocalMigrateCount,
+    refreshCloud,
+    migrateLocalToCloud,
+  } = useFleet();
   const [continent, setContinent] = useState<string | null>(null);
   const [country, setCountry] = useState<string | null>(null);
   const [make, setMake] = useState<string | null>(null);
@@ -156,8 +166,15 @@ export default function FlotteScreen() {
             <Text style={styles.hint}>{syncLabel ?? '—'}</Text>
           </View>
           <Pressable style={styles.refreshCloud} onPress={() => void refreshCloud()}>
-            <Text style={styles.refreshCloudTxt}>Rafraîchir flotte cloud</Text>
+            <Text style={styles.refreshCloudTxt}>Rafraîchir flotte cloud (pull seul)</Text>
           </Pressable>
+          {pendingLocalMigrateCount > 0 ? (
+            <Pressable style={styles.migrateCloud} onPress={() => void migrateLocalToCloud()}>
+              <Text style={styles.refreshCloudTxt}>
+                Migrer {pendingLocalMigrateCount} véhicule(s) locaux → ce compte (explicite)
+              </Text>
+            </Pressable>
+          ) : null}
           {vehicles.map((v) => {
             const on = active?.id === v.id;
             return (
@@ -395,6 +412,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
     backgroundColor: colors.mist,
+    marginBottom: 8,
+  },
+  migrateCloud: {
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.signal,
+    backgroundColor: colors.signalSoft,
     marginBottom: 8,
   },
   refreshCloudTxt: { color: colors.ink, fontWeight: '700', fontSize: 11 },
