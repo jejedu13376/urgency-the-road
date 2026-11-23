@@ -99,7 +99,7 @@ export async function signUpEmail(
   email: string,
   password: string,
   displayName?: string,
-): Promise<ServiceResult<UserDoc>> {
+): Promise<ServiceResult<UserDoc | null>> {
   const fb = getFirebase();
   if (!fb) return mockResult({ ...MOCK_USER, email, displayName }, 'MOCK Auth — inscription locale');
 
@@ -117,7 +117,7 @@ export async function signUpEmail(
       'Compte créé — vérifie ton email (lien envoyé) avant le Multi-IA LIVE',
     );
   } catch (e) {
-    return failResult(MOCK_USER, authErrorMessage(e));
+    return failResult(null, authErrorMessage(e));
   }
 }
 
@@ -155,7 +155,10 @@ export async function resendEmailVerification(): Promise<ServiceResult<{ sent: b
   }
 }
 
-export async function signInEmail(email: string, password: string): Promise<ServiceResult<UserDoc>> {
+export async function signInEmail(
+  email: string,
+  password: string,
+): Promise<ServiceResult<UserDoc | null>> {
   const fb = getFirebase();
   if (!fb) return mockResult({ ...MOCK_USER, email }, 'MOCK Auth — connexion locale');
 
@@ -168,7 +171,7 @@ export async function signInEmail(email: string, password: string): Promise<Serv
     );
     return liveResult(profile);
   } catch (e) {
-    return failResult(MOCK_USER, authErrorMessage(e));
+    return failResult(null, authErrorMessage(e));
   }
 }
 

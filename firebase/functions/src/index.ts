@@ -30,7 +30,8 @@ function applyCors(
     res.set('Access-Control-Allow-Origin', origin);
     res.set('Vary', 'Origin');
   } else {
-    res.set('Access-Control-Allow-Origin', allow.split(',')[0]!.trim());
+    // Mismatch: omit ACAO (do not reflect a different origin from the allowlist).
+    res.set('Vary', 'Origin');
   }
   res.set('Access-Control-Allow-Methods', 'POST, OPTIONS, GET');
   res.set(

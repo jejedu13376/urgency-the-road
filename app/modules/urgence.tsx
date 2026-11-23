@@ -55,11 +55,8 @@ export default function UrgenceScreen() {
   const [label, setLabel] = useState<string | undefined>();
   const [coords, setCoords] = useState<DeviceCoords | null>(null);
 
-  const subscriberActive = Boolean(
-    profile?.subscriptionActive ||
-      (profile?.subscription && profile.subscription !== 'free') ||
-      !profile, // demo local = treat as subscriber for QR mint
-  );
+  // Align with firestore.rules ownerIsActiveSubscriber — flag only, never plan name / !profile.
+  const subscriberActive = profile?.subscriptionActive === true;
 
   useEffect(() => {
     if (!driving) return;
@@ -84,12 +81,20 @@ export default function UrgenceScreen() {
       const uid = profile?.uid ?? 'mock-local-user';
       const qr = await ensurePersonalQr(uid, subscriberActive);
       setLabel(qr.stubLabel);
+      if (qr.ok === false) {
+        // Do not hydrate demo PHI after a failed read / mint abort.
+        return;
+      }
       if (qr.data.card?.scanCode) {
         setCard(qr.data.card);
         setScanCode(qr.data.scanCode);
         hydrateForm(qr.data.card);
       } else {
         const res = await getOwnMedicalCard(uid);
+        if (res.ok === false) {
+          setLabel(res.stubLabel ?? qr.stubLabel);
+          return;
+        }
         setCard(res.data);
         setLabel(res.stubLabel ?? qr.stubLabel);
         if (res.data) {

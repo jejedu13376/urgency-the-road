@@ -95,7 +95,7 @@ Banner should show **Firebase configuré**. Module 15 → S’inscrire / Connexi
 
 ### 3. Paste into `.env`
 
-Same variable as `.env.example` (and the store helper `ENV-YOUTUBE.env` — **placeholder only**; never commit a real key there):
+Same variable as root `.env.example` → copy to root `.env` (gitignored). Do not use a separate `docs/ENV-YOUTUBE.env` file:
 
 ```bash
 EXPO_PUBLIC_YOUTUBE_API_KEY=

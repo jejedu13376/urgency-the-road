@@ -1,6 +1,7 @@
-import { STARTUP_GATE_PASSWORD } from './startupGateConfig';
+import { STARTUP_GATE_ENABLED, STARTUP_GATE_PASSWORD } from './startupGateConfig';
 
-/** Password check lives here — compare input to local/env constant. */
+/** Password check — compare input to env-configured constant only (no hardcoded default). */
 export function verifyStartupPassword(input: string): boolean {
+  if (!STARTUP_GATE_ENABLED) return true;
   return input === STARTUP_GATE_PASSWORD;
 }

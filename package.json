@@ -34,6 +34,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~58.0.4",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -44,6 +46,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "typecheck:functions": "npm --prefix firebase/functions run typecheck",
+    "lint": "expo lint",
     "eas:whoami": "npx eas-cli whoami",
     "eas:configure": "npx eas-cli build:configure",
     "eas:preview:android": "npx eas-cli build -p android --profile preview",

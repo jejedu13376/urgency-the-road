@@ -47,4 +47,9 @@ export interface VehicleProfile {
   techNotes?: string[];
   /** Honesty marker for fluids — `local_estimate` until OEM API exists */
   fluidsSource?: 'local_estimate' | 'oem_api';
+  /**
+   * Original local temp id (`cascade-*` / …) stored on the Firestore doc after migrate.
+   * Used by refreshCloud to drop already-migrated no-VIN temps (not fingerprint).
+   */
+  clientLocalId?: string;
 }

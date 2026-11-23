@@ -90,7 +90,7 @@ export default function CompteScreen() {
       }
       setAuthMsg(
         r.stubLabel ??
-          `Compte ${r.data.email} — vérifie ton email (lien envoyé) avant le Multi-IA LIVE`,
+          `Compte ${r.data?.email ?? email} — vérifie ton email (lien envoyé) avant le Multi-IA LIVE`,
       );
       await refresh();
     } catch (e) {
@@ -107,10 +107,11 @@ export default function CompteScreen() {
       }
       await refresh();
       const verified = await isCurrentEmailVerified();
+      const who = r.data?.email ?? email;
       setAuthMsg(
         verified
-          ? (r.stubLabel ?? `Connecté ${r.data.email}`)
-          : `Connecté ${r.data.email} — vérifie ton email pour activer le Multi-IA LIVE`,
+          ? (r.stubLabel ?? `Connecté ${who}`)
+          : `Connecté ${who} — vérifie ton email pour activer le Multi-IA LIVE`,
       );
     } catch (e) {
       setAuthMsg(e instanceof Error ? e.message : 'Connexion échouée');

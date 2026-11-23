@@ -32,14 +32,22 @@ const defaultState: ProgressState = {
 
 const Ctx = createContext<ProgressCtx | null>(null);
 
+/** Local calendar YYYY-MM-DD (not UTC — avoids FR/CA midnight streak skew). */
+function localYmd(d = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return localYmd();
 }
 
 function yesterdayIso() {
   const d = new Date();
   d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
+  return localYmd(d);
 }
 
 export function ProgressProvider({ children }: { children: React.ReactNode }) {

@@ -2,7 +2,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { getFirebase, getSignedInUid } from '../../firebase/config';
 import type { GpsPrefsDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
-import { liveResult, mockResult, ServiceResult } from './result';
+import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 function fallbackPrefs(ownerUid: string): GpsPrefsDoc {
   return {
@@ -49,6 +49,10 @@ export async function saveGpsPrefs(prefs: GpsPrefsDoc): Promise<ServiceResult<Gp
     return mockResult(payload, 'MOCK GPS prefs save (non connecté)');
   }
   const owned = { ...payload, ownerUid: uid, id: uid };
-  await setDoc(doc(fb.db, COLLECTIONS.gpsPrefs, uid), owned, { merge: true });
-  return liveResult(owned);
+  try {
+    await setDoc(doc(fb.db, COLLECTIONS.gpsPrefs, uid), owned, { merge: true });
+    return liveResult(owned);
+  } catch (e) {
+    return failResult(owned, e instanceof Error ? e.message : 'GPS prefs save refusé');
+  }
 }

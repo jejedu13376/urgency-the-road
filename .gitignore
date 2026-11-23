@@ -9,14 +9,20 @@ dist/
 web-build/
 expo-env.d.ts
 
-# Native
+# Native / signing / Firebase credentials — never commit
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
+*.pem
 *.key
 *.mobileprovision
+google-services.json
+GoogleService-Info.plist
+serviceAccount*.json
+**/serviceAccount*.json
 
 # Metro
 .metro-health-check*
@@ -28,7 +34,6 @@ yarn-error.*
 
 # macOS
 .DS_Store
-*.pem
 
 # local env files / secret dumps — never commit real keys
 .env

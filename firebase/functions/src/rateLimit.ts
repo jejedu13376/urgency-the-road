@@ -67,6 +67,77 @@ type CounterDoc = {
   dayCount?: number;
 };
 
+type CounterState = {
+  windowStartMs: number;
+  windowCount: number;
+  dayKey: string;
+  dayCount: number;
+};
+
+function normalizeCounter(data: CounterDoc | undefined, cfg: RateLimitConfig, now: number, day: string): CounterState {
+  let windowStartMs = data?.windowStartMs ?? now;
+  let windowCount = data?.windowCount ?? 0;
+  if (now - windowStartMs >= cfg.windowMs) {
+    windowStartMs = now;
+    windowCount = 0;
+  }
+
+  let dayKey = data?.dayKey ?? day;
+  let dayCount = data?.dayCount ?? 0;
+  if (dayKey !== day) {
+    dayKey = day;
+    dayCount = 0;
+  }
+
+  return { windowStartMs, windowCount, dayKey, dayCount };
+}
+
+function throwIfOver(
+  state: CounterState,
+  cfg: RateLimitConfig,
+  now: number,
+  opts: {
+    enforceWindow: boolean;
+    windowMax: number;
+    enforceDay: boolean;
+    dayMax: number;
+    windowCode: string;
+    dayCode: string;
+  },
+): void {
+  if (opts.enforceWindow && state.windowCount >= opts.windowMax) {
+    const retryAfterSec = Math.max(
+      1,
+      Math.ceil((state.windowStartMs + cfg.windowMs - now) / 1000),
+    );
+    rateError(opts.windowCode, 'Too many Multi-IA requests — retry shortly', retryAfterSec);
+  }
+  if (opts.enforceDay && state.dayCount >= opts.dayMax) {
+    rateError(opts.dayCode, 'Multi-IA quota reached — try again later');
+  }
+}
+
+/** Read-only check — never increments. */
+async function assertCounterUnderLimit(
+  ref: DocumentReference,
+  cfg: RateLimitConfig,
+  now: number,
+  day: string,
+  opts: {
+    enforceWindow: boolean;
+    windowMax: number;
+    enforceDay: boolean;
+    dayMax: number;
+    windowCode: string;
+    dayCode: string;
+  },
+): Promise<void> {
+  const snap = await ref.get();
+  const state = normalizeCounter(snap.data() as CounterDoc | undefined, cfg, now, day);
+  throwIfOver(state, cfg, now, opts);
+}
+
+/** Atomic check-then-increment (re-checks inside the transaction for races). */
 async function bumpCounter(
   ref: DocumentReference,
   cfg: RateLimitConfig,
@@ -83,40 +154,16 @@ async function bumpCounter(
 ): Promise<void> {
   await getFirestore().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    const data = snap.data() as CounterDoc | undefined;
-
-    let windowStartMs = data?.windowStartMs ?? now;
-    let windowCount = data?.windowCount ?? 0;
-    if (now - windowStartMs >= cfg.windowMs) {
-      windowStartMs = now;
-      windowCount = 0;
-    }
-
-    let dayKey = data?.dayKey ?? day;
-    let dayCount = data?.dayCount ?? 0;
-    if (dayKey !== day) {
-      dayKey = day;
-      dayCount = 0;
-    }
-
-    if (opts.enforceWindow && windowCount >= opts.windowMax) {
-      const retryAfterSec = Math.max(
-        1,
-        Math.ceil((windowStartMs + cfg.windowMs - now) / 1000),
-      );
-      rateError(opts.windowCode, 'Too many Multi-IA requests — retry shortly', retryAfterSec);
-    }
-    if (opts.enforceDay && dayCount >= opts.dayMax) {
-      rateError(opts.dayCode, 'Multi-IA quota reached — try again later');
-    }
+    const state = normalizeCounter(snap.data() as CounterDoc | undefined, cfg, now, day);
+    throwIfOver(state, cfg, now, opts);
 
     tx.set(
       ref,
       {
-        windowStartMs,
-        windowCount: windowCount + 1,
-        dayKey,
-        dayCount: dayCount + 1,
+        windowStartMs: state.windowStartMs,
+        windowCount: state.windowCount + 1,
+        dayKey: state.dayKey,
+        dayCount: state.dayCount + 1,
         updatedAtMs: now,
         updatedAt: FieldValue.serverTimestamp(),
       },
@@ -128,6 +175,9 @@ async function bumpCounter(
 /**
  * Per-UID + per-IP window + project-wide daily caps via Firestore.
  * Docs: `multiIaRateLimits/{uid}`, `multiIaRateLimits/{ipHash}`, `multiIaRateLimits/_global`.
+ *
+ * Check ALL limits first (UID + IP + global) without writing, then increment.
+ * Never bumps `_global` when UID/IP is already at cap.
  */
 export async function assertWithinRateLimit(
   uid: string,
@@ -138,33 +188,44 @@ export async function assertWithinRateLimit(
   const now = Date.now();
   const day = utcDayKey();
 
-  await bumpCounter(db.collection('multiIaRateLimits').doc(uid), cfg, now, day, {
-    enforceWindow: true,
-    windowMax: cfg.maxPerWindow,
-    enforceDay: true,
-    dayMax: cfg.maxPerDay,
-    windowCode: 'rate/window',
-    dayCode: 'rate/daily',
-  });
+  const ipRef = db.collection('multiIaRateLimits').doc(hashIp(clientIp ?? 'unknown'));
+  const globalRef = db.collection('multiIaRateLimits').doc('_global');
+  const uidRef = db.collection('multiIaRateLimits').doc(uid);
 
-  const ipKey = hashIp(clientIp ?? 'unknown');
-  await bumpCounter(db.collection('multiIaRateLimits').doc(ipKey), cfg, now, day, {
+  const ipOpts = {
     enforceWindow: true,
     windowMax: cfg.maxPerIpWindow,
     enforceDay: false,
     dayMax: 0,
     windowCode: 'rate/ip-window',
     dayCode: 'rate/ip-daily',
-  });
-
-  await bumpCounter(db.collection('multiIaRateLimits').doc('_global'), cfg, now, day, {
+  } as const;
+  const globalOpts = {
     enforceWindow: false,
     windowMax: 0,
     enforceDay: true,
     dayMax: cfg.globalMaxPerDay,
     windowCode: 'rate/global-window',
     dayCode: 'rate/global-daily',
-  });
+  } as const;
+  const uidOpts = {
+    enforceWindow: true,
+    windowMax: cfg.maxPerWindow,
+    enforceDay: true,
+    dayMax: cfg.maxPerDay,
+    windowCode: 'rate/window',
+    dayCode: 'rate/daily',
+  } as const;
+
+  // Peek first: UID + IP before global so a capped user never burns project quota.
+  await assertCounterUnderLimit(uidRef, cfg, now, day, uidOpts);
+  await assertCounterUnderLimit(ipRef, cfg, now, day, ipOpts);
+  await assertCounterUnderLimit(globalRef, cfg, now, day, globalOpts);
+
+  // All clear → increment UID, then IP, then global (UID first on the write path too).
+  await bumpCounter(uidRef, cfg, now, day, uidOpts);
+  await bumpCounter(ipRef, cfg, now, day, ipOpts);
+  await bumpCounter(globalRef, cfg, now, day, globalOpts);
 
   return cfg;
 }

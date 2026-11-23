@@ -17,17 +17,27 @@ export default function PartageScreen() {
   useModuleVisit(16);
   const install = resolveInstallUrl();
   const INSTALL_URL = install.url;
-  const INSTALL_MSG =
-    'Installe Urgence Mécanique — diagnostic VIN, flotte & urgence médicale : ' + INSTALL_URL;
+  const canShareLink = install.configured && INSTALL_URL.startsWith('http');
+  const INSTALL_MSG = canShareLink
+    ? 'Installe Urgence Mécanique — diagnostic VIN, flotte & urgence médicale : ' + INSTALL_URL
+    : 'Urgence Mécanique — lien d’installation non encore publié (pas de store inventé).';
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [region, setRegion] = useState<'FR' | 'CA' | 'EU' | 'AU'>('FR');
   const [last, setLast] = useState<string | null>(null);
 
+  const refuseUnset = () => {
+    setLast('Partage lien refusé — définissez EXPO_PUBLIC_INSTALL_URL (aucun listing inventé)');
+  };
+
   const msgForRegion = () =>
     `${INSTALL_MSG}\nRégion : ${region} · Android / iOS / Web.`;
 
   const shareSheet = async (channel: string) => {
+    if (!canShareLink) {
+      refuseUnset();
+      return;
+    }
     try {
       const res = await Share.share({
         message: `${msgForRegion()}\nVia ${channel}`,
@@ -45,6 +55,10 @@ export default function PartageScreen() {
   };
 
   const sendSms = () => {
+    if (!canShareLink) {
+      refuseUnset();
+      return;
+    }
     const body = encodeURIComponent(msgForRegion());
     const to = phone.trim().replace(/\s/g, '');
     const url =
@@ -57,6 +71,10 @@ export default function PartageScreen() {
   };
 
   const sendWhatsApp = () => {
+    if (!canShareLink) {
+      refuseUnset();
+      return;
+    }
     const text = encodeURIComponent(msgForRegion());
     const digits = phone.trim().replace(/\D/g, '');
     const url = digits
@@ -68,6 +86,10 @@ export default function PartageScreen() {
   };
 
   const sendEmail = () => {
+    if (!canShareLink) {
+      refuseUnset();
+      return;
+    }
     const subject = encodeURIComponent('Rejoins Urgence Mécanique');
     const body = encodeURIComponent(msgForRegion());
     const to = email.trim();
@@ -91,15 +113,15 @@ export default function PartageScreen() {
       <Screen title="Partage viral" subtitle="Module 16 — installation universelle">
         <StubBanner
           text={
-            install.configured
+            canShareLink
               ? `Lien install LIVE (${install.source}) · ${INSTALL_URL}`
-              : 'Lien install stub — définissez EXPO_PUBLIC_INSTALL_URL (store / PWA) ; aucun listing inventé'
+              : 'Lien install non configuré — définissez EXPO_PUBLIC_INSTALL_URL ; aucun listing inventé'
           }
         />
 
         <Card title="Lien d’installation">
           <Text style={styles.meta}>Source : {install.source} · configuré : {install.configured ? 'oui' : 'non'}</Text>
-          <Text style={styles.url}>{INSTALL_URL}</Text>
+          <Text style={styles.url}>{canShareLink ? INSTALL_URL : '(non configuré)'}</Text>
           <Pressable style={styles.btn} onPress={openLink}>
             <Text style={styles.btnTxt}>Ouvrir le lien install</Text>
           </Pressable>

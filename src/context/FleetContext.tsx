@@ -154,14 +154,41 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
     void AsyncStorage.setItem(key, JSON.stringify({ vehicles, activeId }));
   }, [vehicles, activeId, ready, bucketReady, authReady, uid]);
 
-  const pushLocalToCloud = useCallback(async (list: VehicleProfile[], ownerUid: string) => {
-    const mapped: VehicleProfile[] = [];
-    for (const v of list) {
-      const res = await upsertVehicleRemote(ownerUid, v);
-      if (res.data) mapped.push(res.data);
-    }
-    return mapped.length ? mapped : list;
+  /** Apply oldId → remote vehicle remaps into local fleet (keeps non-remapped rows). */
+  const applyIdRemaps = useCallback((byOldId: Map<string, VehicleProfile>) => {
+    if (!byOldId.size) return;
+    setVehicles((prev) => prev.map((v) => byOldId.get(v.id) ?? v));
+    setActiveId((cur) => (cur && byOldId.has(cur) ? byOldId.get(cur)!.id : cur));
   }, []);
+
+  /**
+   * Upload every migratable vehicle. Remaps successful rows immediately (old local id →
+   * Firestore id) so a mid-loop failure cannot leave cascade-/decoded- ids that would
+   * addDoc again on retry. Returns remaps + optional failure message.
+   */
+  const pushLocalToCloud = useCallback(
+    async (
+      list: VehicleProfile[],
+      ownerUid: string,
+    ): Promise<{ remapped: Map<string, VehicleProfile>; failed?: string }> => {
+      const remapped = new Map<string, VehicleProfile>();
+      for (const v of list) {
+        const res = await upsertVehicleRemote(ownerUid, v);
+        if (res.ok === false || !res.data) {
+          // Successes already remapped below — keep them; do not re-addDoc on retry.
+          return {
+            remapped,
+            failed: res.stubLabel ?? 'Migration cloud refusée',
+          };
+        }
+        remapped.set(v.id, res.data);
+        // Remap immediately after each success (crash-safe mid-migrate).
+        applyIdRemaps(new Map([[v.id, res.data]]));
+      }
+      return { remapped };
+    },
+    [applyIdRemaps],
+  );
 
   /** Pull only — never auto-migrate local → other uid. */
   const refreshCloud = useCallback(async () => {
@@ -173,14 +200,75 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
     setSyncSource('pending');
     try {
       const res = await listVehicles(uid);
+      if (res.ok === false) {
+        // Keep current local fleet — do not replace with mock / empty “live” data.
+        setSyncSource('local');
+        setSyncLabel(res.stubLabel ?? 'Cloud KO — flotte locale conservée');
+        return;
+      }
       if (res.source === 'firebase' && res.data.length > 0) {
-        setVehicles(res.data);
+        // Merge: keep pending local-temp migratables not yet on cloud (avoid wipe after partial migrate).
+        const cloud = res.data;
+        const cloudIds = new Set(cloud.map((v) => v.id));
+        const cloudVins = new Set(
+          cloud.map((v) => (v.vin ?? '').trim().toUpperCase()).filter((vin) => vin.length >= 8),
+        );
+        // Already-migrated temps: cloud docs store original cascade-/decoded-/nhtsa- id here.
+        const cloudByClientLocalId = new Map(
+          cloud
+            .filter((v) => v.clientLocalId)
+            .map((v) => [v.clientLocalId!, v] as const),
+        );
+        const cloudByVin = new Map(
+          cloud
+            .map((v) => [(v.vin ?? '').trim().toUpperCase(), v] as const)
+            .filter(([vin]) => vin.length >= 8),
+        );
+        /** old local-temp id → cloud vehicle (same as migrate applyIdRemaps). */
+        const pullRemaps = new Map<string, VehicleProfile>();
+        const pendingLocal = vehiclesRef.current.filter((v) => {
+          if (!isMigratable(v)) return false;
+          const localTemp =
+            v.id.startsWith('cascade-') ||
+            v.id.startsWith('decoded-') ||
+            v.id.startsWith('nhtsa-');
+          if (!localTemp) return false;
+          if (cloudIds.has(v.id)) return false;
+          // Drop temps that already migrated (clientLocalId rematch — never fingerprint).
+          const byLocal = cloudByClientLocalId.get(v.id);
+          if (byLocal) {
+            pullRemaps.set(v.id, byLocal);
+            return false;
+          }
+          const vin = (v.vin ?? '').trim().toUpperCase();
+          // VIN present: drop only when that exact VIN is already on cloud.
+          if (vin.length >= 8) {
+            if (cloudVins.has(vin)) {
+              const byVin = cloudByVin.get(vin);
+              if (byVin) pullRemaps.set(v.id, byVin);
+              return false;
+            }
+            return true;
+          }
+          // No VIN and no clientLocalId hit → keep (identical cascade twins stay distinct).
+          return true;
+        });
+        const merged = [...cloud, ...pendingLocal];
+        setVehicles(merged);
         setActiveId((cur) => {
-          if (cur && res.data.some((v) => v.id === cur)) return cur;
-          return res.data[0]?.id ?? null;
+          if (!cur) return merged[0]?.id ?? null;
+          if (merged.some((v) => v.id === cur)) return cur;
+          // Rematched temp was dropped — follow cloud doc id (same as applyIdRemaps).
+          const remapped = pullRemaps.get(cur);
+          if (remapped) return remapped.id;
+          return merged[0]?.id ?? null;
         });
         setSyncSource('firestore');
-        setSyncLabel(res.stubLabel ?? `Flotte Firestore LIVE (${res.data.length})`);
+        setSyncLabel(
+          pendingLocal.length
+            ? `Flotte Firestore LIVE (${cloud.length}) + ${pendingLocal.length} local(aux) en attente`
+            : res.stubLabel ?? `Flotte Firestore LIVE (${cloud.length})`,
+        );
         return;
       }
       const custom = vehiclesRef.current.filter(isMigratable);
@@ -211,19 +299,18 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     setSyncSource('pending');
-    try {
-      const uploaded = await pushLocalToCloud(custom, uid);
-      setVehicles(uploaded);
-      setActiveId((cur) => {
-        if (cur && uploaded.some((v) => v.id === cur)) return cur;
-        return uploaded[0]?.id ?? null;
-      });
-      setSyncSource('firestore');
-      setSyncLabel(`Migration explicite OK — ${uploaded.length} véhicule(s) → Firestore (uid courant)`);
-    } catch (e) {
+    const { remapped, failed } = await pushLocalToCloud(custom, uid);
+    if (failed) {
       setSyncSource('local');
-      setSyncLabel(e instanceof Error ? `Migration KO — ${e.message}` : 'Migration KO');
+      setSyncLabel(
+        remapped.size
+          ? `Migration partielle — ${remapped.size} syncé(s), échec: ${failed}`
+          : `Migration KO — ${failed}`,
+      );
+      return;
     }
+    setSyncSource('firestore');
+    setSyncLabel(`Migration explicite OK — ${remapped.size} véhicule(s) → Firestore (uid courant)`);
   }, [authReady, uid, pushLocalToCloud]);
 
   useEffect(() => {
@@ -254,6 +341,10 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
       }
       // Live upsert only for the signed-in uid (current session action)
       void upsertVehicleRemote(uid, v).then((res) => {
+        if (res.ok === false) {
+          setSyncLabel(res.stubLabel ?? 'Upsert cloud refusé — flotte locale');
+          return;
+        }
         if (res.source === 'firebase' && res.data && res.data.id !== v.id) {
           setVehicles((prev) =>
             prev.map((x) => (x.id === v.id ? { ...res.data!, id: res.data!.id } : x)),
@@ -277,6 +368,10 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
       setActiveId((cur) => (cur === id ? null : cur));
       if (uid) {
         void removeVehicleRemote(id).then((res) => {
+          if (res.ok === false) {
+            setSyncLabel(res.stubLabel ?? 'Suppression cloud refusée');
+            return;
+          }
           if (res.source === 'firebase') {
             setSyncSource('firestore');
             setSyncLabel('Véhicule retiré Firestore');

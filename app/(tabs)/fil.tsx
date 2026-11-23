@@ -53,7 +53,11 @@ export default function FilMecaniqueScreen() {
     setRefreshing(true);
     try {
       const res = await listFeedPosts(40);
-      if (res.data?.length) setPosts(res.data);
+      // Always apply service payload (including empty live feed) — never keep MOCK_FEED
+      // when Firestore is configured but empty.
+      if (res.ok !== false && Array.isArray(res.data)) {
+        setPosts(res.data);
+      }
       setFeedLabel(
         res.stubLabel ?? (res.source === 'firebase' ? 'Fil Firestore LIVE' : undefined),
       );

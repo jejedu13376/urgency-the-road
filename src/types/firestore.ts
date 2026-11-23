@@ -35,6 +35,11 @@ export interface VehicleDoc {
   odometerKm: number;
   unitSystem: 'metric' | 'imperial';
   currency: string;
+  /**
+   * Original local temp id (`cascade-*` / `decoded-*` / `nhtsa-*`) when first migrated.
+   * Never used as the Firestore document id — enables retry setDoc without VIN.
+   */
+  clientLocalId?: string;
   createdAt: string;
   updatedAt: string;
 }

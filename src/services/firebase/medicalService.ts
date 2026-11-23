@@ -210,6 +210,16 @@ export async function ensurePersonalQr(
   }
 
   const existing = await getOwnMedicalCard(ownerUid);
+  // Transient / permission read failure must NOT look like “no card” — never upsert demo PHI.
+  if (existing.ok === false) {
+    return failResult(
+      {
+        scanCode: '',
+        card: { ...MOCK_CARD, ownerUid, scanCode: '', subscriberActive: true },
+      },
+      existing.stubLabel ?? 'Lecture fiche médicale échouée — pas de mint QR',
+    );
+  }
   if (existing.data?.scanCode) {
     if (existing.source === 'mock') {
       return mockResult(
@@ -234,6 +244,7 @@ export async function ensurePersonalQr(
     );
   }
 
+  // Confirmed missing card (liveResult(null)) — mint new QR only in that case.
   const scanCode = mintScanCode();
   const cardId = `med-${ownerUid}`;
   const card: MedicalCardDoc = {
@@ -423,14 +434,18 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
     );
   }
 
-  // Prefer canonical path med-{uid}; fall back to uid-keyed doc
-  for (const id of [medicalCardDocId(uid), uid]) {
-    const snap = await getDoc(doc(fb.db, COLLECTIONS.medicalCards, id));
-    if (snap.exists()) {
-      return liveResult({ id: snap.id, ...(snap.data() as Omit<MedicalCardDoc, 'id'>) });
+  try {
+    // Prefer canonical path med-{uid}; fall back to uid-keyed doc
+    for (const id of [medicalCardDocId(uid), uid]) {
+      const snap = await getDoc(doc(fb.db, COLLECTIONS.medicalCards, id));
+      if (snap.exists()) {
+        return liveResult({ id: snap.id, ...(snap.data() as Omit<MedicalCardDoc, 'id'>) });
+      }
     }
+    return liveResult(null);
+  } catch (e) {
+    return failResult(null, e instanceof Error ? e.message : 'Lecture fiche médicale refusée');
   }
-  return liveResult(null);
 }
 
 /**
@@ -464,10 +479,11 @@ export async function scanMedicalEmergency(
   const code = scanCode.trim().toUpperCase();
   const fb = getFirebase();
   if (!fb) {
-    if (code === MOCK_CARD.scanCode.toUpperCase() || code.startsWith('UM-QR-')) {
-      return mockResult(toEmergencyView({ ...MOCK_CARD, scanCode: code }), 'MOCK vue urgence complète');
+    // Only the exact demo scan code returns mock PHI — never any UM-QR-* prefix.
+    if (code === MOCK_CARD.scanCode.toUpperCase()) {
+      return mockResult(toEmergencyView({ ...MOCK_CARD }), 'MOCK vue urgence complète (code démo)');
     }
-    return mockResult(null, 'QR inconnu');
+    return mockResult(null, 'QR inconnu (mock — seul le code démo renvoie une fiche)');
   }
 
   try {
