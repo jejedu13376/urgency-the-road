@@ -145,7 +145,12 @@ export async function listVehicles(ownerUid: string): Promise<ServiceResult<Vehi
 
 type OwnedSnap = Awaited<ReturnType<typeof getDocs>>;
 
-/** Find existing cloud row for a local-temp vehicle (VIN → clientLocalId → fingerprint). */
+/**
+ * Find existing cloud row for a local-temp vehicle.
+ * Order: exact VIN → clientLocalId/stale body id → fingerprint (no-VIN only, unique).
+ * Never fingerprint-match when either side has a VIN — that would merge distinct cars
+ * and overwrite VIN/odometer.
+ */
 function findExistingForTemp(
   owned: OwnedSnap,
   vehicle: VehicleProfile,
@@ -158,17 +163,25 @@ function findExistingForTemp(
     if (byVin) return { id: byVin.id };
   }
 
-  // Match prior migrate that stored clientLocalId, or orphan body id still cascade-*.
+  // Rematch prior migrate: clientLocalId, or orphan body still carrying cascade-* id.
   const byLocal = owned.docs.find((d) => {
     const data = d.data() as { clientLocalId?: string; id?: string };
     return data.clientLocalId === vehicle.id || data.id === vehicle.id;
   });
   if (byLocal) return { id: byLocal.id };
 
+  // Never fingerprint when local has a VIN — would merge distinct cars / overwrite VIN.
+  if (vin.length >= 8) return null;
+
+  // Fingerprint only for cascade rows with no VIN, and only when unique among no-VIN cloud rows.
   const fp = vehicleFingerprint(vehicle);
   if (fp.replace(/\|/g, '').length === 0) return null;
-  const byFp = owned.docs.find((d) => vehicleFingerprint(d.data() as VehicleProfile) === fp);
-  if (byFp) return { id: byFp.id };
+  const fpHits = owned.docs.filter((d) => {
+    const data = d.data() as VehicleProfile & { vin?: string };
+    if (normalizeVin(data.vin).length >= 8) return false;
+    return vehicleFingerprint(data) === fp;
+  });
+  if (fpHits.length === 1) return { id: fpHits[0]!.id };
 
   return null;
 }

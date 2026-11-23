@@ -213,15 +213,21 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
         const cloudVins = new Set(
           cloud.map((v) => (v.vin ?? '').trim().toUpperCase()).filter((vin) => vin.length >= 8),
         );
-        const cloudFingerprints = new Set(
-          cloud.map((v) =>
-            [v.make, v.model, String(v.year), v.label]
-              .map((s) => String(s ?? '')
-                .trim()
-                .toLowerCase())
-              .join('|'),
-          ),
-        );
+        const fingerprintOf = (v: { make?: string; model?: string; year?: number; label?: string }) =>
+          [v.make, v.model, String(v.year), v.label]
+            .map((s) => String(s ?? '')
+              .trim()
+              .toLowerCase())
+            .join('|');
+        // Fingerprints of no-VIN cloud rows only — count for uniqueness.
+        const noVinFpCounts = new Map<string, number>();
+        for (const c of cloud) {
+          const cVin = (c.vin ?? '').trim().toUpperCase();
+          if (cVin.length >= 8) continue;
+          const fp = fingerprintOf(c);
+          if (fp.replace(/\|/g, '').length === 0) continue;
+          noVinFpCounts.set(fp, (noVinFpCounts.get(fp) ?? 0) + 1);
+        }
         const pendingLocal = vehiclesRef.current.filter((v) => {
           if (!isMigratable(v)) return false;
           const localTemp =
@@ -231,14 +237,13 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
           if (!localTemp) return false;
           if (cloudIds.has(v.id)) return false;
           const vin = (v.vin ?? '').trim().toUpperCase();
-          if (vin.length >= 8 && cloudVins.has(vin)) return false;
-          // Cascade without VIN: drop if make+model+year+label already on cloud.
-          const fp = [v.make, v.model, String(v.year), v.label]
-            .map((s) => String(s ?? '')
-              .trim()
-              .toLowerCase())
-            .join('|');
-          if (fp.replace(/\|/g, '').length > 0 && cloudFingerprints.has(fp)) return false;
+          // VIN present: only drop when that exact VIN is already on cloud — never fingerprint-drop.
+          if (vin.length >= 8) {
+            return !cloudVins.has(vin);
+          }
+          // No VIN: drop only when fingerprint uniquely matches a no-VIN cloud row.
+          const fp = fingerprintOf(v);
+          if (fp.replace(/\|/g, '').length > 0 && noVinFpCounts.get(fp) === 1) return false;
           return true;
         });
         const merged = [...cloud, ...pendingLocal];
