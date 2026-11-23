@@ -80,54 +80,15 @@ async function photonGeocode(q: string, limit: number): Promise<GeocodeResult> {
   }
 }
 
-/** Reverse geocode via Open-Meteo → Photon fallback (label for current GPS). */
+/**
+ * Reverse geocode — Photon only.
+ * Open-Meteo has no working `/v1/reverse` (HTTP 404); forward search stays Open-Meteo → Photon.
+ */
 export async function reverseGeocode(lat: number, lon: number): Promise<GeocodeResult> {
   const key = `rev|${lat.toFixed(4)}|${lon.toFixed(4)}`;
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < TTL_MS) return cached.result;
 
-  try {
-    const url = new URL('https://geocoding-api.open-meteo.com/v1/reverse');
-    url.searchParams.set('latitude', String(lat));
-    url.searchParams.set('longitude', String(lon));
-    url.searchParams.set('language', 'fr');
-    url.searchParams.set('format', 'json');
-    const res = await fetch(url.toString());
-    if (res.ok) {
-      const body = (await res.json()) as {
-        results?: Array<{
-          name?: string;
-          latitude?: number;
-          longitude?: number;
-          country?: string;
-          admin1?: string;
-        }>;
-      };
-      const hits: GeocodeHit[] = (body.results ?? [])
-        .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number')
-        .map((r) => {
-          const name = r.name ?? `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-          const parts = [name, r.admin1, r.country].filter(Boolean);
-          return {
-            name,
-            lat: r.latitude as number,
-            lon: r.longitude as number,
-            country: r.country,
-            admin1: r.admin1,
-            label: parts.join(', '),
-          };
-        });
-      if (hits.length) {
-        const result: GeocodeResult = { ok: true, hits, source: 'open-meteo' };
-        cache.set(key, { at: Date.now(), result });
-        return result;
-      }
-    }
-  } catch {
-    // fall through to Photon
-  }
-
-  // Photon reverse
   try {
     const url = new URL('https://photon.komoot.io/reverse');
     url.searchParams.set('lat', String(lat));
@@ -157,16 +118,32 @@ export async function reverseGeocode(lat: number, lon: number): Promise<GeocodeR
         cache.set(key, { at: Date.now(), result });
         return result;
       }
+    } else {
+      const result: GeocodeResult = {
+        ok: false,
+        hits: [],
+        error: `Photon reverse HTTP ${res.status}`,
+        source: 'photon',
+      };
+      cache.set(key, { at: Date.now(), result });
+      return result;
     }
-  } catch {
-    // ignore
+  } catch (e) {
+    const result: GeocodeResult = {
+      ok: false,
+      hits: [],
+      error: e instanceof Error ? e.message : 'Photon reverse réseau KO',
+      source: 'photon',
+    };
+    cache.set(key, { at: Date.now(), result });
+    return result;
   }
 
   const result: GeocodeResult = {
     ok: false,
     hits: [],
-    error: 'Reverse géocode indisponible',
-    source: 'none',
+    error: 'Photon reverse — aucun résultat',
+    source: 'photon',
   };
   cache.set(key, { at: Date.now(), result });
   return result;

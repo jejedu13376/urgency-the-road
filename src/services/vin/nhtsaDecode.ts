@@ -3,6 +3,8 @@
  * https://vpic.nhtsa.dot.gov/api/
  */
 import type { ContinentCode, Powertrain, VehicleClass, VehicleProfile } from '../../types/vehicle';
+import { buildLocalCommonFailures } from '../vehicle/localFailures';
+import { estimateLocalFluids } from '../vehicle/localFluids';
 import { normalizeVin, vinCheckDigitOk } from './vinNormalize';
 
 type NhtsaResult = { Variable: string; Value: string | null };
@@ -10,6 +12,12 @@ type NhtsaResult = { Variable: string; Value: string | null };
 function pick(results: NhtsaResult[], name: string): string {
   const hit = results.find((r) => r.Variable === name);
   return (hit?.Value ?? '').trim();
+}
+
+function parseDisplacementL(raw: string): number | null {
+  if (!raw) return null;
+  const n = parseFloat(raw.replace(',', '.'));
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 function guessContinent(wmi: string, plantCountry: string): ContinentCode {
@@ -97,11 +105,25 @@ export async function decodeVinNhtsa(vinRaw: string): Promise<NhtsaDecodeOutcome
     const bodyClass = pick(results, 'Body Class');
     const gvwr = pick(results, 'Gross Vehicle Weight Rating From');
     const plantCountry = pick(results, 'Plant Country');
+    const displacementRaw = pick(results, 'Displacement (L)');
+    const cylinders = pick(results, 'Engine Number of Cylinders');
+    const driveType = pick(results, 'Drive Type');
+    const displacementL = parseDisplacementL(displacementRaw);
     const year = parseInt(yearStr, 10) || new Date().getFullYear();
     const continent = guessContinent(vin.slice(0, 3), plantCountry);
     const country = guessCountry(continent, plantCountry);
     const powertrain = guessPowertrain(fuel, bodyClass, gvwr);
     const vehicleClass = guessClass(bodyClass, powertrain, gvwr);
+    const fluidsEst = estimateLocalFluids({ vehicleClass, powertrain, displacementL });
+    const nhtsaHints = [
+      bodyClass ? `Carrosserie: ${bodyClass}` : '',
+      plantCountry ? `Usine: ${plantCountry}` : '',
+      fuel ? `Carburant: ${fuel}` : '',
+      displacementL != null ? `Cylindrée: ${displacementL} L` : '',
+      cylinders ? `Cylindres: ${cylinders}` : '',
+      driveType ? `Transmission: ${driveType}` : '',
+      check === false ? 'Attention : chiffre de contrôle VIN (pos. 9) invalide' : '',
+    ].filter(Boolean);
     const profile: VehicleProfile = {
       id: `nhtsa-${vin}`,
       label: `${make} ${model} ${year}`.trim(),
@@ -113,22 +135,15 @@ export async function decodeVinNhtsa(vinRaw: string): Promise<NhtsaDecodeOutcome
       year,
       powertrain,
       vehicleClass,
-      fluids:
-        vehicleClass === 'poids_lourd'
-          ? { engineOilL: 32, coolantL: 45, washerL: 12, fuelL: 600 }
-          : { engineOilL: 4.8, coolantL: 6, washerL: 3.5, fuelL: 50 },
-      commonFailures: [
-        {
-          id: 'nhtsa-gen',
-          title: 'Usure / TSB à vérifier',
-          symptoms: [
-            bodyClass || 'carrosserie NHTSA',
-            plantCountry ? `Usine: ${plantCountry}` : '',
-            check === false ? 'Attention : chiffre de contrôle VIN (pos. 9) invalide' : '',
-          ].filter(Boolean),
-          severity: check === false ? 'moyen' : 'faible',
-        },
-      ],
+      fluids: fluidsEst.fluids,
+      fluidsSource: 'local_estimate',
+      techNotes: [...nhtsaHints, fluidsEst.label, 'API fluides OEM constructeur : non branchée'],
+      commonFailures: buildLocalCommonFailures({
+        make: make || 'Inconnu',
+        powertrain,
+        vehicleClass,
+        nhtsaHints,
+      }),
       odometerKm: 0,
       unitSystem: continent === 'NA' ? 'imperial' : 'metric', // AU = metric
       currency: continent === 'NA' ? (country === 'CA' ? 'CAD' : 'USD') : continent === 'AU' ? 'AUD' : 'EUR',

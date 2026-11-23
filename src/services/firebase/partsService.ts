@@ -9,10 +9,22 @@ import { failResult, liveResult, mockResult, ServiceResult } from './result';
 /** Module 3 — catalogue pièces lié au VIN (Firestore ou générateur local WMI). */
 export async function listPartsForVin(
   vin?: string,
-  opts?: { isHeavyTruck?: boolean },
+  opts?: {
+    isHeavyTruck?: boolean;
+    make?: string;
+    model?: string;
+    year?: number;
+    currency?: string;
+  },
 ): Promise<ServiceResult<PartDoc[]>> {
   const fb = getFirebase();
-  const local = buildVinPartsCatalog(vin, { isHeavyTruck: opts?.isHeavyTruck });
+  const local = buildVinPartsCatalog(vin, {
+    isHeavyTruck: opts?.isHeavyTruck,
+    make: opts?.make,
+    model: opts?.model,
+    year: opts?.year,
+    currency: opts?.currency,
+  });
 
   if (!fb) {
     return mockResult(local, catalogLabel(vin, 'local'));
