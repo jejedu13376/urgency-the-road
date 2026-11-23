@@ -41,19 +41,18 @@
       "expo-router",
       "expo-status-bar",
       "expo-sharing",
-<<<<<<< HEAD
       "expo-dev-client",
       [
         "react-native-ble-plx",
         {
           "isBackgroundEnabled": false,
           "neverForLocation": true
-=======
+        }
+      ],
       [
         "expo-location",
         {
           "locationWhenInUsePermission": "Urgence Mécanique utilise votre position pour garages, balances et SOS."
->>>>>>> 196148c (Deepen stub modules with live free APIs (honest failures))
         }
       ]
     ],
