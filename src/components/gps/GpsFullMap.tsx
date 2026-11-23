@@ -801,33 +801,35 @@ export function GpsFullMap() {
         ) : null}
       </View>
 
-      {/* Below search — left side under chips band; zIndex above searchWrap. */}
-      <View
-        style={[
-          styles.reportRow,
-          {
-            top: chromePads.padTop + 108,
-            left: chromePads.padLeft + 4,
-            zIndex: 30,
-            elevation: 30,
-          },
-        ]}
-        pointerEvents="box-none"
-      >
-        <Pressable style={styles.reportBtn} onPress={dropPoliceReport}>
-          <Text style={styles.reportTxt}>Police</Text>
-        </Pressable>
-        {canPublishPolice ? (
-          <Pressable style={styles.publishBtn} onPress={publishPoliceCloud}>
-            <Text style={styles.reportTxt}>Publier</Text>
+      {/* Hide while search hits open — results FlatList must win all taps. */}
+      {!(searchOpen && searchHits.length > 0) ? (
+        <View
+          style={[
+            styles.reportRow,
+            {
+              top: chromePads.padTop + 108,
+              left: chromePads.padLeft + 4,
+              zIndex: 15,
+              elevation: 15,
+            },
+          ]}
+          pointerEvents="box-none"
+        >
+          <Pressable style={styles.reportBtn} onPress={dropPoliceReport}>
+            <Text style={styles.reportTxt}>Police</Text>
           </Pressable>
-        ) : null}
-        {lastRoute?.ok ? (
-          <Text style={styles.etaTxt} numberOfLines={1}>
-            ~{lastRoute.durationMin} min · {lastRoute.distanceKm} km
-          </Text>
-        ) : null}
-      </View>
+          {canPublishPolice ? (
+            <Pressable style={styles.publishBtn} onPress={publishPoliceCloud}>
+              <Text style={styles.reportTxt}>Publier</Text>
+            </Pressable>
+          ) : null}
+          {lastRoute?.ok ? (
+            <Text style={styles.etaTxt} numberOfLines={1}>
+              ~{lastRoute.durationMin} min · {lastRoute.distanceKm} km
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
       {hudNote ? (
         <View
