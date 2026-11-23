@@ -1,0 +1,275 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function uid() {
+      return request.auth.uid;
+    }
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(uid())).data;
+    }
+    function isAdmin() {
+      return signedIn() && userDoc().role in ['admin', 'super_admin'];
+    }
+    function isGaragePro() {
+      return signedIn() && userDoc().role in ['garage_pro', 'admin', 'super_admin'];
+    }
+    function isActiveRescuer() {
+      return signedIn()
+        && userDoc().role == 'rescuer'
+        && userDoc().subscription == 'rescuer'
+        && userDoc().subscriptionActive == true;
+    }
+    /** Opaque QR: UM-QR- + ≥16 alnum — matches mintScanCode(); blocks guessable short ids. */
+    function isOpaqueScanCode(code) {
+      return code is string
+        && code.size() >= 22
+        && code.matches('^UM-QR-[A-Z0-9]{16,}$');
+    }
+    /** Frozen entitlement on users/{ownerUid} — owner cannot freely toggle via index flag alone. */
+    function ownerIsActiveSubscriber(ownerUid) {
+      return exists(/databases/$(database)/documents/users/$(ownerUid))
+        && get(/databases/$(database)/documents/users/$(ownerUid)).data.subscriptionActive == true;
+    }
+    /** Index write: reservation stub (no PHI) OR full PHI only when users entitlement is active. */
+    function medicalIndexWriteOk() {
+      return isOpaqueScanCode(request.resource.data.scanCode)
+        && (
+          (
+            request.resource.data.subscriberActive == false
+            && request.resource.data.fullName == ''
+            && request.resource.data.allergies.size() == 0
+            && request.resource.data.conditions.size() == 0
+            && request.resource.data.medications.size() == 0
+            && request.resource.data.emergencyContacts.size() == 0
+            && !('address' in request.resource.data)
+            && !('bloodType' in request.resource.data)
+            && !('notes' in request.resource.data)
+          )
+          || (
+            request.resource.data.subscriberActive == true
+            && ownerIsActiveSubscriber(uid())
+          )
+        );
+    }
+    match /users/{userId} {
+      allow read: if signedIn() && (uid() == userId || isAdmin());
+      allow create: if signedIn() && uid() == userId
+        && request.resource.data.role == 'user'
+        && request.resource.data.subscriptionActive == false;
+      allow update: if signedIn() && (
+        (uid() == userId && !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['role', 'subscription', 'subscriptionActive', 'rescuerBadgeId']))
+        || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /vehicles/{id} {
+      allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
+      allow create: if signedIn() && request.resource.data.ownerUid == uid();
+      allow update: if signedIn()
+        && resource.data.ownerUid == uid()
+        && request.resource.data.ownerUid == resource.data.ownerUid; // frozen
+      allow delete: if signedIn() && resource.data.ownerUid == uid();
+    }
+
+    match /parts/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /obdReadings/{id} {
+      allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
+      allow create: if signedIn() && request.resource.data.ownerUid == uid();
+      allow update: if signedIn()
+        && resource.data.ownerUid == uid()
+        && request.resource.data.ownerUid == resource.data.ownerUid; // frozen
+      allow delete: if signedIn() && resource.data.ownerUid == uid();
+    }
+
+    match /garages/{id} {
+      allow read: if true;
+      allow create: if isGaragePro() && request.resource.data.ownerUid == uid();
+      allow update: if isGaragePro()
+        && (resource.data.ownerUid == uid() || isAdmin())
+        && request.resource.data.ownerUid == resource.data.ownerUid; // frozen
+      allow delete: if isGaragePro()
+        && (resource.data.ownerUid == uid() || isAdmin());
+    }
+
+    /**
+     * Module 13 — medicalCards: owner-only (no rescuer list/get-all).
+     * Doc id MUST be uid() or 'med-' + uid() — blocks occupying victim paths.
+     * Rescuers read PHI only via medicalScanIndex/{scanCode} get (exact QR).
+     */
+    match /medicalCards/{id} {
+      allow get: if signedIn() && (
+        id == uid() || id == ('med-' + uid())
+        || (resource != null && resource.data.ownerUid == uid())
+        || isAdmin()
+      );
+      allow list: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
+      // Create: index must be absent, OR already owned by caller (recovery / remint leftover)
+      allow create: if signedIn()
+        && (id == uid() || id == ('med-' + uid()))
+        && request.resource.data.ownerUid == uid()
+        && isOpaqueScanCode(request.resource.data.scanCode)
+        && (
+          !exists(/databases/$(database)/documents/medicalScanIndex/$(request.resource.data.scanCode))
+          || get(/databases/$(database)/documents/medicalScanIndex/$(request.resource.data.scanCode)).data.ownerUid == uid()
+        );
+      // scanCode rotate only after owner already claimed medicalScanIndex/{newCode}
+      allow update: if signedIn()
+        && (id == uid() || id == ('med-' + uid()))
+        && resource.data.ownerUid == uid()
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && isOpaqueScanCode(request.resource.data.scanCode)
+        && (
+          request.resource.data.scanCode == resource.data.scanCode
+          || (
+            exists(/databases/$(database)/documents/medicalScanIndex/$(request.resource.data.scanCode))
+            && get(/databases/$(database)/documents/medicalScanIndex/$(request.resource.data.scanCode)).data.ownerUid == uid()
+          )
+        );
+      allow delete: if signedIn()
+        && (id == uid() || id == ('med-' + uid()))
+        && resource.data.ownerUid == uid();
+    }
+
+    /**
+     * Doc id MUST equal scanCode. list denied → rescuer cannot dump all cards.
+     * Opaque scanCode enforced on create/update. Rescuer get requires frozen
+     * users/{ownerUid}.subscriptionActive (not only owner-writable index flag).
+     */
+    match /medicalScanIndex/{scanCode} {
+      // resource == null on missing docs — needed for collision getDoc before create
+      allow get: if (resource == null && signedIn())
+        || (isActiveRescuer()
+            && resource.data.subscriberActive == true
+            && ownerIsActiveSubscriber(resource.data.ownerUid))
+        || (signedIn() && resource.data.ownerUid == uid())
+        || isAdmin();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == uid()
+        && request.resource.data.scanCode == scanCode
+        && isOpaqueScanCode(scanCode)
+        && medicalIndexWriteOk()
+        && request.resource.data.cardId is string
+        && (request.resource.data.cardId == uid()
+            || request.resource.data.cardId == ('med-' + uid()))
+        && !exists(/databases/$(database)/documents/medicalScanIndex/$(scanCode));
+      allow update: if signedIn()
+        && resource.data.ownerUid == uid()
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.scanCode == resource.data.scanCode
+        && request.resource.data.scanCode == scanCode
+        && isOpaqueScanCode(scanCode)
+        && medicalIndexWriteOk()
+        && (request.resource.data.cardId == uid()
+            || request.resource.data.cardId == ('med-' + uid()));
+      allow delete: if signedIn() && resource.data.ownerUid == uid();
+    }
+
+    match /roadHazards/{id} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.reporterUid == uid();
+      allow update: if signedIn()
+        && (resource.data.reporterUid == uid() || isAdmin())
+        && request.resource.data.reporterUid == resource.data.reporterUid; // frozen
+      allow delete: if signedIn()
+        && (resource.data.reporterUid == uid() || isAdmin());
+    }
+
+    // Doc id MUST == uid(); prevents occupying gpsPrefs/{victimUid}.
+    // Split read/write: request.resource only exists on writes.
+    match /gpsPrefs/{id} {
+      allow read: if signedIn() && id == uid()
+        && (resource == null || resource.data.ownerUid == uid());
+      allow create: if signedIn()
+        && id == uid()
+        && request.resource.data.ownerUid == uid();
+      allow update, delete: if signedIn()
+        && id == uid()
+        && resource.data.ownerUid == uid()
+        && request.resource.data.ownerUid == uid();
+    }
+
+    match /weighStations/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /quotes/{id} {
+      allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
+      allow create: if signedIn() && request.resource.data.ownerUid == uid();
+      allow update: if signedIn()
+        && resource.data.ownerUid == uid()
+        && request.resource.data.ownerUid == resource.data.ownerUid; // frozen
+      allow delete: if signedIn() && resource.data.ownerUid == uid();
+    }
+
+    match /insuranceClaims/{id} {
+      allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
+      allow create: if signedIn() && request.resource.data.ownerUid == uid();
+      allow update: if signedIn()
+        && resource.data.ownerUid == uid()
+        && request.resource.data.ownerUid == resource.data.ownerUid; // frozen
+      allow delete: if signedIn() && resource.data.ownerUid == uid();
+    }
+
+    match /garageRatings/{id} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.authorUid == uid();
+      allow update: if signedIn()
+        && (resource.data.authorUid == uid() || isAdmin())
+        && request.resource.data.authorUid == resource.data.authorUid; // frozen
+      allow delete: if signedIn()
+        && (resource.data.authorUid == uid() || isAdmin());
+    }
+
+    /**
+     * Appointments: only the garage owner may create into their own inbox.
+     * garageOwnerUid is immutable on update — blocks create-then-reassign inbox forge.
+     */
+    match /appointments/{id} {
+      allow read: if signedIn() && (
+        resource.data.garageOwnerUid == uid()
+        || resource.data.clientUid == uid()
+        || isAdmin()
+      );
+      allow create: if signedIn()
+        && request.resource.data.garageOwnerUid == uid();
+      allow update: if signedIn()
+        && (resource.data.garageOwnerUid == uid() || isAdmin())
+        && request.resource.data.garageOwnerUid == resource.data.garageOwnerUid; // frozen
+      allow delete: if signedIn() && (
+        resource.data.garageOwnerUid == uid() || isAdmin()
+      );
+    }
+
+    match /youtubeSuggestions/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /learnedFailures/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /feedPosts/{id} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.authorUid == uid();
+      allow update: if signedIn()
+        && resource.data.authorUid == uid()
+        && request.resource.data.authorUid == resource.data.authorUid; // frozen — no impersonation
+      allow delete: if signedIn()
+        && (resource.data.authorUid == uid() || isAdmin());
+    }
+  }
+}

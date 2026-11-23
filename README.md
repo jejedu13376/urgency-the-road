@@ -1,24 +1,46 @@
-# Urgency The Road
+# urgency road one (Android)
 
-Application web neutre (Vite + TypeScript). Point de départ vide, prêt à être développé.
+Expo (React Native) app under Axarel. Blank home screen only.
 
-## Télécharger / cloner
+Package: `com.axarel.urgencyroadone`
+
+## Run (dev)
 
 ```bash
-git clone https://github.com/jejedu13376/urgency-the-road.git
-cd urgency-the-road
+cd Axarel/urgency-road-one
 npm install
-npm run dev
+npx expo start
 ```
 
-Ou sur GitHub : bouton **Code** → **Download ZIP**.
+Press `a` for Android emulator, or scan the QR code with **Expo Go** on a phone.
 
-## Scripts
+## Build AAB (Play Store)
 
-- `npm run dev` — serveur local
-- `npm run build` — build de production
-- `npm run preview` — prévisualiser le build
+```bash
+npm i -g eas-cli
+eas login
+eas build:configure
+eas build -p android --profile production
+```
 
-## Contexte
+Download the `.aab` from the EAS build page when finished.
 
-Ce dépôt est la source de vérité du projet. Tant qu’il reste sur GitHub, on peut le retrouver et reprendre le travail d’une session à l’autre.
+## Google Play Console ($25 one-time)
+
+Full steps: [`docs/google-play-console.md`](docs/google-play-console.md)
+
+1. https://play.google.com/console/signup → pay **$25 USD** once → verify account  
+2. Create app “urgency road one”  
+3. Complete store listing + App content / Data safety  
+4. Upload the AAB (prefer Internal testing first, then Production)
+
+## Test APK (EAS preview)
+
+See [`docs/apk-build.md`](docs/apk-build.md). Needs a free Expo login, then:
+
+```bash
+npx eas-cli login
+npx eas-cli build -p android --profile preview
+```
+
+Download the APK from the Expo build page when finished.
