@@ -14,6 +14,7 @@ import type { VehicleDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
 import type { VehicleProfile } from '../../types/vehicle';
 import { decodeVinNhtsa } from '../vin/nhtsaDecode';
+import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 /** Local-only temp ids — must not be used as Firestore doc ids (would create orphans on retry). */
@@ -128,6 +129,10 @@ export async function listVehicles(ownerUid: string): Promise<ServiceResult<Vehi
     );
     return liveResult(list);
   } catch (e) {
+    // Soft-fail permissions / DEV → mock fleet so M1/M2 still load.
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return mockResult(MOCK_FLEET, 'SOFT vehicles — permission/DEV (mock flotte)');
+    }
     // Empty payload + ok:false — never ship MOCK_FLEET as a firebase-looking failure.
     return failResult([], e instanceof Error ? e.message : 'Lecture flotte refusée');
   }
@@ -196,6 +201,9 @@ export async function upsertVehicle(
     await setDoc(ref, payload, { merge: true });
     return liveResult({ ...vehicle, id: ref.id });
   } catch (e) {
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return mockResult(vehicle, 'SOFT vehicles upsert — permission/DEV (local)');
+    }
     return failResult(vehicle, e instanceof Error ? e.message : 'Upsert véhicule refusé');
   }
 }
@@ -207,6 +215,9 @@ export async function removeVehicle(id: string): Promise<ServiceResult<null>> {
     await deleteDoc(doc(fb.db, COLLECTIONS.vehicles, id));
     return liveResult(null);
   } catch (e) {
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return mockResult(null, 'SOFT vehicles delete — permission/DEV (local)');
+    }
     return failResult(null, e instanceof Error ? e.message : 'Suppression véhicule refusée');
   }
 }

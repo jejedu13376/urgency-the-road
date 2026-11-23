@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
 import { PermanentLeftSpinner } from '../src/components/PermanentLeftSpinner';
 import { SosButton } from '../src/components/SosButton';
 import { StartupGateScreen } from '../src/components/StartupGateScreen';
@@ -45,15 +46,17 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.paper }}>
       <SafeAreaProvider>
-        <StartupGateProvider>
-          <AuthProvider>
-            <FleetProvider>
-              <ProgressProvider>
-                <AppShell />
-              </ProgressProvider>
-            </FleetProvider>
-          </AuthProvider>
-        </StartupGateProvider>
+        <AppErrorBoundary>
+          <StartupGateProvider>
+            <AuthProvider>
+              <FleetProvider>
+                <ProgressProvider>
+                  <AppShell />
+                </ProgressProvider>
+              </FleetProvider>
+            </AuthProvider>
+          </StartupGateProvider>
+        </AppErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

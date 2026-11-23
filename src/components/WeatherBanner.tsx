@@ -16,19 +16,31 @@ export function WeatherBanner() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const coords = await getDeviceCoords({ allowFallback: true });
-      const lat = coords.data?.lat;
-      const lon = coords.data?.lon;
-      const snap = await fetchWeather(lat, lon);
-      const gpsBit =
-        coords.data?.source === 'device'
-          ? 'GPS appareil'
-          : coords.data?.label ?? 'GPS fallback Lille';
-      if (!cancelled) {
-        setW({
-          ...snap,
-          label: `${snap.label} · ${gpsBit}`,
-        });
+      try {
+        const coords = await getDeviceCoords({ allowFallback: true });
+        const lat = coords.data?.lat;
+        const lon = coords.data?.lon;
+        const snap = await fetchWeather(lat, lon);
+        const gpsBit =
+          coords.data?.source === 'device'
+            ? 'GPS appareil'
+            : coords.data?.label ?? 'GPS fallback Lille';
+        if (!cancelled) {
+          setW({
+            ...snap,
+            label: `${snap.label} · ${gpsBit}`,
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setW({
+            tempC: 8,
+            road: 'ouvertes',
+            updatedAt: new Date().toISOString(),
+            source: 'fallback',
+            label: 'Météo soft-fail locale',
+          });
+        }
       }
     })();
     return () => {

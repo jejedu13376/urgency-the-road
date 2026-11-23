@@ -68,9 +68,12 @@ export default function RoutiersScreen() {
     setLoading(true);
     try {
       const res = await listWeighStations({ radiusKm: km });
-      setStations(res.data);
+      setStations(res.data ?? []);
       setLabel(res.stubLabel);
       setMeta(res.meta ?? null);
+    } catch (e) {
+      setStations([]);
+      setLabel(e instanceof Error ? `Routiers soft — ${e.message}` : 'Routiers soft — mock');
     } finally {
       setLoading(false);
     }

@@ -4,6 +4,7 @@ import { getFirebase, getSignedInUid } from '../../firebase/config';
 import type { ObdProtocol, ObdReadingDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
 import { stubObdConnect } from '../stubs';
+import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 function mockReading(ownerUid: string, vehicleId: string, protocol: ObdProtocol): ObdReadingDoc {
@@ -42,6 +43,9 @@ export async function readObdSnapshot(
     const ref = await addDoc(collection(fb.db, COLLECTIONS.obdReadings), payload);
     return liveResult({ ...payload, id: ref.id, source: 'stub' });
   } catch (e) {
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return mockResult(payload, 'SOFT OBD — permission/DEV (mock lecture)');
+    }
     return failResult(payload, e instanceof Error ? e.message : 'OBD write refusé');
   }
 }
@@ -72,6 +76,12 @@ export async function listObdHistory(
       snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ObdReadingDoc, 'id'>) })),
     );
   } catch (e) {
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return mockResult(
+        [mockReading(uid ?? 'mock', vehicleId, 'J1939')],
+        'SOFT OBD history — permission/DEV',
+      );
+    }
     return failResult([], e instanceof Error ? e.message : 'OBD history refusée');
   }
 }
