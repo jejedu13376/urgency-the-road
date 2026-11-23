@@ -66,11 +66,14 @@ export default function MonVehiculeScreen() {
 
   useEffect(() => {
     const t = setTimeout(() => {
+      // Sync drafts only when stable vehicle fields change — not on every
+      // new `active` object identity from cloud pull / storage hydrate.
       if (active?.vin) setVin(active.vin);
       if (active) setOdoDraft(String(active.odometerKm));
     }, 0);
     return () => clearTimeout(t);
-  }, [active, active?.id, active?.vin, active?.odometerKm]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: id/vin/odo only
+  }, [active?.id, active?.vin, active?.odometerKm]);
 
   // Reload on focus so returning from Entretien (M10) refreshes AsyncStorage rappels.
   useFocusEffect(
