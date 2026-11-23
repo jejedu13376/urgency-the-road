@@ -30,8 +30,21 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# local env files / secret dumps — never commit real keys
+.env
+.env.*
+**/.env
+**/.env.*
 .env*.local
+ENV-YOUTUBE.env
+docs/ENV-YOUTUBE.env
+**/ENV-YOUTUBE.env
+*SECRET*.env
+**/*SECRET*.env
+*.env.*SECRET*
+.env.secret*
+**/secrets.env
+!.env.example
 
 # typescript
 *.tsbuildinfo
@@ -39,7 +52,3 @@ yarn-error.*
 # generated native folders
 /ios
 /android
-
-.env
-.env.*
-!.env.example
