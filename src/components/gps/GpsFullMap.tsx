@@ -680,13 +680,23 @@ export function GpsFullMap() {
     setSearchHits([]);
   }, []);
 
-  /** Invalidate in-flight autocomplete so stale results cannot reopen the dropdown. */
-  const cancelPendingSuggest = useCallback(() => {
-    skipSuggestRef.current = true;
+  /** Drop in-flight autocomplete without arming skipSuggest (safe on failed pick). */
+  const invalidateInFlightSuggest = useCallback(() => {
     searchReqIdRef.current += 1;
     setSearchBusy(false);
     clearSearchHits();
   }, [clearSearchHits]);
+
+  /** Fill the field after a confirmed destination — skip one suggest cycle for that setState. */
+  const applyDestinationLabel = useCallback(
+    (label: string) => {
+      skipSuggestRef.current = true;
+      searchReqIdRef.current += 1;
+      clearSearchHits();
+      setSearchQ(label);
+    },
+    [clearSearchHits],
+  );
 
   /** Debounced live Google Places suggestions while typing. */
   useEffect(() => {
@@ -744,8 +754,7 @@ export function GpsFullMap() {
           const coords = await resolvePlaceCoords(only.placeId, placesSessionRef.current);
           placesSessionRef.current = newPlacesSessionToken();
           if (coords.ok && coords.lat != null && coords.lon != null) {
-            cancelPendingSuggest();
-            setSearchQ(coords.label ?? only.label);
+            applyDestinationLabel(coords.label ?? only.label);
             proposeDestination(coords.lat, coords.lon, coords.label ?? only.label);
             setHudNote(`Destination · ${coords.label ?? only.label}`);
             return;
@@ -759,8 +768,7 @@ export function GpsFullMap() {
       const res = await geocodePlace(q, 6);
       if (res.ok && res.hits[0]) {
         const hit = res.hits[0];
-        cancelPendingSuggest();
-        setSearchQ(hit.label);
+        applyDestinationLabel(hit.label);
         proposeDestination(hit.lat, hit.lon, hit.label);
         setHudNote(`Destination · ${hit.label} · ${res.source}`);
       } else {
@@ -773,24 +781,22 @@ export function GpsFullMap() {
     } finally {
       setSearchBusy(false);
     }
-  }, [searchQ, placesConfigured, cancelPendingSuggest, proposeDestination]);
+  }, [searchQ, placesConfigured, applyDestinationLabel, proposeDestination]);
 
   const pickSearchHit = useCallback(
     (hit: PlacesSuggestion) => {
       void (async () => {
-        cancelPendingSuggest();
+        invalidateInFlightSuggest();
         setSearchBusy(true);
         try {
           const coords = await resolvePlaceCoords(hit.placeId, placesSessionRef.current);
           placesSessionRef.current = newPlacesSessionToken();
           if (!coords.ok || coords.lat == null || coords.lon == null) {
+            skipSuggestRef.current = false;
             setHudNote(coords.error ?? 'Place Details KO');
             return;
           }
-          skipSuggestRef.current = true;
-          searchReqIdRef.current += 1;
-          clearSearchHits();
-          setSearchQ(coords.label ?? hit.label);
+          applyDestinationLabel(coords.label ?? hit.label);
           proposeDestination(coords.lat, coords.lon, coords.label ?? hit.label);
           setHudNote(`Destination · ${coords.label ?? hit.label}`);
         } finally {
@@ -798,7 +804,7 @@ export function GpsFullMap() {
         }
       })();
     },
-    [cancelPendingSuggest, clearSearchHits, proposeDestination],
+    [invalidateInFlightSuggest, applyDestinationLabel, proposeDestination],
   );
 
   /** One-tap Police = AsyncStorage local pin only — never auto-upload GPS/uid. */
