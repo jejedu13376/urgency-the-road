@@ -10,11 +10,13 @@
  */
 import { decodePolyline6 } from './polyline6';
 import type { GpsVehicleMode } from '../prefs/gpsNavPrefs';
+import { parseValhallaManeuvers, type RouteManeuver } from '../gps/routeManeuvers';
 
 const VALHALLA_URL = 'https://valhalla1.openstreetmap.de/route';
 const UA = 'UrgencyRoad/1.0 (https://github.com/jejedu13376/urgency-the-road)';
 
 export type RoutePoint = { lat: number; lon: number };
+export type { RouteManeuver };
 
 export type VehicleRouteResult = {
   ok: boolean;
@@ -27,6 +29,8 @@ export type VehicleRouteResult = {
   error?: string;
   /** True when truck succeeded only after relaxing dimensions (still truck costing). */
   relaxedTruck?: boolean;
+  /** Narrative turns for TTS (empty when Valhalla omits maneuvers). */
+  maneuvers?: RouteManeuver[];
 };
 
 export type TruckDims = {
@@ -42,7 +46,18 @@ export type TruckDims = {
 type ValhallaTrip = {
   trip?: {
     summary?: { length?: number; time?: number };
-    legs?: { shape?: string }[];
+    legs?: {
+      shape?: string;
+      maneuvers?: {
+        instruction?: string;
+        verbal_transition_alert_instruction?: string;
+        verbal_pre_transition_instruction?: string;
+        length?: number;
+        type?: number;
+        begin_shape_index?: number;
+        end_shape_index?: number;
+      }[];
+    }[];
   };
   error?: string;
   error_code?: number;
@@ -193,6 +208,7 @@ function tripToResult(
   const distanceKm = Math.round((body.trip?.summary?.length ?? 0) * 10) / 10;
   const durationMin = Math.max(1, Math.round((body.trip?.summary?.time ?? 0) / 60));
   const source = mode === 'camion' ? 'valhalla-truck' : 'valhalla-auto';
+  const maneuvers = parseValhallaManeuvers(body);
   if (mode === 'camion') {
     const relaxedNote = opts?.relaxed
       ? ' · profil camion assoupli (gabarit demandé trop restrictif)'
@@ -205,6 +221,7 @@ function tripToResult(
       durationMin,
       source,
       relaxedTruck: !!opts?.relaxed,
+      maneuvers,
       label: `LIVE Valhalla truck · ${distanceKm} km · ~${durationMin} min${relaxedNote} · gabarit advisory (pas de graphe PTAC commercial)`,
     };
   }
@@ -215,6 +232,7 @@ function tripToResult(
     distanceKm,
     durationMin,
     source,
+    maneuvers,
     label: `LIVE Valhalla auto · ${distanceKm} km · ~${durationMin} min`,
   };
 }

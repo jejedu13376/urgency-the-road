@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
 import { useAuth } from '../../context/AuthContext';
 import { useFleet } from '../../context/FleetContext';
-import { getDeviceCoords, watchDevicePosition } from '../../services/geo/deviceLocation';
+import { getDeviceCoords, haversineKm, watchDevicePosition } from '../../services/geo/deviceLocation';
 import {
   fetchPlacesAutocomplete,
   isGooglePlacesConfigured,
@@ -24,10 +24,32 @@ import {
 } from '../../services/geo/googlePlacesAutocomplete';
 import { geocodePlace } from '../../services/geo/openMeteoGeocode';
 import {
+  aqiFillColor,
+  fetchAirQualityNear,
+} from '../../services/geo/openWeatherAirQuality';
+import {
   fetchVehicleRoute,
   type VehicleRouteResult,
 } from '../../services/geo/valhallaRoute';
 import { listRoadHazards, reportHazard } from '../../services/firebase/hazardsService';
+import {
+  estimateProgressKm,
+  nextManeuverAt,
+} from '../../services/gps/routeManeuvers';
+import {
+  loadNavSpeechMuted,
+  setNavSpeechMuted,
+  speakArrival,
+  speakNav,
+  speakUpcomingTurn,
+  speakWeighAlert,
+  stopNavSpeech,
+} from '../../services/gps/navSpeech';
+import {
+  buildTruckerRouteBrief,
+  interruptingAlerts,
+  type RouteAlert,
+} from '../../services/gps/truckerRouteAdvisories';
 import {
   fetchNearbyBridgeClearances,
   fetchNearbyWeighStations,
@@ -44,6 +66,13 @@ import {
   type GpsNavPrefs,
   type GpsVehicleMode,
 } from '../../services/prefs/gpsNavPrefs';
+import { findSavedPlace, savePlace } from '../../services/prefs/gpsSavedPlaces';
+import {
+  completeTrip,
+  loadTripHistory,
+  recordTripStart,
+  type GpsTripRecord,
+} from '../../services/prefs/gpsTripHistory';
 import { colors } from '../../theme/colors';
 import { buildGpsMapHtml } from './buildGpsMapHtml';
 import {
@@ -51,7 +80,9 @@ import {
   type GpsDestinationSelection,
   type GpsRouteStatus,
 } from './GpsDestinationMenu';
-import { findSavedPlace } from '../../services/prefs/gpsSavedPlaces';
+import { GpsRouteAlertOverlay } from './GpsRouteAlertOverlay';
+import { GpsStreetViewModal } from './GpsStreetViewModal';
+import { GpsTripTimeline } from './GpsTripTimeline';
 
 /** RN WebView prop intersection can collapse to `never` under strict TS — cast for SDK 58. */
 type WebViewHandle = {
@@ -82,6 +113,9 @@ const ALLOWED_MSG_TYPES = new Set([
   'navigating',
   'arrived',
   'recenter',
+  'streetview',
+  'aqi_request',
+  'maptype',
 ]);
 
 /** Clearance under map HUD for SOS FAB (~bottom 92 + 58) + tab bar. */
@@ -104,7 +138,16 @@ type MapMsg =
   | { type: 'routed'; mode: GpsVehicleMode; distanceKm?: number; durationMin?: number; label?: string }
   | { type: 'navigating'; mode: GpsVehicleMode; to: { lat: number; lon: number } }
   | { type: 'arrived'; mode: GpsVehicleMode; to: { lat: number; lon: number } }
-  | { type: 'recenter' };
+  | { type: 'recenter' }
+  | { type: 'streetview'; lat: number; lon: number }
+  | { type: 'aqi_request'; lat: number; lon: number }
+  | {
+      type: 'maptype';
+      base?: string;
+      transit?: boolean;
+      buildings3d?: boolean;
+      aqi?: boolean;
+    };
 
 /** Parse + schema-check map postMessage payloads (reject forged / garbage). */
 function parseMapMsg(raw: string): MapMsg | null {
@@ -134,6 +177,9 @@ function parseMapMsg(raw: string): MapMsg | null {
     const to = msg.to as { lat?: unknown; lon?: unknown };
     if (!isFiniteCoord(to.lat) || !isFiniteCoord(to.lon)) return null;
     if (msg.mode !== 'voiture' && msg.mode !== 'camion') return null;
+  }
+  if (msg.type === 'streetview' || msg.type === 'aqi_request') {
+    if (!isFiniteCoord(msg.lat) || !isFiniteCoord(msg.lon)) return null;
   }
   return msg as MapMsg;
 }
@@ -236,6 +282,39 @@ export function GpsFullMap() {
     label?: string;
   } | null>(null);
   const destLabelRef = useRef<string | undefined>(undefined);
+  const [tripHistory, setTripHistory] = useState<GpsTripRecord[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [streetView, setStreetView] = useState<{ lat: number; lon: number } | null>(null);
+  const [voiceMuted, setVoiceMuted] = useState(false);
+  const [activeAlert, setActiveAlert] = useState<RouteAlert | null>(null);
+  const alertQueueRef = useRef<RouteAlert[]>([]);
+  const shownAlertIdsRef = useRef<Set<string>>(new Set());
+  const navigatingRef = useRef(false);
+  const activeTripIdRef = useRef<string | null>(null);
+  const lastRouteRef = useRef<VehicleRouteResult | null>(null);
+  const weighStationsRef = useRef<
+    { id: string; name: string; lat: number; lon: number }[]
+  >([]);
+  const lastWeighAlertIdRef = useRef<string | null>(null);
+  const lastManeuverSpokenRef = useRef<string | null>(null);
+  const aqiOnRef = useRef(false);
+
+  const enqueueAlerts = useCallback((alerts: RouteAlert[]) => {
+    const interrupt = interruptingAlerts(alerts);
+    for (const a of interrupt) {
+      if (shownAlertIdsRef.current.has(a.id)) continue;
+      shownAlertIdsRef.current.add(a.id);
+      alertQueueRef.current.push(a);
+    }
+    setActiveAlert((cur) => {
+      if (cur) return cur;
+      return alertQueueRef.current.shift() ?? null;
+    });
+  }, []);
+
+  const dismissAlert = useCallback(() => {
+    setActiveAlert(alertQueueRef.current.shift() ?? null);
+  }, []);
 
   const chromePads = useMemo<ChromePads>(
     () => ({
@@ -355,6 +434,30 @@ export function GpsFullMap() {
     injectJs(`window.__gpsStartNavigation && window.__gpsStartNavigation()`);
   }, [injectJs]);
 
+  const injectAqi = useCallback(
+    (payload: { samples: { lat: number; lon: number; aqi: number; label: string; color: string }[] }) => {
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, { cmd: 'setAqi', payload });
+        return;
+      }
+      injectJs(`window.__gpsSetAqi && window.__gpsSetAqi(${JSON.stringify(payload)})`);
+    },
+    [injectJs],
+  );
+
+  const injectHighlightWeigh = useCallback(
+    (id: string | null) => {
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, { cmd: 'highlightWeigh', id });
+        return;
+      }
+      injectJs(
+        `window.__gpsHighlightWeigh && window.__gpsHighlightWeigh(${id == null ? 'null' : JSON.stringify(id)})`,
+      );
+    },
+    [injectJs],
+  );
+
   const refreshLayers = useCallback(async () => {
     // Overpass around a real device fix only — never France overview centroid.
     const origin = lastWatchRef.current ?? (gpsOk ? liveOriginRef.current : null);
@@ -370,19 +473,28 @@ export function GpsFullMap() {
     // Display may merge cloud pins; Valhalla excludes use LOCAL only (see route handler).
     const reports = mergeCloudHazards(localReports, cloudHazards.data ?? []);
     reportsRef.current = reports;
+    weighStationsRef.current = (weigh.stations ?? []).slice(0, 30).map((s) => ({
+      id: s.id,
+      name: String(s.name ?? '').slice(0, 80),
+      lat: s.lat,
+      lon: s.lon,
+    }));
     injectLayers({
       bridges: bridges.bridges.map((b) => ({
         ...b,
         name: String(b.name ?? '').slice(0, 80),
       })),
-      weigh: (weigh.stations ?? []).slice(0, 20).map((s) => ({
-        id: s.id,
-        name: String(s.name ?? '').slice(0, 80),
-        lat: s.lat,
-        lon: s.lon,
-        status: s.status,
-        litUp: s.litUp,
-      })),
+      weigh: weighStationsRef.current.map((s) => {
+        const full = (weigh.stations ?? []).find((w) => w.id === s.id);
+        return {
+          id: s.id,
+          name: s.name,
+          lat: s.lat,
+          lon: s.lon,
+          status: full?.status,
+          litUp: full?.litUp,
+        };
+      }),
       reports: reports.map((r) => ({
         id: r.id,
         kind: r.kind,
@@ -396,6 +508,38 @@ export function GpsFullMap() {
     const bits = [bridges.label, weigh.label].filter(Boolean);
     if (bits.length) setHudNote((prev) => prev ?? bits[0]);
   }, [bootHtml, gpsOk, injectLayers]);
+
+  const runTruckerBrief = useCallback(
+    async (lat: number, lon: number) => {
+      const prefs = prefsRef.current ?? (await loadGpsNavPrefs());
+      const brief = await buildTruckerRouteBrief(lat, lon, prefs);
+      setHudNote(brief.label);
+      enqueueAlerts(brief.alerts);
+    },
+    [enqueueAlerts],
+  );
+
+  const refreshAqi = useCallback(
+    async (lat: number, lon: number) => {
+      if (!aqiOnRef.current) return;
+      const res = await fetchAirQualityNear(lat, lon);
+      if (!res.ok) {
+        setHudNote(res.label);
+        return;
+      }
+      injectAqi({
+        samples: res.samples.map((s) => ({
+          lat: s.lat,
+          lon: s.lon,
+          aqi: s.aqi,
+          label: s.label,
+          color: aqiFillColor(s.aqi),
+        })),
+      });
+      setHudNote(res.label);
+    },
+    [injectAqi],
+  );
 
   /** Boot map once — never remount on vehicle class / GPS ticks. */
   useEffect(() => {
@@ -438,6 +582,7 @@ export function GpsFullMap() {
         );
       }
       bootedRef.current = true;
+      const mapboxToken = (process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '').trim();
       setBootHtml(
         buildGpsMapHtml({
           lat: origin.lat,
@@ -447,9 +592,12 @@ export function GpsFullMap() {
           truckWidthM: initial.truckWidthM,
           truckPtacT: initial.truckPtacT,
           gpsOk: deviceOk,
+          mapboxToken: mapboxToken || undefined,
           ...chromePads,
         }),
       );
+      void loadNavSpeechMuted().then(setVoiceMuted);
+      void loadTripHistory().then(setTripHistory);
     })();
     return () => {
       cancelled = true;
@@ -485,6 +633,65 @@ export function GpsFullMap() {
               return;
             }
             injectLivePosition(pos.lat, pos.lon, true, pos.headingDeg, pos.speedMps);
+
+            // During nav: weigh approach alerts + TTS turns — IMMEDIATE overlay, not passive.
+            if (navigatingRef.current) {
+              const route = lastRouteRef.current;
+              if (route?.ok && route.maneuvers?.length) {
+                const progressKm = estimateProgressKm(
+                  route.coords,
+                  pos.lat,
+                  pos.lon,
+                  haversineKm,
+                );
+                const next = nextManeuverAt(route.maneuvers, progressKm);
+                if (next) {
+                  const remain = Math.max(0, next.beginKm + next.lengthKm - progressKm);
+                  const key = `${next.instruction}|${Math.round(remain * 10)}`;
+                  if (
+                    remain <= 0.8 &&
+                    lastManeuverSpokenRef.current !== next.instruction
+                  ) {
+                    lastManeuverSpokenRef.current = next.instruction;
+                    speakUpcomingTurn(next.instruction, remain);
+                  } else if (
+                    remain <= 2.5 &&
+                    remain > 0.8 &&
+                    lastManeuverSpokenRef.current !== key
+                  ) {
+                    lastManeuverSpokenRef.current = key;
+                    speakUpcomingTurn(next.instruction, remain);
+                  }
+                }
+              }
+
+              for (const s of weighStationsRef.current) {
+                const d = haversineKm(pos.lat, pos.lon, s.lat, s.lon);
+                if (d <= 3.2) {
+                  const alertId = `weigh-nav-${s.id}`;
+                  if (lastWeighAlertIdRef.current !== alertId) {
+                    lastWeighAlertIdRef.current = alertId;
+                    injectHighlightWeigh(s.id);
+                    const rounded = d <= 2.2 ? 2 : 3;
+                    enqueueAlerts([
+                      {
+                        id: alertId,
+                        kind: 'weigh',
+                        title: `Balance à ${rounded} km`,
+                        detail: `${s.name} · OSM weigh_station / weighbridge (CA/US/EU) — overlay immédiat`,
+                        voice: `Attention, balance à ${rounded} kilomètres.`,
+                        severity: 'warn',
+                        lat: s.lat,
+                        lon: s.lon,
+                        distanceKm: Math.round(d * 10) / 10,
+                      },
+                    ]);
+                    speakWeighAlert(rounded, s.name);
+                  }
+                  break;
+                }
+              }
+            }
           },
           (err) => {
             if (cancelled) return;
@@ -508,7 +715,7 @@ export function GpsFullMap() {
         cancelled = true;
         sub?.remove();
       };
-    }, [injectLivePosition, setMapOrigin]),
+    }, [injectLivePosition, setMapOrigin, injectHighlightWeigh, enqueueAlerts]),
   );
 
   useEffect(() => {
@@ -667,27 +874,66 @@ export function GpsFullMap() {
             weightT: msg.truck.weightT,
           }, { excludeLocations: excludes });
           if (reqId !== routeReqId.current) return;
-          // No gabarit / maxheight alert spam in HUD — route label only (distance/time).
-          // Bridge pass/no-pass still shown as map layer pins via refreshLayers.
+          // Bridge/weight/weather fire IMMEDIATE overlays via trucker brief (not passive HUD).
           setLastRoute(route);
+          lastRouteRef.current = route;
           setHudNote(route.label);
           injectRoute(route);
           void refreshLayers();
+          const originPt = liveOriginRef.current ?? msg.from;
+          void runTruckerBrief(originPt.lat, originPt.lon);
         })();
         return;
       }
 
       if (msg.type === 'navigating' && msg.to) {
         setTripEnded(null);
+        navigatingRef.current = true;
+        lastManeuverSpokenRef.current = null;
+        lastWeighAlertIdRef.current = null;
+        shownAlertIdsRef.current = new Set();
         setHudNote(
           msg.mode === 'camion'
-            ? 'Navigation camion — marqueur = GPS live (pas de démo polyline)'
+            ? 'Navigation camion — alertes gabarit/météo en overlay immédiat'
             : 'Navigation voiture — marqueur = GPS live',
         );
+        const route = lastRouteRef.current;
+        const originPt = liveOriginRef.current;
+        if (route?.ok && originPt) {
+          void recordTripStart({
+            mode: msg.mode,
+            origin: {
+              lat: originPt.lat,
+              lon: originPt.lon,
+              label: 'Départ GPS',
+            },
+            destination: {
+              lat: msg.to.lat,
+              lon: msg.to.lon,
+              label: destSelection?.label,
+            },
+            distanceKm: route.distanceKm,
+            durationMin: route.durationMin,
+            coords: route.coords,
+          }).then((r) => {
+            if (r.ok) {
+              activeTripIdRef.current = r.trip.id;
+              void loadTripHistory().then(setTripHistory);
+            }
+          });
+          speakNav(
+            msg.mode === 'camion'
+              ? `Navigation camion démarrée. ${route.distanceKm} kilomètres, environ ${route.durationMin} minutes.`
+              : `Navigation démarrée. ${route.distanceKm} kilomètres, environ ${route.durationMin} minutes.`,
+          );
+          void runTruckerBrief(originPt.lat, originPt.lon);
+        }
         return;
       }
 
       if (msg.type === 'arrived' && msg.to) {
+        navigatingRef.current = false;
+        injectHighlightWeigh(null);
         setTripEnded({
           lat: msg.to.lat,
           lon: msg.to.lon,
@@ -695,9 +941,46 @@ export function GpsFullMap() {
           label: destLabelRef.current,
         });
         setHudNote('Arrivée — note vocale trajet dispo');
+        speakArrival(lastRouteRef.current?.durationMin, lastRouteRef.current?.distanceKm);
+        const tripId = activeTripIdRef.current;
+        if (tripId) {
+          void completeTrip(tripId).then(() => {
+            activeTripIdRef.current = null;
+            void loadTripHistory().then(setTripHistory);
+          });
+        }
+        return;
+      }
+
+      if (msg.type === 'streetview') {
+        setStreetView({ lat: msg.lat, lon: msg.lon });
+        return;
+      }
+
+      if (msg.type === 'aqi_request') {
+        aqiOnRef.current = true;
+        void refreshAqi(msg.lat, msg.lon);
+        return;
+      }
+
+      if (msg.type === 'maptype') {
+        aqiOnRef.current = !!msg.aqi;
+        if (msg.aqi && liveOriginRef.current) {
+          void refreshAqi(liveOriginRef.current.lat, liveOriginRef.current.lon);
+        }
       }
     },
-    [gpsOk, injectRoute, setMapOrigin, refreshLayers, injectLayers],
+    [
+      gpsOk,
+      injectRoute,
+      setMapOrigin,
+      refreshLayers,
+      injectLayers,
+      runTruckerBrief,
+      destSelection?.label,
+      injectHighlightWeigh,
+      refreshAqi,
+    ],
   );
 
   useEffect(() => {
@@ -1068,6 +1351,51 @@ export function GpsFullMap() {
               ~{lastRoute.durationMin} min · {lastRoute.distanceKm} km
             </Text>
           ) : null}
+          <Pressable
+            style={styles.toolBtn}
+            onPress={() => {
+              const origin = lastWatchRef.current ?? liveOriginRef.current;
+              if (!origin || !gpsOk) {
+                setHudNote('Enregistrer le lieu — GPS appareil requis');
+                return;
+              }
+              void savePlace({
+                lat: origin.lat,
+                lon: origin.lon,
+                label: `Position ${origin.lat.toFixed(4)}, ${origin.lon.toFixed(4)}`,
+              }).then((r) => {
+                setHudNote(r.ok ? `Lieu GPS enregistré · ${r.place.label}` : r.error);
+              });
+            }}
+            accessibilityLabel="Enregistrer le lieu"
+          >
+            <Text style={styles.reportTxt}>Sauver</Text>
+          </Pressable>
+          <Pressable
+            style={styles.toolBtn}
+            onPress={() => {
+              void loadTripHistory().then((rows) => {
+                setTripHistory(rows);
+                setHistoryOpen(true);
+              });
+            }}
+            accessibilityLabel="Voir l'historique"
+          >
+            <Text style={styles.reportTxt}>Histo</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.toolBtn, voiceMuted && styles.toolBtnMuted]}
+            onPress={() => {
+              const next = !voiceMuted;
+              setVoiceMuted(next);
+              void setNavSpeechMuted(next);
+              if (next) stopNavSpeech();
+              setHudNote(next ? 'Voix coupée' : 'Voix guidage activée');
+            }}
+            accessibilityLabel={voiceMuted ? 'Activer la voix' : 'Couper la voix'}
+          >
+            <Text style={styles.reportTxt}>{voiceMuted ? 'Mute' : 'Voix'}</Text>
+          </Pressable>
         </View>
       ) : null}
 
@@ -1144,7 +1472,7 @@ export function GpsFullMap() {
           startNavigation();
           setHudNote(
             modeLabel === 'camion'
-              ? 'Navigation camion — marqueur = GPS live'
+              ? 'Navigation camion — alertes overlay immédiat'
               : 'Navigation voiture — marqueur = GPS live',
           );
           return true;
@@ -1157,6 +1485,80 @@ export function GpsFullMap() {
           );
         }}
         onFeedback={setHudNote}
+        onOpenHistory={() => {
+          void loadTripHistory().then((rows) => {
+            setTripHistory(rows);
+            setHistoryOpen(true);
+          });
+        }}
+        onSaveMyLocation={() => {
+          const origin = lastWatchRef.current ?? liveOriginRef.current;
+          if (!origin || !gpsOk) {
+            setHudNote('Enregistrer position — GPS appareil requis');
+            return;
+          }
+          void savePlace({
+            lat: origin.lat,
+            lon: origin.lon,
+            label: `Ma position ${origin.lat.toFixed(4)}, ${origin.lon.toFixed(4)}`,
+          }).then((r) => {
+            setHudNote(r.ok ? `Position GPS enregistrée · ${r.place.label}` : r.error);
+          });
+        }}
+      />
+
+      <GpsTripTimeline
+        visible={historyOpen}
+        trips={tripHistory}
+        onClose={() => setHistoryOpen(false)}
+        onSelectTrip={(trip) => {
+          setHistoryOpen(false);
+          setDestSelection({
+            lat: trip.destination.lat,
+            lon: trip.destination.lon,
+            label: trip.destination.label ?? 'Destination historique',
+          });
+          proposeDestination(
+            trip.destination.lat,
+            trip.destination.lon,
+            trip.destination.label ?? 'Historique',
+          );
+          if (trip.coords.length >= 2) {
+            const replay: VehicleRouteResult = {
+              ok: true,
+              mode: trip.mode,
+              coords: trip.coords,
+              distanceKm: trip.distanceKm,
+              durationMin: trip.durationMin,
+              source: trip.mode === 'camion' ? 'valhalla-truck' : 'valhalla-auto',
+              label: `Historique · ${trip.distanceKm} km · ~${trip.durationMin} min · ${trip.startedAt}`,
+            };
+            setLastRoute(replay);
+            lastRouteRef.current = replay;
+            injectRoute(replay);
+          }
+          setHudNote(
+            `Trajet ${trip.startedAt.slice(0, 16)} · ${trip.origin.label ?? 'départ'} → ${trip.destination.label ?? 'arrivée'}`,
+          );
+        }}
+      />
+
+      <GpsStreetViewModal
+        visible={streetView != null}
+        lat={streetView?.lat ?? null}
+        lon={streetView?.lon ?? null}
+        onClose={() => setStreetView(null)}
+      />
+
+      <GpsRouteAlertOverlay
+        alert={activeAlert}
+        voiceEnabled={!voiceMuted}
+        onDismiss={dismissAlert}
+        onMuteVoice={() => {
+          setVoiceMuted(true);
+          void setNavSpeechMuted(true);
+          stopNavSpeech();
+        }}
       />
     </View>
   );
@@ -1281,5 +1683,14 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     overflow: 'hidden',
     maxWidth: 180,
+  },
+  toolBtn: {
+    backgroundColor: 'rgba(44,58,71,0.95)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 11,
+  },
+  toolBtnMuted: {
+    backgroundColor: 'rgba(166,27,27,0.92)',
   },
 });
