@@ -1,6 +1,6 @@
 # Urgency Road — suivi
 
-Dernière mise à jour : 2026-11-23 ~06:18 UTC
+Dernière mise à jour : 2026-11-23 ~06:20 UTC
 
 ## Fait
 
@@ -24,7 +24,8 @@ Dernière mise à jour : 2026-11-23 ~06:18 UTC
   - Perf: icon compress, YouTube cache/timeout, Screen safe-area (UR-29)
   - Tip merged: `808fb73ccd08e42791992ec7137acda90f5e6624`
 - **Multi-IA server proxy (code)** : PR [#8](https://github.com/jejedu13376/urgency-the-road/pull/8) — Firebase HTTPS `multiIa` + `docs/MULTI-IA-PROXY.md` (UR-35). Host live + secrets = Lorenzo.
-- **Hosting Expo/EAS restore (UR-38)** : PR [#9](https://github.com/jejedu13376/urgency-the-road/pull/9) (`cursor/hosting-eas-restore-f6f5`) — `eas.json` (preview APK + Dev Client), `expo-dev-client` + `react-native-ble-plx`, BLE permissions iOS/Android, docs `HOSTING-RESTORE` / `EAS-RUNBOOK` / `BLE-DEV-CLIENT` / `OPTIM-PERF`. Formations untouched.
+- **Hosting Expo/EAS restore (UR-38)** : PR [#9](https://github.com/jejedu13376/urgency-the-road/pull/9) (`cursor/hosting-eas-restore-f6f5`, tip `d9a0c61`) — rebased onto main post-#4 ; `eas.json` (preview APK + Dev Client), `expo-dev-client` + `react-native-ble-plx`, BLE permissions iOS/Android, docs `HOSTING-RESTORE` / `EAS-RUNBOOK` / `BLE-DEV-CLIENT`. Formations untouched.
+- **Stubs deepen (live free APIs)** : PR [#10](https://github.com/jejedu13376/urgency-the-road/pull/10) (`cursor/deepen-stubs-live-apis-1063`, tip `c3bbc4a`) — rebased onto main post-#4 ; mergeable.
 - **Provisional download URL** : https://github.com/jejedu13376/urgency-the-road/releases (stand-in until first EAS APK)
 
 ## Reste (Urgency Road)
@@ -79,3 +80,5 @@ firebase deploy --config firebase/firebase.json --only firestore:rules,firestore
 | 2026-11-23 ~05:56 UTC | PR #8 Bugbot auto-fix : sanitize upstream errors ; heuristic si pas de token / 401·403·503 |
 | 2026-11-23 ~06:00 UTC | UR-38 hosting restore : PR #9 ouverte ; EAS/Dev Client/BLE config + runbook ; `eas build` bloqué (pas Expo login) ; provisional download = GitHub Releases |
 | 2026-11-23 ~06:17 UTC | Approval Agent OK tip `808fb73` ; PR #4 mergée (`1129ea4e3f082fd2e467c8002b68db1721045870`) — UR-27/28/29 livrés via #4 |
+| 2026-11-23 ~06:19 UTC | PR #9 rebase → tip `d9a0c61` (kept main BLE ; skipped superseded BLE Bugbot commits) ; mergeable/unstable |
+| 2026-11-23 ~06:20 UTC | PR #10 rebase → tip `c3bbc4a` (`app.json` BLE+location) ; mergeable/unstable ; #8 unchanged mergeable ; no hearts |
