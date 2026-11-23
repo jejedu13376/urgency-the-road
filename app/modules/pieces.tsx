@@ -299,9 +299,14 @@ export default function PiecesScreen() {
           <Pressable
             style={styles.scan}
             onPress={() => {
-              const partN = parseFloat(manualPart.replace(',', '.'));
-              const laborN = parseFloat(manualLabor.replace(',', '.'));
-              const hasManual = Number.isFinite(partN) && Number.isFinite(laborN);
+              const partRaw = manualPart.trim();
+              const laborRaw = manualLabor.trim();
+              const partN = partRaw ? parseFloat(partRaw.replace(',', '.')) : NaN;
+              const laborN = laborRaw ? parseFloat(laborRaw.replace(',', '.')) : NaN;
+              const partOk = Number.isFinite(partN);
+              const laborOk = Number.isFinite(laborN);
+              // Either field typed → manual path; missing side defaults to 0
+              const hasManual = partOk || laborOk;
               void scanQuoteStub({
                 ownerUid: profile?.uid,
                 vin: active?.vin,
@@ -310,8 +315,8 @@ export default function PiecesScreen() {
                 mode: scanMode,
                 anchorOemSku: selected?.oemSku,
                 currency: active?.currency ?? selected?.currency,
-                manualPartPrice: hasManual ? partN : undefined,
-                manualLaborPrice: hasManual ? laborN : undefined,
+                manualPartPrice: hasManual ? (partOk ? partN : 0) : undefined,
+                manualLaborPrice: hasManual ? (laborOk ? laborN : 0) : undefined,
               }).then((r) => {
                 setScanQuote(r.data.quote);
                 setScanLabel(
@@ -325,7 +330,7 @@ export default function PiecesScreen() {
             <Text style={styles.scanTxt}>
               Comparer au marché
               {active?.make ? ` · ${active.make}` : ''}
-              {manualPart || manualLabor ? ' (montants saisis)' : ' (heuristique)'}
+              {manualPart.trim() || manualLabor.trim() ? ' (montants saisis)' : ' (heuristique)'}
             </Text>
           </Pressable>
           {scanLabel ? <StubBanner text={scanLabel} /> : null}

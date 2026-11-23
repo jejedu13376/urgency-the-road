@@ -57,6 +57,7 @@ export default function MonVehiculeScreen() {
   const [sourceLabel, setSourceLabel] = useState<string | undefined>();
   const [recalls, setRecalls] = useState<RecallHit[]>([]);
   const [recallLabel, setRecallLabel] = useState<string | null>(null);
+  const [recallsLoading, setRecallsLoading] = useState(false);
   const [odoDraft, setOdoDraft] = useState(active ? String(active.odometerKm) : '');
 
   useEffect(() => {
@@ -68,9 +69,13 @@ export default function MonVehiculeScreen() {
     if (!active?.make || !active?.model || !active?.year) {
       setRecalls([]);
       setRecallLabel(null);
+      setRecallsLoading(false);
       return;
     }
     let cancelled = false;
+    setRecalls([]);
+    setRecallLabel(null);
+    setRecallsLoading(true);
     void (async () => {
       const res = await fetchRecallsByVehicle({
         make: active.make,
@@ -80,6 +85,7 @@ export default function MonVehiculeScreen() {
       if (cancelled) return;
       setRecalls(res.items);
       setRecallLabel(res.label);
+      setRecallsLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -301,21 +307,27 @@ export default function MonVehiculeScreen() {
 
       {active ? (
         <Card title="Rappels constructeur (NHTSA recalls)">
-          <Text style={styles.hint}>
-            {recallLabel ?? 'Interrogation NHTSA recallsByVehicle (API publique gratuite)…'}
-          </Text>
-          {recalls.length === 0 ? (
-            <Text style={styles.hint}>Aucun rappel listé pour cette fiche (ou hors couverture NA).</Text>
+          {recallsLoading ? (
+            <Text style={styles.hint}>Chargement NHTSA recallsByVehicle…</Text>
           ) : (
-            recalls.map((r) => (
-              <View key={r.id} style={styles.fail}>
-                <Text style={styles.failTitle}>{r.title}</Text>
-                <Text style={styles.failBody}>
-                  {r.component ? `${r.component} · ` : ''}
-                  {r.source} · {r.severity}
-                </Text>
-              </View>
-            ))
+            <>
+              <Text style={styles.hint}>
+                {recallLabel ?? 'NHTSA recallsByVehicle (API publique gratuite)'}
+              </Text>
+              {recalls.length === 0 ? (
+                <Text style={styles.hint}>Aucun rappel listé pour cette fiche (ou hors couverture NA).</Text>
+              ) : (
+                recalls.map((r) => (
+                  <View key={r.id} style={styles.fail}>
+                    <Text style={styles.failTitle}>{r.title}</Text>
+                    <Text style={styles.failBody}>
+                      {r.component ? `${r.component} · ` : ''}
+                      {r.source} · {r.severity}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </>
           )}
         </Card>
       ) : null}

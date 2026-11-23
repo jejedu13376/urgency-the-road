@@ -39,8 +39,9 @@ export function estimateLocalFluids(input: FluidsEstimateInput): FluidsEstimate 
   }
 
   if (powertrain === 'electrique') {
+    // Omit fuelL entirely — Firestore rejects nested `undefined` values.
     return {
-      fluids: { engineOilL: 0, coolantL: disp != null && disp > 0 ? 8 : 6.5, washerL: 3, fuelL: undefined },
+      fluids: { engineOilL: 0, coolantL: disp != null && disp > 0 ? 8 : 6.5, washerL: 3 },
       label: 'Fluides estimés localement (EV — pas d’huile moteur) — pas d’API OEM',
       source: 'local_estimate',
     };

@@ -21,9 +21,10 @@ const KEYWORD_PART: Array<{ re: RegExp; nameHints: string[] }> = [
   { re: /batterie|alternateur|démarrage/i, nameHints: ['Batterie', 'Alternateur'] },
   { re: /filtre.*(huile|air|habitacle)|huile moteur/i, nameHints: ['Filtre', 'Huile'] },
   { re: /nox|adblue|scr/i, nameHints: ['NOx', 'AdBlue'] },
-  { re: /courroie|galet|accessoire/i, nameHints: ['Courroie', 'Essuie'] },
+  { re: /courroie|galet|accessoire/i, nameHints: ['Courroie', 'BELT'] },
   { re: /fuite|joint|huileuse/i, nameHints: ['Joint', 'Huile'] },
-  { re: /pneu|pneumatique|jante/i, nameHints: ['Essuie'] },
+  { re: /pneu|pneumatique|jante|tire|tyre/i, nameHints: ['pneu', 'pneumatique'] },
+  { re: /essuie.?glace|wiper/i, nameHints: ['Essuie'] },
   { re: /ampoule|phare|éclairage/i, nameHints: ['Ampoule', 'H7'] },
 ];
 

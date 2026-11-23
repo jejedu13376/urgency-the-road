@@ -16,8 +16,23 @@ import type { VehicleProfile } from '../../types/vehicle';
 import { decodeVinNhtsa } from '../vin/nhtsaDecode';
 import { liveResult, mockResult, ServiceResult } from './result';
 
+/** Strip undefined (Firestore rejects them; no ignoreUndefinedProperties). */
+function omitUndefined<T extends Record<string, unknown>>(obj: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out as T;
+}
+
 function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { id?: string; techNotes?: string[]; fluidsSource?: string } {
-  return {
+  const fluids = omitUndefined({
+    engineOilL: v.fluids.engineOilL,
+    coolantL: v.fluids.coolantL,
+    washerL: v.fluids.washerL,
+    fuelL: v.fluids.fuelL,
+  });
+  return omitUndefined({
     id: v.id,
     ownerUid,
     vin: v.vin,
@@ -29,7 +44,7 @@ function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { 
     year: v.year,
     powertrain: v.powertrain,
     vehicleClass: v.vehicleClass,
-    fluids: v.fluids,
+    fluids,
     commonFailures: v.commonFailures,
     odometerKm: v.odometerKm,
     unitSystem: v.unitSystem,
@@ -38,7 +53,7 @@ function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { 
     fluidsSource: v.fluidsSource,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-  };
+  });
 }
 
 function fromDoc(d: VehicleDoc & { techNotes?: string[]; fluidsSource?: string }): VehicleProfile {

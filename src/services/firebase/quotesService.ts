@@ -24,17 +24,32 @@ export type QuoteScanInput = {
   manualLaborPrice?: number;
 };
 
-function marketBench(make?: string, oemSku?: string) {
+/** MOCK_PARTS are EUR-based — scale when fleet currency differs. */
+function currencyMultiplier(currency?: string): number {
+  switch ((currency ?? 'EUR').toUpperCase()) {
+    case 'USD':
+      return 1.2;
+    case 'CAD':
+      return 1.15;
+    case 'AUD':
+      return 1.25;
+    default:
+      return 1;
+  }
+}
+
+function marketBench(make?: string, oemSku?: string, currency?: string) {
   const pool = MOCK_PARTS.filter((p) => {
     if (oemSku && p.oemSku === oemSku) return true;
     if (make && p.name.toLowerCase().includes(make.toLowerCase().slice(0, 4))) return true;
     return !make && !oemSku;
   });
   const parts = pool.length ? pool : MOCK_PARTS;
+  const mult = currencyMultiplier(currency);
   const avgAfter =
-    parts.reduce((s, p) => s + p.priceAftermarket, 0) / Math.max(parts.length, 1);
+    (parts.reduce((s, p) => s + p.priceAftermarket, 0) / Math.max(parts.length, 1)) * mult;
   const avgLabor =
-    parts.reduce((s, p) => s + p.laborHours * p.laborRate, 0) / Math.max(parts.length, 1);
+    (parts.reduce((s, p) => s + p.laborHours * p.laborRate, 0) / Math.max(parts.length, 1)) * mult;
   return { avgAfter: Math.round(avgAfter), avgLabor: Math.round(avgLabor), sample: parts[0] };
 }
 
@@ -49,19 +64,19 @@ export function analyzeQuoteScan(input: QuoteScanInput): {
   marketPart: number;
   marketLabor: number;
 } {
-  const bench = marketBench(input.make, input.anchorOemSku);
-  const hasManual =
-    typeof input.manualPartPrice === 'number' &&
-    Number.isFinite(input.manualPartPrice) &&
-    typeof input.manualLaborPrice === 'number' &&
-    Number.isFinite(input.manualLaborPrice);
+  const bench = marketBench(input.make, input.anchorOemSku, input.currency);
+  const manualPartOk =
+    typeof input.manualPartPrice === 'number' && Number.isFinite(input.manualPartPrice);
+  const manualLaborOk =
+    typeof input.manualLaborPrice === 'number' && Number.isFinite(input.manualLaborPrice);
+  const hasManual = manualPartOk || manualLaborOk;
 
-  // Manual path = real typed garage amounts. Heuristic path = market inflate (not OCR ML).
+  // Manual path = real typed garage amounts (partial OK). Heuristic = market inflate (not OCR ML).
   const inflate = input.mode === 'pdf' ? 1.35 : 1.18;
-  const partPrice = hasManual
+  const partPrice = manualPartOk
     ? Math.round(input.manualPartPrice as number)
     : Math.round(bench.avgAfter * inflate);
-  const laborPrice = hasManual
+  const laborPrice = manualLaborOk
     ? Math.round(input.manualLaborPrice as number)
     : Math.round(bench.avgLabor * (input.mode === 'pdf' ? 1.4 : 1.15));
   const delta = (partPrice + laborPrice) / Math.max(bench.avgAfter + bench.avgLabor, 1);
@@ -71,7 +86,9 @@ export function analyzeQuoteScan(input: QuoteScanInput): {
     .filter(Boolean)
     .join(' ');
   const modeLabel = hasManual
-    ? 'saisie manuelle devis'
+    ? manualPartOk && manualLaborOk
+      ? 'saisie manuelle devis'
+      : 'saisie partielle devis'
     : input.mode === 'photo'
       ? 'heuristique photo (pas OCR ML)'
       : 'heuristique PDF (pas OCR ML)';
@@ -83,18 +100,18 @@ export function analyzeQuoteScan(input: QuoteScanInput): {
         laborPrice: 0,
       },
       {
-        label: hasManual ? 'Main d’œuvre atelier (saisie)' : 'Main d’œuvre atelier (estim. marché)',
+        label: manualLaborOk ? 'Main d’œuvre atelier (saisie)' : 'Main d’œuvre atelier (estim. marché)',
         partPrice: 0,
         laborPrice,
       },
       {
-        label: `Réf. marché local (${bench.sample?.oemSku ?? '—'})`,
+        label: `Réf. marché local ${input.currency ?? 'EUR'} (${bench.sample?.oemSku ?? '—'})`,
         partPrice: bench.avgAfter,
         laborPrice: bench.avgLabor,
       },
     ],
     overchargeRisk,
-    note: `${vehicleBit || 'Véhicule'} · écart ×${delta.toFixed(2)} vs marché adaptable. ${
+    note: `${vehicleBit || 'Véhicule'} · ${input.currency ?? 'EUR'} · écart ×${delta.toFixed(2)} vs marché adaptable. ${
       hasManual
         ? 'Comparaison saisie manuelle — OCR ML Kit / Document AI non branché.'
         : 'Aucun OCR image — heuristique catalogue uniquement (OCR ML bloqué).'
