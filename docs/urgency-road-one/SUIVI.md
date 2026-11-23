@@ -1,6 +1,6 @@
 # Urgency Road — suivi
 
-Dernière mise à jour : 2026-11-23 ~11:47 UTC
+Dernière mise à jour : 2026-11-23 ~11:56 UTC
 
 ## Fait (code sur `main`)
 
@@ -29,9 +29,9 @@ Aussi fait côté secrets/config (ne pas coller dans le chat) :
 
 ## Deploy — blocked on secrets (UR-40 audit done)
 
-Code ready ; **deploy non lancé** — toutes les clés CI/deploy manquantes (noms seulement ; jamais de valeurs).
+Code ready ; **deploy attempted then blocked** — toutes les clés CI/deploy manquantes (noms seulement ; jamais de valeurs).
 
-Sources inspectées : store `docs/urgency-road-one/.env`, mirror `urgency-road-one/.env`, `firebase/functions/.env` (absent), process env agent, Cursor app secrets (vide), `eas whoami` → Not logged in.
+Sources inspectées : store `docs/urgency-road-one/.env`, mirror `urgency-road-one/.env`, `firebase/functions/.env` (absent ; keys only in `.env.example` placeholders), process env agent, Cursor app secrets (vide), `eas whoami` → Not logged in, `firebase login:list` → No authorized accounts.
 
 | Nom | Statut |
 | --- | --- |
@@ -49,7 +49,7 @@ Déjà configurés (app, hors CI deploy) : `EXPO_PUBLIC_FIREBASE_*`, `EXPO_PUBLI
 | Worker | État |
 | --- | --- |
 | Secrets worker `bc-b182fbed-bef2-5a50-9b96-c060c8fc419d` | **done** — audit final ; rien à configurer (valeurs absentes) |
-| Deploy worker `bc-8dc7803d-5d62-5c25-b208-72fe20652a29` | RUNNING — laissé tranquille (pas de combat Firebase) |
+| Deploy worker `bc-8dc7803d-5d62-5c25-b208-72fe20652a29` | **done / blocked** — re-checked secrets ; `firebase deploy --only firestore:rules,firestore:indexes` → `Failed to authenticate` ; EAS not logged in ; **rien déployé** ; no Firebase Hosting target in `firebase.json` |
 
 Checklist post-secrets : **`docs/DEPLOY-CHECKLIST.md`** (miroir store `docs/urgency-road-one/DEPLOY-CHECKLIST.md`).
 
@@ -111,3 +111,7 @@ Pour que l’agent puisse déployer Firebase plus tard : `firebase login:ci` →
 | 2026-11-23 ~11:45 UTC | Docs sync : GLOBAL-SCOPE + SUIVI à jour ; deploy blocked on secrets ; secrets worker **in progress** (`bc-b182fbed…`) ; deploy worker may run (`bc-8dc7803d…`) ; `EXPO_TOKEN` + Multi-IA provider keys absent store `.env` ; `DEPLOY-CHECKLIST.md` ajouté. Formations standby. |
 | 2026-11-23 ~11:47 UTC | **UR-40 secrets audit final** (`bc-b182fbed…`) : Multi-IA ×6 + `FIREBASE_TOKEN` + `EXPO_TOKEN`/`EXPO_ACCESS_TOKEN` tous **MANQUANTS** (store/mirror/functions/.env/process/Cursor). Rien à configurer. Deploy Firebase/EAS **non lancé**. Ask Lorenzo = noms ci-dessus. Deploy worker `bc-8dc7803d…` non concurrencé. Formations standby. **Pas de hearts.** |
 | 2026-11-23 ~11:48 UTC | Docs worker (`bc-8c07e5ee…`) : fold UR-40 into GLOBAL-SCOPE + GitHub SUIVI ; PR docs `#12` `cursor/docs-deploy-status-0cdc`. Formations standby. |
+| 2026-11-23 ~11:50 UTC | Approval Agent OK tip `bc05c88` ; PR #12 mergée (`6ee194c`) — docs deploy status + DEPLOY-CHECKLIST. Formations standby. **Pas de hearts.** |
+| 2026-11-23 ~11:55 UTC | **UR-45 analyze/fix** (`bc-9c7c54cd…`) : PR `cursor/analyze-fix-urgency-91d8` — root tsc exclude functions, worklets peer, eas-cli out of deps, M13 GPS no Lille fallback, Multi-IA abort timer finally, docs sync (MODULES/BACKEND/DEPLOY/CAHIER/README). Secrets/Firebase deploy still Lorenzo. Formations standby. |
+| 2026-11-23 ~11:55 UTC | **PR #14 MERGED** (`187c361`) — UR-45 analyze/fix tip `79ffb5c`. Lorenzo voice-approved; merged without waiting Bugbot. Remaining high bugs from hunt (gate password, hazards/garages Auth throws, etc.) NOT in this PR — follow-up if assigned. Formations standby. |
+| 2026-11-23 ~11:56 UTC | **Deploy worker DONE/BLOCKED** (`bc-8dc7803d…`) on latest `main` : Multi-IA ×6 + `FIREBASE_TOKEN` + `EXPO_TOKEN` ABSENT ; Cursor secrets empty ; `firebase deploy` rules/indexes → Failed to authenticate ; `eas whoami` → Not logged in ; **deployed = nothing** ; Hosting N/A in firebase.json. Formations standby. **Pas de hearts.** |
