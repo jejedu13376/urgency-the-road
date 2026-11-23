@@ -622,6 +622,19 @@ export function GpsFullMap() {
           return;
         }
         setModeLabel(msg.mode);
+        // Keep trip label in sync with map destination (map taps have no search label).
+        setDestSelection((prev) => {
+          const same =
+            prev != null &&
+            Math.abs(prev.lat - msg.to.lat) < 1e-5 &&
+            Math.abs(prev.lon - msg.to.lon) < 1e-5;
+          if (same) return prev;
+          return {
+            lat: msg.to.lat,
+            lon: msg.to.lon,
+            label: `${msg.to.lat.toFixed(5)}, ${msg.to.lon.toFixed(5)}`,
+          };
+        });
         const reqId = ++routeReqId.current;
         void (async () => {
           await saveGpsNavPrefs({
@@ -688,8 +701,9 @@ export function GpsFullMap() {
   );
 
   useEffect(() => {
-    if (destSelection?.label) destLabelRef.current = destSelection.label;
-  }, [destSelection?.label]);
+    // Always mirror (including clear) so arrival never reuses a stale place name.
+    destLabelRef.current = destSelection?.label;
+  }, [destSelection]);
 
   const onMessage = useCallback(
     (ev: WebViewMessageEvent) => {

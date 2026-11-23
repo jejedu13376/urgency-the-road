@@ -2,6 +2,10 @@
  * Post-trip voice logbook — metadata in AsyncStorage; audio files via expo-audio document dir.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { deleteAudioFile } from './deleteAudioFile';
+import { formatDurationMs } from './formatDuration';
+
+export { formatDurationMs };
 
 const KEY = 'um.voiceLogbook.v1';
 
@@ -89,16 +93,10 @@ export async function updateVoiceNote(
 
 export async function removeVoiceNote(id: string): Promise<boolean> {
   const store = await readRaw();
-  const before = store.notes.length;
+  const target = store.notes.find((n) => n.id === id);
+  if (!target) return false;
   store.notes = store.notes.filter((n) => n.id !== id);
-  if (store.notes.length === before) return false;
   await writeRaw(store);
+  await deleteAudioFile(target.uri);
   return true;
-}
-
-export function formatDurationMs(ms: number): string {
-  const totalSec = Math.max(0, Math.round(ms / 1000));
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
 }

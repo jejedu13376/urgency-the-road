@@ -134,8 +134,21 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   var routeLine = null;
   var destMarker = null;
   var followLive = false;
+  var arrivedPosted = false;
   var layerGroup = null;
   var lastPanAt = 0;
+
+  function haversineM(a, b){
+    var R = 6371000;
+    var toRad = Math.PI / 180;
+    var dLat = (b.lat - a.lat) * toRad;
+    var dLon = (b.lon - a.lon) * toRad;
+    var lat1 = a.lat * toRad;
+    var lat2 = b.lat * toRad;
+    var h = Math.sin(dLat/2)*Math.sin(dLat/2) +
+      Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)*Math.sin(dLon/2);
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
 
   function applyChrome(p){
     var r = document.documentElement.style;
@@ -268,6 +281,8 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
       return;
     }
     dest = { lat: latlng.lat, lon: latlng.lng };
+    arrivedPosted = false;
+    followLive = false;
     if (destMarker) map.removeLayer(destMarker);
     destMarker = L.marker([dest.lat, dest.lon], { icon: destDivIcon(), zIndexOffset: 700 }).addTo(map);
     setStatus(
@@ -337,6 +352,15 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     if (followLive && now - lastPanAt > 700) {
       lastPanAt = now;
       map.panTo([lat, lon], { animate: true, duration: 0.55, easeLinearity: 0.3 });
+    }
+    // Post-trip voice logbook: fire arrived once within ~80 m of destination.
+    if (followLive && dest && !arrivedPosted) {
+      var distM = haversineM(origin, dest);
+      if (distM <= 80) {
+        arrivedPosted = true;
+        setStatus('Arrivée — note vocale trajet dispo');
+        post({ type: 'arrived', mode: mode, to: { lat: dest.lat, lon: dest.lon } });
+      }
     }
   };
 
@@ -463,6 +487,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   function startNavigation(){
     if (!routeCoords.length || !gpsOk || !dest) return false;
     followLive = true;
+    arrivedPosted = false;
     setStatus('Navigation — marqueur = position appareil (pas de démo polyline)');
     post({ type: 'navigating', mode: mode, to: dest });
     map.panTo([origin.lat, origin.lon], { animate: true, duration: 0.4 });

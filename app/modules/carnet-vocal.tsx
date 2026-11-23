@@ -15,6 +15,7 @@ import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
 import { useI18n } from '../../src/context/I18nContext';
+import { deleteAudioFile } from '../../src/services/voiceLogbook/deleteAudioFile';
 import {
   addVoiceNote,
   formatDurationMs,
@@ -59,6 +60,7 @@ export default function CarnetVocalScreen() {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const busyRef = useRef(false);
+  const playUriRef = useRef<string | null>(null);
 
   const audioRecorder = useAudioRecorder({
     ...RecordingPresets.HIGH_QUALITY,
@@ -67,8 +69,8 @@ export default function CarnetVocalScreen() {
   });
   const recorderState = useAudioRecorderState(audioRecorder, 200);
 
-  const [playUri, setPlayUri] = useState<string | null>(null);
-  const player = useAudioPlayer(playUri ? { uri: playUri } : null);
+  // Stable player instance — switch sources with replace(), never recreate via hook source.
+  const player = useAudioPlayer(null);
   const playerStatus = useAudioPlayerStatus(player);
 
   const reload = useCallback(async () => {
@@ -81,6 +83,28 @@ export default function CarnetVocalScreen() {
     }, 0);
     return () => clearTimeout(timer);
   }, [reload]);
+
+  // Stop mic + restore audio mode if the user leaves mid-recording.
+  useEffect(() => {
+    return () => {
+      void (async () => {
+        try {
+          const st = audioRecorder.getStatus();
+          if (st.isRecording) await audioRecorder.stop();
+        } catch {
+          /* unmounted */
+        }
+        try {
+          await setAudioModeAsync({
+            playsInSilentMode: true,
+            allowsRecording: false,
+          });
+        } catch {
+          /* ignore */
+        }
+      })();
+    };
+  }, [audioRecorder]);
 
   const startRecording = () => {
     if (busyRef.current || phase === 'recording') return;
@@ -128,6 +152,7 @@ export default function CarnetVocalScreen() {
         }
         const durationMs = status.durationMillis ?? 0;
         if (durationMs < 400) {
+          await deleteAudioFile(uri);
           setStatusMsg(t('voiceLogbook.tooShort'));
           setPhase('idle');
           return;
@@ -168,7 +193,7 @@ export default function CarnetVocalScreen() {
       return;
     }
     try {
-      if (playUri === note.uri) {
+      if (playUriRef.current === note.uri) {
         if (playerStatus.didJustFinish || playerStatus.currentTime > 0) {
           player.seekTo(0);
         }
@@ -176,7 +201,7 @@ export default function CarnetVocalScreen() {
         setPlayingId(note.id);
         return;
       }
-      setPlayUri(note.uri);
+      playUriRef.current = note.uri;
       setPlayingId(note.id);
       player.replace({ uri: note.uri });
       player.play();
@@ -210,6 +235,7 @@ export default function CarnetVocalScreen() {
           /* ignore */
         }
         setPlayingId(null);
+        if (playUriRef.current === note.uri) playUriRef.current = null;
       }
       await removeVoiceNote(note.id);
       setStatusMsg(t('voiceLogbook.deleted'));
@@ -218,6 +244,8 @@ export default function CarnetVocalScreen() {
   };
 
   const recordingMs = recorderState.durationMillis ?? 0;
+  const isPlaying = (id: string) =>
+    playingId === id && playerStatus.playing && !playerStatus.didJustFinish;
 
   return (
     <>
@@ -289,7 +317,7 @@ export default function CarnetVocalScreen() {
                 <View style={styles.row}>
                   <Pressable style={styles.chip} onPress={() => playNote(n)}>
                     <Text style={styles.chipTxt}>
-                      {playingId === n.id && playerStatus.playing
+                      {isPlaying(n.id)
                         ? t('voiceLogbook.pause')
                         : t('voiceLogbook.play')}
                     </Text>

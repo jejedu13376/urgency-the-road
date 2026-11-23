@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatDurationMs } from './voiceLogbookStorage';
+import { formatDurationMs } from './formatDuration';
 
 describe('formatDurationMs', () => {
   it('formats zero and seconds', () => {
