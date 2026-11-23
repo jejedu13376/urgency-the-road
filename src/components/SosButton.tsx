@@ -1,9 +1,11 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { colors } from '../theme/colors';
 
 /** Module 13 — bouton SOS toujours accessible → écran Urgence (112 sur l’écran). */
 export function SosButton() {
+  const pathname = usePathname();
+
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       <Pressable
@@ -11,7 +13,10 @@ export function SosButton() {
         accessibilityLabel="SOS Urgence médicale — ouvrir le module Urgence"
         style={({ pressed }) => [styles.btn, pressed && { opacity: 0.85 }]}
         onPress={() => {
-          router.push('/modules/urgence');
+          // Already on Urgence → no-op (avoid stacking a duplicate).
+          if (pathname?.includes('/modules/urgence')) return;
+          // replace keeps a single Urgence on the stack when navigating from elsewhere.
+          router.replace('/modules/urgence');
         }}
       >
         <Text style={styles.txt}>SOS</Text>

@@ -159,6 +159,11 @@ export default function ProScreen() {
       currency: 'EUR',
       notes: notes.trim() || undefined,
     });
+    if (res.ok === false) {
+      // Keep form draft — soft-fail must not wipe client/vehicle/notes.
+      setMsg(res.stubLabel ?? 'Création RDV refusée');
+      return;
+    }
     setMsg(res.stubLabel ?? `RDV créé pour ${res.data.clientName}`);
     setClientName('');
     setVehicleLabel('');
