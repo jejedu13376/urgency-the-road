@@ -227,37 +227,62 @@ export async function fetchVehicleRoute(
   routeOpts?: { excludeLocations?: RoutePoint[] },
 ): Promise<VehicleRouteResult> {
   const excludeLocations = routeOpts?.excludeLocations;
+  const hasExcludes = !!(excludeLocations && excludeLocations.length);
+
+  const labelOk = (
+    result: VehicleRouteResult,
+    opts?: { withExcludes?: boolean; droppedExcludes?: string; relaxedNote?: string },
+  ): VehicleRouteResult => {
+    const parts = [result.label];
+    if (opts?.withExcludes && hasExcludes) {
+      parts.push(`détour signalements (${excludeLocations!.length})`);
+    }
+    if (opts?.droppedExcludes) {
+      parts.push(`sans exclusion (${opts.droppedExcludes})`);
+    }
+    if (opts?.relaxedNote) parts.push(opts.relaxedNote);
+    parts.push('ETA sans trafic live');
+    if (!opts?.withExcludes && !opts?.droppedExcludes) {
+      parts.push('(pas d’API Waze/Google)');
+    }
+    return { ...result, label: parts.join(' · ') };
+  };
+
   try {
     const primary = await postValhalla(
       buildValhallaPayload(from, to, mode, truck, { excludeLocations }),
     );
     if (primary.ok && primary.body?.trip?.legs?.[0]?.shape) {
-      const result = tripToResult(mode, primary.body);
-      if (excludeLocations?.length) {
-        return {
-          ...result,
-          label: `${result.label} · détour signalements (${excludeLocations.length}) · ETA sans trafic live`,
-        };
-      }
-      return {
-        ...result,
-        label: `${result.label} · ETA sans trafic live (pas d’API Waze/Google)`,
-      };
+      return labelOk(tripToResult(mode, primary.body), { withExcludes: hasExcludes });
     }
 
     const primaryErr = parseValhallaError(primary.status, primary.body, primary.rawText);
 
-    // Truck NoPath / restrict → one relaxed-truck retry (still truck costing, never auto).
+    // If exclusions caused NoPath, retry same costing without them (honest label — not silent).
+    if (hasExcludes) {
+      const noEx = await postValhalla(
+        buildValhallaPayload(from, to, mode, truck, { excludeLocations: undefined }),
+      );
+      if (noEx.ok && noEx.body?.trip?.legs?.[0]?.shape) {
+        return labelOk(tripToResult(mode, noEx.body), {
+          droppedExcludes: `détour KO: ${primaryErr}`,
+        });
+      }
+    }
+
+    // Truck NoPath / restrict → relaxed-truck retry without excludes (still truck, never auto).
     if (mode === 'camion') {
       const retry = await postValhalla(
-        buildValhallaPayload(from, to, mode, truck, { relaxed: true, excludeLocations }),
+        buildValhallaPayload(from, to, mode, truck, {
+          relaxed: true,
+          excludeLocations: undefined,
+        }),
       );
       if (retry.ok && retry.body?.trip?.legs?.[0]?.shape) {
-        const result = tripToResult(mode, retry.body, { relaxed: true });
-        return {
-          ...result,
-          label: `${result.label} · (échec gabarit strict: ${primaryErr}) · ETA sans trafic live`,
-        };
+        return labelOk(tripToResult(mode, retry.body, { relaxed: true }), {
+          droppedExcludes: hasExcludes ? `détour KO: ${primaryErr}` : undefined,
+          relaxedNote: `(échec gabarit strict: ${primaryErr})`,
+        });
       }
       const retryErr = parseValhallaError(retry.status, retry.body, retry.rawText);
       return failResult(

@@ -61,4 +61,16 @@ describe('valhalla truck costing', () => {
     assert.equal(ex.length, 1);
     assert.equal(ex[0].lat, 48.86);
   });
+
+  it('omits exclude_locations when cleared for retry', () => {
+    const payload = buildValhallaPayload(
+      { lat: 48.85, lon: 2.35 },
+      { lat: 48.87, lon: 2.3 },
+      'camion',
+      { heightM: 4 },
+      { excludeLocations: undefined, relaxed: true },
+    );
+    assert.equal(payload.exclude_locations, undefined);
+    assert.equal(payload.costing, 'truck');
+  });
 });

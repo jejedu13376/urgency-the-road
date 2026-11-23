@@ -385,7 +385,7 @@ export function GpsFullMap() {
       let sub: { remove: () => void } | null = null;
       let cancelled = false;
       void (async () => {
-        sub = await watchDevicePosition(
+        const next = await watchDevicePosition(
           (pos) => {
             if (cancelled) return;
             setGpsOk(true);
@@ -394,9 +394,17 @@ export function GpsFullMap() {
           (err) => {
             if (cancelled) return;
             setGpsOk(false);
+            // Keep map GPS state in sync — do not leave marker/routing as if live.
+            const origin = liveOriginRef.current ?? { lat: 46.5, lon: 2.5 };
+            injectLivePosition(origin.lat, origin.lon, false, null, null);
             setHudNote(`GPS live — ${err}`);
           },
         );
+        if (cancelled) {
+          next?.remove();
+          return;
+        }
+        sub = next;
       })();
       return () => {
         cancelled = true;
