@@ -1,0 +1,141 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function uid() {
+      return request.auth.uid;
+    }
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(uid())).data;
+    }
+    function isAdmin() {
+      return signedIn() && userDoc().role in ['admin', 'super_admin'];
+    }
+    function isGaragePro() {
+      return signedIn() && userDoc().role in ['garage_pro', 'admin', 'super_admin'];
+    }
+    function isActiveRescuer() {
+      return signedIn()
+        && userDoc().role == 'rescuer'
+        && userDoc().subscription == 'rescuer'
+        && userDoc().subscriptionActive == true;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (uid() == userId || isAdmin());
+      allow create: if signedIn() && uid() == userId
+        && request.resource.data.role == 'user'
+        && request.resource.data.subscriptionActive == false;
+      allow update: if signedIn() && (
+        (uid() == userId && !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['role', 'subscription', 'subscriptionActive', 'rescuerBadgeId']))
+        || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /vehicles/{id} {
+      allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
+      allow create: if signedIn() && request.resource.data.ownerUid == uid();
+      allow update, delete: if signedIn() && resource.data.ownerUid == uid();
+    }
+
+    match /parts/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /obdReadings/{id} {
+      allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
+      allow create: if signedIn() && request.resource.data.ownerUid == uid();
+      allow update, delete: if signedIn() && resource.data.ownerUid == uid();
+    }
+
+    match /garages/{id} {
+      allow read: if true;
+      allow create: if isGaragePro();
+      allow update, delete: if isGaragePro()
+        && (resource.data.ownerUid == uid() || isAdmin());
+    }
+
+    // Module 13 — medical cards: owner R/W; rescuer with active subscription may read only
+    match /medicalCards/{id} {
+      allow read: if signedIn() && (
+        resource.data.ownerUid == uid() || isActiveRescuer() || isAdmin()
+      );
+      allow create: if signedIn() && request.resource.data.ownerUid == uid();
+      allow update, delete: if signedIn() && resource.data.ownerUid == uid();
+    }
+
+    match /roadHazards/{id} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.reporterUid == uid();
+      allow update, delete: if signedIn()
+        && (resource.data.reporterUid == uid() || isAdmin());
+    }
+
+    match /gpsPrefs/{id} {
+      allow read, write: if signedIn()
+        && (resource == null || resource.data.ownerUid == uid())
+        && request.resource.data.ownerUid == uid();
+    }
+
+    match /weighStations/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /quotes/{id} {
+      allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
+      allow create: if signedIn() && request.resource.data.ownerUid == uid();
+      allow update, delete: if signedIn() && resource.data.ownerUid == uid();
+    }
+
+    match /insuranceClaims/{id} {
+      allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
+      allow create: if signedIn() && request.resource.data.ownerUid == uid();
+      allow update, delete: if signedIn() && resource.data.ownerUid == uid();
+    }
+
+    match /garageRatings/{id} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.authorUid == uid();
+      allow update, delete: if signedIn()
+        && (resource.data.authorUid == uid() || isAdmin());
+    }
+
+    match /appointments/{id} {
+      allow read: if signedIn() && (
+        resource.data.garageOwnerUid == uid()
+        || resource.data.clientUid == uid()
+        || isAdmin()
+      );
+      allow create: if signedIn() && (
+        request.resource.data.garageOwnerUid == uid()
+        || request.resource.data.clientUid == uid()
+      );
+      allow update, delete: if signedIn() && (
+        resource.data.garageOwnerUid == uid() || isAdmin()
+      );
+    }
+
+    match /youtubeSuggestions/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /learnedFailures/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /feedPosts/{id} {
+      allow read: if true;
+      allow create: if signedIn();
+      allow update, delete: if signedIn()
+        && (resource.data.authorUid == uid() || isAdmin());
+    }
+  }
+}
