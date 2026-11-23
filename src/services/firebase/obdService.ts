@@ -4,7 +4,7 @@ import { getFirebase, getSignedInUid } from '../../firebase/config';
 import type { ObdProtocol, ObdReadingDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
 import { stubObdConnect } from '../stubs';
-import { liveResult, mockResult, ServiceResult } from './result';
+import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 function mockReading(ownerUid: string, vehicleId: string, protocol: ObdProtocol): ObdReadingDoc {
   const stub = stubObdConnect();
@@ -38,8 +38,12 @@ export async function readObdSnapshot(
     return mockResult(reading, 'MOCK OBD — pas de valise physique / BT (ou non connecté)');
   }
   const payload = { ...reading, ownerUid: uid };
-  const ref = await addDoc(collection(fb.db, COLLECTIONS.obdReadings), payload);
-  return liveResult({ ...payload, id: ref.id, source: 'stub' });
+  try {
+    const ref = await addDoc(collection(fb.db, COLLECTIONS.obdReadings), payload);
+    return liveResult({ ...payload, id: ref.id, source: 'stub' });
+  } catch (e) {
+    return failResult(payload, e instanceof Error ? e.message : 'OBD write refusé');
+  }
 }
 
 export async function listObdHistory(
@@ -55,13 +59,19 @@ export async function listObdHistory(
     );
   }
   // Rules require ownerUid match — query must constrain to allowed docs.
-  const q = query(
-    collection(fb.db, COLLECTIONS.obdReadings),
-    where('ownerUid', '==', uid),
-    where('vehicleId', '==', vehicleId),
-    orderBy('recordedAt', 'desc'),
-    limit(20),
-  );
-  const snap = await getDocs(q);
-  return liveResult(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ObdReadingDoc, 'id'>) })));
+  try {
+    const q = query(
+      collection(fb.db, COLLECTIONS.obdReadings),
+      where('ownerUid', '==', uid),
+      where('vehicleId', '==', vehicleId),
+      orderBy('recordedAt', 'desc'),
+      limit(20),
+    );
+    const snap = await getDocs(q);
+    return liveResult(
+      snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ObdReadingDoc, 'id'>) })),
+    );
+  } catch (e) {
+    return failResult([], e instanceof Error ? e.message : 'OBD history refusée');
+  }
 }

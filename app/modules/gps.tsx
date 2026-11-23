@@ -368,15 +368,23 @@ export default function GpsScreen() {
                   setReportMsg(`Signalement refusé — GPS appareil requis (${err}).`);
                   return;
                 }
+                if (!profile?.uid) {
+                  setReportMsg('Signalement refusé — connectez-vous (M15) pour publier sur Firestore.');
+                  return;
+                }
                 const device = fresh.data;
                 setCoords(device);
                 const r = await reportHazard({
-                  reporterUid: profile?.uid ?? 'mock-local-user',
+                  reporterUid: profile.uid,
                   kind: hazardKind,
                   lat: device.lat,
                   lon: device.lon,
                   note: hazardNote || HAZARD_LABEL[hazardKind],
                 });
+                if (r.ok === false) {
+                  setReportMsg(r.stubLabel ?? 'Signalement refusé');
+                  return;
+                }
                 setHazards((prev) => [r.data, ...prev]);
                 setReportMsg(
                   r.source === 'firebase'

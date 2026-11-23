@@ -1,5 +1,5 @@
 /**
- * Module 16 — resolve install / share URL with honest fallback.
+ * Module 16 — resolve install / share URL with honest fallback (no fake store URL).
  */
 import Constants from 'expo-constants';
 import { Linking, Platform, Share } from 'react-native';
@@ -7,8 +7,10 @@ import { Linking, Platform, Share } from 'react-native';
 export type InstallUrlInfo = {
   url: string;
   configured: boolean;
-  source: 'env' | 'linking' | 'fallback';
+  source: 'env' | 'linking' | 'unset';
 };
+
+const UNSET_PLACEHOLDER = '(lien d’installation non configuré — définissez EXPO_PUBLIC_INSTALL_URL)';
 
 export function resolveInstallUrl(): InstallUrlInfo {
   const fromEnv = (process.env.EXPO_PUBLIC_INSTALL_URL ?? '').trim();
@@ -24,13 +26,16 @@ export function resolveInstallUrl(): InstallUrlInfo {
   }
 
   return {
-    url: 'https://urgence-mecanique.app/install',
+    url: UNSET_PLACEHOLDER,
     configured: false,
-    source: 'fallback',
+    source: 'unset',
   };
 }
 
 export async function openInstallUrl(url: string): Promise<{ ok: boolean; message: string }> {
+  if (!url.startsWith('http')) {
+    return { ok: false, message: 'Lien install non configuré — définissez EXPO_PUBLIC_INSTALL_URL' };
+  }
   try {
     const can = await Linking.canOpenURL(url);
     if (!can) return { ok: false, message: 'URL install non ouvrable sur cet appareil' };
@@ -41,8 +46,14 @@ export async function openInstallUrl(url: string): Promise<{ ok: boolean; messag
   }
 }
 
-/** Share-sheet "copy" path — no expo-clipboard dependency. */
+/** Share-sheet path — refuses when install URL is unset (no fabricated store link). */
 export async function shareInstallLink(url: string, region: string): Promise<{ ok: boolean; message: string }> {
+  if (!url.startsWith('http')) {
+    return {
+      ok: false,
+      message: 'Partage refusé — définissez EXPO_PUBLIC_INSTALL_URL (aucun listing inventé)',
+    };
+  }
   const message = `Installe Urgence Mécanique (${region}) — Android / iOS / Web : ${url}`;
   try {
     const res = await Share.share({

@@ -53,18 +53,25 @@ export async function listAppointmentsForGarage(
     );
   }
 
-  const snap = await getDocs(
-    query(
-      collection(fb.db, COLLECTIONS.appointments),
-      where('garageOwnerUid', '==', garageOwnerUid),
-      orderBy('scheduledAt', 'asc'),
-      limit(40),
-    ),
-  );
-  if (snap.empty) return mockResult(mockStore, 'MOCK appointments — Firestore vide');
-  return liveResult(
-    snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AppointmentDoc, 'id'>) })),
-  );
+  try {
+    const snap = await getDocs(
+      query(
+        collection(fb.db, COLLECTIONS.appointments),
+        where('garageOwnerUid', '==', garageOwnerUid),
+        orderBy('scheduledAt', 'asc'),
+        limit(40),
+      ),
+    );
+    if (snap.empty) return mockResult(mockStore, 'MOCK appointments — Firestore vide');
+    return liveResult(
+      snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AppointmentDoc, 'id'>) })),
+    );
+  } catch (e) {
+    return failResult(
+      mockStore,
+      e instanceof Error ? e.message : 'Lecture RDV refusée',
+    );
+  }
 }
 
 /**
@@ -115,8 +122,12 @@ export async function updateAppointment(
     mockStore[idx] = { ...mockStore[idx], ...patch };
     return mockResult(mockStore[idx], 'MOCK appointment update');
   }
-  await updateDoc(doc(fb.db, COLLECTIONS.appointments, id), patch);
-  return liveResult({ id, ...patch } as AppointmentDoc);
+  try {
+    await updateDoc(doc(fb.db, COLLECTIONS.appointments, id), patch);
+    return liveResult({ id, ...patch } as AppointmentDoc);
+  } catch (e) {
+    return failResult(null, e instanceof Error ? e.message : 'Mise à jour RDV refusée');
+  }
 }
 
 export async function cancelAppointment(id: string): Promise<ServiceResult<AppointmentDoc | null>> {

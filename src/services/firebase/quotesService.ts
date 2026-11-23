@@ -94,8 +94,12 @@ export async function createQuote(
   if (payload.ownerUid !== uid) {
     return failResult(payload, 'Devis refusé — ownerUid doit être le compte connecté');
   }
-  const ref = await addDoc(collection(fb.db, COLLECTIONS.quotes), payload);
-  return liveResult({ ...payload, id: ref.id });
+  try {
+    const ref = await addDoc(collection(fb.db, COLLECTIONS.quotes), payload);
+    return liveResult({ ...payload, id: ref.id });
+  } catch (e) {
+    return failResult(payload, e instanceof Error ? e.message : 'Création devis refusée');
+  }
 }
 
 export async function scanQuoteStub(
@@ -128,8 +132,12 @@ export async function listQuotes(ownerUid: string): Promise<ServiceResult<QuoteD
   const fb = getFirebase();
   const uid = getSignedInUid() ?? ownerUid;
   if (!fb || !getSignedInUid()) return mockResult([], 'MOCK quotes list');
-  const snap = await getDocs(
-    query(collection(fb.db, COLLECTIONS.quotes), where('ownerUid', '==', uid), limit(30)),
-  );
-  return liveResult(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<QuoteDoc, 'id'>) })));
+  try {
+    const snap = await getDocs(
+      query(collection(fb.db, COLLECTIONS.quotes), where('ownerUid', '==', uid), limit(30)),
+    );
+    return liveResult(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<QuoteDoc, 'id'>) })));
+  } catch (e) {
+    return failResult([], e instanceof Error ? e.message : 'Lecture devis refusée');
+  }
 }

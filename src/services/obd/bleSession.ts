@@ -552,16 +552,39 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** RN-safe base64 without undeclared `buffer` dependency. */
+const B64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
 function toBase64(ascii: string): string {
   if (typeof btoa === 'function') return btoa(ascii);
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Buffer } = require('buffer');
-  return Buffer.from(ascii, 'utf8').toString('base64');
+  let out = '';
+  let i = 0;
+  while (i < ascii.length) {
+    const a = ascii.charCodeAt(i++) & 0xff;
+    const b = i < ascii.length ? ascii.charCodeAt(i++) & 0xff : NaN;
+    const c = i < ascii.length ? ascii.charCodeAt(i++) & 0xff : NaN;
+    const triple = (a << 16) | ((Number.isNaN(b) ? 0 : b) << 8) | (Number.isNaN(c) ? 0 : c);
+    out += B64_ALPHABET[(triple >> 18) & 63];
+    out += B64_ALPHABET[(triple >> 12) & 63];
+    out += Number.isNaN(b) ? '=' : B64_ALPHABET[(triple >> 6) & 63];
+    out += Number.isNaN(c) ? '=' : B64_ALPHABET[triple & 63];
+  }
+  return out;
 }
 
 function base64ToAscii(b64: string): string {
   if (typeof atob === 'function') return atob(b64);
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Buffer } = require('buffer');
-  return Buffer.from(b64, 'base64').toString('utf8');
+  const clean = b64.replace(/[^A-Za-z0-9+/=]/g, '');
+  let out = '';
+  for (let i = 0; i < clean.length; i += 4) {
+    const n =
+      (B64_ALPHABET.indexOf(clean[i]!) << 18) |
+      (B64_ALPHABET.indexOf(clean[i + 1]!) << 12) |
+      ((clean[i + 2] === '=' ? 0 : B64_ALPHABET.indexOf(clean[i + 2]!)) << 6) |
+      (clean[i + 3] === '=' ? 0 : B64_ALPHABET.indexOf(clean[i + 3]!));
+    out += String.fromCharCode((n >> 16) & 0xff);
+    if (clean[i + 2] !== '=') out += String.fromCharCode((n >> 8) & 0xff);
+    if (clean[i + 3] !== '=') out += String.fromCharCode(n & 0xff);
+  }
+  return out;
 }

@@ -192,10 +192,14 @@ service cloud.firestore {
       allow create: if signedIn()
         && id == uid()
         && request.resource.data.ownerUid == uid();
-      allow update, delete: if signedIn()
+      allow update: if signedIn()
         && id == uid()
         && resource.data.ownerUid == uid()
         && request.resource.data.ownerUid == uid();
+      // delete: request.resource is null — do not require request.resource.data
+      allow delete: if signedIn()
+        && id == uid()
+        && resource.data.ownerUid == uid();
     }
 
     match /weighStations/{id} {

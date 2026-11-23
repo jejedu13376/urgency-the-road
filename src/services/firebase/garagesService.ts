@@ -1,12 +1,12 @@
 import { addDoc, collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { MOCK_PLACES } from '../../data/mocks';
-import { getFirebase } from '../../firebase/config';
+import { getFirebase, getSignedInUid } from '../../firebase/config';
 import type { GarageDoc, GarageRatingDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
 import { FALLBACK_LAT, FALLBACK_LON, getDeviceCoords } from '../geo/deviceLocation';
 import { fetchNearbyAutoPlaces, withDistance } from '../osm/overpassPlaces';
 import { fetchPhotonAutoPlaces } from '../osm/photonPlaces';
-import { externalLiveResult, liveResult, mockResult, ServiceResult } from './result';
+import { externalLiveResult, failResult, liveResult, mockResult, ServiceResult } from './result';
 
 /** Aggregate Firestore garageRatings onto OSM/Photon docs by garageId (= OSM id). */
 async function joinGarageRatings(places: GarageDoc[]): Promise<GarageDoc[]> {
@@ -111,18 +111,22 @@ export async function listGaragesNearby(opts?: {
 
   const fb = getFirebase();
   if (fb) {
-    const snap = await getDocs(query(collection(fb.db, COLLECTIONS.garages), limit(50)));
-    if (!snap.empty) {
-      const places = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<GarageDoc, 'id'>) }));
-      const withDist = withDistance(places, lat, lon);
-      const distanceById: NearbyGaragesMeta['distanceById'] = {};
-      for (const p of withDist) {
-        distanceById[p.id] = { distanceKm: p.distanceKm, etaMin: p.etaMin };
+    try {
+      const snap = await getDocs(query(collection(fb.db, COLLECTIONS.garages), limit(50)));
+      if (!snap.empty) {
+        const places = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<GarageDoc, 'id'>) }));
+        const withDist = withDistance(places, lat, lon);
+        const distanceById: NearbyGaragesMeta['distanceById'] = {};
+        for (const p of withDist) {
+          distanceById[p.id] = { distanceKm: p.distanceKm, etaMin: p.etaMin };
+        }
+        return {
+          ...liveResult(places, `Garages Firestore LIVE · ${gpsLabel}`),
+          meta: { lat, lon, gpsLabel, distanceById },
+        };
       }
-      return {
-        ...liveResult(places, `Garages Firestore LIVE · ${gpsLabel}`),
-        meta: { lat, lon, gpsLabel, distanceById },
-      };
+    } catch {
+      // Fall through to mock — Firestore read failed
     }
   }
 
@@ -144,13 +148,22 @@ export async function listGaragesNearby(opts?: {
 export async function submitGarageRating(
   rating: Omit<GarageRatingDoc, 'id' | 'createdAt'>,
 ): Promise<ServiceResult<GarageRatingDoc>> {
+  const uid = getSignedInUid();
   const payload: GarageRatingDoc = {
     ...rating,
+    authorUid: uid ?? rating.authorUid,
     id: `rating-${Date.now()}`,
     createdAt: new Date().toISOString(),
   };
   const fb = getFirebase();
-  if (!fb) return mockResult(payload, 'MOCK garage rating — non syncé (hors Auth/Firebase)');
-  const ref = await addDoc(collection(fb.db, COLLECTIONS.garageRatings), payload);
-  return liveResult({ ...payload, id: ref.id });
+  if (!fb || !uid) {
+    return mockResult(payload, 'MOCK garage rating — Auth requise pour sync Firestore');
+  }
+  const owned = { ...payload, authorUid: uid };
+  try {
+    const ref = await addDoc(collection(fb.db, COLLECTIONS.garageRatings), owned);
+    return liveResult({ ...owned, id: ref.id });
+  } catch (e) {
+    return failResult(owned, e instanceof Error ? e.message : 'Note garage refusée');
+  }
 }

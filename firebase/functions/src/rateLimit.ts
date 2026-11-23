@@ -138,15 +138,8 @@ export async function assertWithinRateLimit(
   const now = Date.now();
   const day = utcDayKey();
 
-  await bumpCounter(db.collection('multiIaRateLimits').doc(uid), cfg, now, day, {
-    enforceWindow: true,
-    windowMax: cfg.maxPerWindow,
-    enforceDay: true,
-    dayMax: cfg.maxPerDay,
-    windowCode: 'rate/window',
-    dayCode: 'rate/daily',
-  });
-
+  // Order: IP → global → UID. Bumping UID first unfairly locked users out when a later
+  // IP/global check threw 429 (UID increment already committed).
   const ipKey = hashIp(clientIp ?? 'unknown');
   await bumpCounter(db.collection('multiIaRateLimits').doc(ipKey), cfg, now, day, {
     enforceWindow: true,
@@ -164,6 +157,15 @@ export async function assertWithinRateLimit(
     dayMax: cfg.globalMaxPerDay,
     windowCode: 'rate/global-window',
     dayCode: 'rate/global-daily',
+  });
+
+  await bumpCounter(db.collection('multiIaRateLimits').doc(uid), cfg, now, day, {
+    enforceWindow: true,
+    windowMax: cfg.maxPerWindow,
+    enforceDay: true,
+    dayMax: cfg.maxPerDay,
+    windowCode: 'rate/window',
+    dayCode: 'rate/daily',
   });
 
   return cfg;

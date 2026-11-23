@@ -110,20 +110,28 @@ export default function ProScreen() {
   };
 
   const addRating = async () => {
+    if (!profile?.uid) {
+      setMsg('Avis non syncé — connectez-vous (M15) pour écrire dans Firestore.');
+      return;
+    }
     const comment = rateComment.trim() || 'Sans commentaire';
     const stars = Math.min(5, Math.max(1, rateStars)) as 1 | 2 | 3 | 4 | 5;
     const res = await submitGarageRating({
       garageId,
-      authorUid: profile?.uid ?? 'client-demo',
+      authorUid: profile.uid,
       stars,
       comment,
     });
+    if (res.ok === false) {
+      setMsg(res.stubLabel ?? 'Avis refusé');
+      return;
+    }
     setRatings((prev) => [
       {
         id: res.data.id,
         stars: res.data.stars,
         comment: res.data.comment ?? comment,
-        client: profile?.displayName ?? 'Client démo',
+        client: profile.displayName ?? 'Client',
       },
       ...prev,
     ]);

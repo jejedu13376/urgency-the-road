@@ -39,7 +39,9 @@ export async function listFeedPosts(max = 40): Promise<ServiceResult<FeedPost[]>
       limit(Math.min(Math.max(max, 1), 80)),
     );
     const snap = await getDocs(q);
-    if (snap.empty) return mockResult(MOCK_FEED, 'MOCK fil — Firestore vide');
+    if (snap.empty) {
+      return liveResult([], 'Fil Firestore vide — aucun post (pas de mock silencieux)');
+    }
     const posts = snap.docs.map((d) => mapDoc(d.id, d.data() as Record<string, unknown>));
     return liveResult(posts);
   } catch (e) {

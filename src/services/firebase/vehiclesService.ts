@@ -14,7 +14,7 @@ import type { VehicleDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
 import type { VehicleProfile } from '../../types/vehicle';
 import { decodeVinNhtsa } from '../vin/nhtsaDecode';
-import { liveResult, mockResult, ServiceResult } from './result';
+import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { id?: string } {
   return {
@@ -65,10 +65,17 @@ export async function listVehicles(ownerUid: string): Promise<ServiceResult<Vehi
   const uid = getSignedInUid();
   if (!fb || !uid) return mockResult(MOCK_FLEET, 'MOCK vehicles — flotte locale (non connecté)');
 
-  const q = query(collection(fb.db, COLLECTIONS.vehicles), where('ownerUid', '==', uid));
-  const snap = await getDocs(q);
-  const list = snap.docs.map((d) => fromDoc({ id: d.id, ...(d.data() as Omit<VehicleDoc, 'id'>) }));
-  return liveResult(list);
+  try {
+    const q = query(collection(fb.db, COLLECTIONS.vehicles), where('ownerUid', '==', uid));
+    const snap = await getDocs(q);
+    const list = snap.docs.map((d) => fromDoc({ id: d.id, ...(d.data() as Omit<VehicleDoc, 'id'>) }));
+    return liveResult(list);
+  } catch (e) {
+    return failResult(
+      MOCK_FLEET,
+      e instanceof Error ? e.message : 'Lecture flotte refusée',
+    );
+  }
 }
 
 export async function upsertVehicle(
@@ -80,19 +87,27 @@ export async function upsertVehicle(
   if (!fb || !uid) return mockResult(vehicle, 'MOCK vehicles — upsert local (non connecté)');
 
   const payload = toDoc(vehicle, uid);
-  if (vehicle.id && !vehicle.id.startsWith('decoded-') && !vehicle.id.startsWith('cascade-')) {
-    await setDoc(doc(fb.db, COLLECTIONS.vehicles, vehicle.id), payload, { merge: true });
-    return liveResult(vehicle);
+  try {
+    if (vehicle.id && !vehicle.id.startsWith('decoded-') && !vehicle.id.startsWith('cascade-')) {
+      await setDoc(doc(fb.db, COLLECTIONS.vehicles, vehicle.id), payload, { merge: true });
+      return liveResult(vehicle);
+    }
+    const ref = await addDoc(collection(fb.db, COLLECTIONS.vehicles), payload);
+    return liveResult({ ...vehicle, id: ref.id });
+  } catch (e) {
+    return failResult(vehicle, e instanceof Error ? e.message : 'Upsert véhicule refusé');
   }
-  const ref = await addDoc(collection(fb.db, COLLECTIONS.vehicles), payload);
-  return liveResult({ ...vehicle, id: ref.id });
 }
 
 export async function removeVehicle(id: string): Promise<ServiceResult<null>> {
   const fb = getFirebase();
   if (!fb || !getSignedInUid()) return mockResult(null, 'MOCK vehicles — delete local');
-  await deleteDoc(doc(fb.db, COLLECTIONS.vehicles, id));
-  return liveResult(null);
+  try {
+    await deleteDoc(doc(fb.db, COLLECTIONS.vehicles, id));
+    return liveResult(null);
+  } catch (e) {
+    return failResult(null, e instanceof Error ? e.message : 'Suppression véhicule refusée');
+  }
 }
 
 /** VIN decode: NHTSA vPIC (free, no key) first; WMI mock fallback if network fails. */

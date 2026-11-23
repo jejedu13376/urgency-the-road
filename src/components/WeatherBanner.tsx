@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getDeviceCoords } from '../services/geo/deviceLocation';
 import { fetchWeather, type WeatherSnapshot } from '../services/weather/openMeteo';
 import { colors } from '../theme/colors';
 
@@ -15,8 +16,20 @@ export function WeatherBanner() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const snap = await fetchWeather();
-      if (!cancelled) setW(snap);
+      const coords = await getDeviceCoords({ allowFallback: true });
+      const lat = coords.data?.lat;
+      const lon = coords.data?.lon;
+      const snap = await fetchWeather(lat, lon);
+      const gpsBit =
+        coords.data?.source === 'device'
+          ? 'GPS appareil'
+          : coords.data?.label ?? 'GPS fallback Lille';
+      if (!cancelled) {
+        setW({
+          ...snap,
+          label: `${snap.label} · ${gpsBit}`,
+        });
+      }
     })();
     return () => {
       cancelled = true;

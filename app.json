@@ -12,7 +12,8 @@
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "Connexion à la valise diagnostic OBD (ELM327 / J1939).",
         "NSBluetoothPeripheralUsageDescription": "Connexion à la valise diagnostic OBD (ELM327 / J1939).",
-        "NSLocationWhenInUseUsageDescription": "Urgence Mécanique utilise votre position pour garages, balances et SOS."
+        "NSLocationWhenInUseUsageDescription": "Urgence Mécanique utilise votre position pour garages, balances et SOS.",
+        "NSFaceIDUsageDescription": "Urgence Mécanique utilise Face ID pour sécuriser l’accès au compte."
       }
     },
     "android": {
@@ -42,6 +43,18 @@
       "expo-status-bar",
       "expo-sharing",
       "expo-dev-client",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Urgence Mécanique utilise la caméra pour scanner le VIN et les QR urgence."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Urgence Mécanique utilise Face ID pour sécuriser l’accès au compte."
+        }
+      ],
       [
         "react-native-ble-plx",
         {

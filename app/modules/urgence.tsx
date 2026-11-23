@@ -55,11 +55,8 @@ export default function UrgenceScreen() {
   const [label, setLabel] = useState<string | undefined>();
   const [coords, setCoords] = useState<DeviceCoords | null>(null);
 
-  const subscriberActive = Boolean(
-    profile?.subscriptionActive ||
-      (profile?.subscription && profile.subscription !== 'free') ||
-      !profile, // demo local = treat as subscriber for QR mint
-  );
+  // Align with firestore.rules ownerIsActiveSubscriber — flag only, never plan name / !profile.
+  const subscriberActive = profile?.subscriptionActive === true;
 
   useEffect(() => {
     if (!driving) return;
