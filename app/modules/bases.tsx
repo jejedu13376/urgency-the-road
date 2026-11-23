@@ -14,6 +14,7 @@ type LearnEntry = {
   source: string;
   region: string;
   at: string;
+  tags?: string[];
 };
 
 const INITIAL_LOG: LearnEntry[] = [
@@ -23,6 +24,7 @@ const INITIAL_LOG: LearnEntry[] = [
     source: 'multi-IA + web',
     region: 'EU-FR',
     at: '2026-11-20T09:12:00Z',
+    tags: ['échappement', 'joint'],
   },
   {
     id: '2',
@@ -30,6 +32,7 @@ const INITIAL_LOG: LearnEntry[] = [
     source: 'TSB web',
     region: 'EU-DE',
     at: '2026-11-21T14:40:00Z',
+    tags: ['PL', 'AdBlue'],
   },
   {
     id: '3',
@@ -37,6 +40,15 @@ const INITIAL_LOG: LearnEntry[] = [
     source: 'recall constructeur',
     region: 'NA-CA',
     at: '2026-11-22T08:05:00Z',
+    tags: ['moteur', 'AAC'],
+  },
+  {
+    id: '4',
+    title: 'Régénération FAP forcée — TDI',
+    source: 'multi-IA + forum tech',
+    region: 'EU',
+    at: '2026-11-22T16:20:00Z',
+    tags: ['FAP', 'diesel'],
   },
 ];
 
@@ -45,8 +57,16 @@ export default function BasesScreen() {
   useModuleVisit(14);
   const [log, setLog] = useState<LearnEntry[]>(INITIAL_LOG);
   const [draft, setDraft] = useState('');
+  const [region, setRegion] = useState('local');
   const [sync, setSync] = useState<ReturnType<typeof stubOtaSync> | null>(null);
   const [otaStatus, setOtaStatus] = useState<'idle' | 'syncing' | 'a_jour' | 'echec'>('idle');
+  const [filter, setFilter] = useState<'all' | 'local' | 'web'>('all');
+
+  const visible = log.filter((l) => {
+    if (filter === 'local') return l.region === 'local' || l.source.includes('locale');
+    if (filter === 'web') return !l.source.includes('locale');
+    return true;
+  });
 
   const addLearned = () => {
     const title = draft.trim();
@@ -56,8 +76,9 @@ export default function BasesScreen() {
         id: `l-${Date.now()}`,
         title,
         source: 'session locale (enrichissement UI)',
-        region: 'local',
+        region,
         at: new Date().toISOString(),
+        tags: ['manuel'],
       },
       ...prev,
     ]);
@@ -97,8 +118,8 @@ export default function BasesScreen() {
             </Text>
           </View>
           <Text style={styles.meta}>
-            Bases véhicules, tarifs pièces et fonctionnalités — actualisation sans intervention complexe
-            (Android / iOS / desktop) une fois le canal OTA branché.
+            Bases véhicules, tarifs pièces et fonctionnalités — actualisation sans intervention
+            complexe (Android / iOS / desktop) une fois le canal OTA branché.
           </Text>
           <Pressable style={styles.btn} onPress={runOta} disabled={otaStatus === 'syncing'}>
             <Text style={styles.btnTxt}>
@@ -118,8 +139,22 @@ export default function BasesScreen() {
 
         <Card title="Journal d’auto-apprentissage">
           <Text style={styles.meta}>
-            Chaque panne résolue via Multi-IA + recherche web est enregistrée pour enrichir la base mondiale.
+            Chaque panne résolue via Multi-IA + recherche web est enregistrée pour enrichir la base
+            mondiale.
           </Text>
+          <View style={styles.filterRow}>
+            {(['all', 'web', 'local'] as const).map((f) => (
+              <Pressable
+                key={f}
+                style={[styles.chip, filter === f && styles.chipOn]}
+                onPress={() => setFilter(f)}
+              >
+                <Text style={[styles.chipTxt, filter === f && styles.chipTxtOn]}>
+                  {f === 'all' ? 'Toutes' : f === 'web' ? 'Web / TSB' : 'Local'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
           <TextInput
             value={draft}
             onChangeText={setDraft}
@@ -127,15 +162,30 @@ export default function BasesScreen() {
             placeholderTextColor={colors.muted}
             style={styles.input}
           />
+          <View style={styles.filterRow}>
+            {(['local', 'EU-FR', 'NA-CA', 'AU'] as const).map((r) => (
+              <Pressable
+                key={r}
+                style={[styles.chip, region === r && styles.chipOn]}
+                onPress={() => setRegion(r)}
+              >
+                <Text style={[styles.chipTxt, region === r && styles.chipTxtOn]}>{r}</Text>
+              </Pressable>
+            ))}
+          </View>
           <Pressable style={styles.btnDark} onPress={addLearned}>
             <Text style={styles.btnTxt}>Ajouter au journal local</Text>
           </Pressable>
-          {log.map((l) => (
+          <Text style={styles.count}>{visible.length} entrée(s)</Text>
+          {visible.map((l) => (
             <View key={l.id} style={styles.row}>
               <Text style={styles.title}>{l.title}</Text>
               <Text style={styles.meta}>
                 {l.source} · {l.region} · {new Date(l.at).toLocaleString('fr-FR')}
               </Text>
+              {l.tags?.length ? (
+                <Text style={styles.tags}>{l.tags.map((t) => `#${t}`).join(' ')}</Text>
+              ) : null}
             </View>
           ))}
         </Card>
@@ -148,6 +198,8 @@ const styles = StyleSheet.create({
   row: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.line },
   title: { fontWeight: '700', color: colors.ink },
   meta: { color: colors.muted, fontSize: 12 },
+  tags: { color: colors.signal, fontSize: 11, fontWeight: '700', marginTop: 2 },
+  count: { color: colors.slate, fontWeight: '700', fontSize: 12, marginTop: 8 },
   btn: { backgroundColor: colors.signal, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 8 },
   btnDark: { backgroundColor: colors.asphalt, borderRadius: 12, padding: 12, alignItems: 'center', marginTop: 8 },
   btnTxt: { color: colors.white, fontWeight: '800' },
@@ -176,4 +228,16 @@ const styles = StyleSheet.create({
   badgeWarn: { color: colors.warn, backgroundColor: colors.warnSoft },
   badgeBad: { color: colors.danger, backgroundColor: colors.dangerSoft },
   syncBox: { marginTop: 8, gap: 4 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  chip: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: colors.mist,
+  },
+  chipOn: { backgroundColor: colors.asphalt, borderColor: colors.asphalt },
+  chipTxt: { fontWeight: '700', color: colors.slate, fontSize: 11 },
+  chipTxtOn: { color: colors.white },
 });

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
@@ -18,25 +18,83 @@ type AdminReminder = {
   status: 'a_faire' | 'planifie' | 'fait';
 };
 
+type CarnetEntry = {
+  id: string;
+  title: string;
+  km: number;
+  dateIso: string;
+  cost?: number;
+  currency?: string;
+  invoiceRef?: string;
+};
+
 function adminRemindersForCountry(country?: string): AdminReminder[] {
   const c = (country ?? 'FR').toUpperCase();
   if (c === 'CA' || c === 'US') {
     return [
-      { id: 'adm-plaq', title: 'Renouvellement plaques / immatriculation', region: 'CA/US', dueDateIso: '2026-12-01', status: 'a_faire' },
-      { id: 'adm-ass', title: 'Assurance véhicule', region: 'CA/US', dueDateIso: '2026-11-30', status: 'planifie' },
-      { id: 'adm-insp', title: 'Inspection / safety check', region: 'CA/US', dueDateIso: '2027-02-15', status: 'planifie' },
+      {
+        id: 'adm-plaq',
+        title: 'Renouvellement plaques / immatriculation',
+        region: 'CA/US',
+        dueDateIso: '2026-12-01',
+        status: 'a_faire',
+      },
+      {
+        id: 'adm-ass',
+        title: 'Assurance véhicule',
+        region: 'CA/US',
+        dueDateIso: '2026-11-30',
+        status: 'planifie',
+      },
+      {
+        id: 'adm-insp',
+        title: 'Inspection / safety check',
+        region: 'CA/US',
+        dueDateIso: '2027-02-15',
+        status: 'planifie',
+      },
     ];
   }
   if (c === 'AU') {
     return [
-      { id: 'adm-rego', title: 'Rego (immatriculation AU)', region: 'AU', dueDateIso: '2026-10-01', status: 'a_faire' },
-      { id: 'adm-ctp', title: 'CTP / assurance obligatoire', region: 'AU', dueDateIso: '2026-10-01', status: 'a_faire' },
+      {
+        id: 'adm-rego',
+        title: 'Rego (immatriculation AU)',
+        region: 'AU',
+        dueDateIso: '2026-10-01',
+        status: 'a_faire',
+      },
+      {
+        id: 'adm-ctp',
+        title: 'CTP / assurance obligatoire',
+        region: 'AU',
+        dueDateIso: '2026-10-01',
+        status: 'a_faire',
+      },
     ];
   }
   return [
-    { id: 'adm-ct', title: 'Contrôle technique', region: 'EU-FR', dueDateIso: '2027-03-01', status: 'planifie' },
-    { id: 'adm-ass-eu', title: 'Assurance responsabilité civile', region: 'EU', dueDateIso: '2026-12-15', status: 'a_faire' },
-    { id: 'adm-carte', title: 'Carte grise / certificat', region: 'EU', dueDateIso: '2028-01-01', status: 'planifie' },
+    {
+      id: 'adm-ct',
+      title: 'Contrôle technique',
+      region: 'EU-FR',
+      dueDateIso: '2027-03-01',
+      status: 'planifie',
+    },
+    {
+      id: 'adm-ass-eu',
+      title: 'Assurance responsabilité civile',
+      region: 'EU',
+      dueDateIso: '2026-12-15',
+      status: 'a_faire',
+    },
+    {
+      id: 'adm-carte',
+      title: 'Carte grise / certificat',
+      region: 'EU',
+      dueDateIso: '2028-01-01',
+      status: 'planifie',
+    },
   ];
 }
 
@@ -53,13 +111,41 @@ function statusColor(s: string) {
   return colors.signal;
 }
 
+const INITIAL_CARNET: CarnetEntry[] = [
+  {
+    id: 'c1',
+    title: 'Vidange + filtre huile',
+    km: 62000,
+    dateIso: '2026-06-12',
+    cost: 189,
+    currency: 'EUR',
+    invoiceRef: 'FAC-2606-014',
+  },
+  {
+    id: 'c2',
+    title: 'Pneus avant (2×)',
+    km: 64800,
+    dateIso: '2026-09-03',
+    cost: 220,
+    currency: 'EUR',
+    invoiceRef: 'FAC-2609-088',
+  },
+];
+
 /** Module 10 — entretien prédictif, rappels admin localisés, carnet PDF (stub clair). */
 export default function EntretienScreen() {
   useModuleVisit(10);
   const { active } = useFleet();
   const km = active?.odometerKm ?? 0;
-  const [items, setItems] = useState<MaintenanceItem[]>(MOCK_MAINTENANCE);
+  const [items, setItems] = useState<MaintenanceItem[]>([
+    ...MOCK_MAINTENANCE,
+    { id: 'm5', title: 'Distribution / chaîne', dueKm: 120000, status: 'planifie' },
+    { id: 'm6', title: 'Pneus (usure / pression)', dueKm: 75000, status: 'a_faire' },
+  ]);
+  const [adminCountry, setAdminCountry] = useState(active?.country ?? 'FR');
   const [admin, setAdmin] = useState(() => adminRemindersForCountry(active?.country));
+  const [carnet, setCarnet] = useState<CarnetEntry[]>(INITIAL_CARNET);
+  const [newTitle, setNewTitle] = useState('');
   const [pdfMsg, setPdfMsg] = useState<string | null>(null);
   const [batteryV] = useState(12.6);
 
@@ -74,11 +160,31 @@ export default function EntretienScreen() {
   const cycleAdmin = (id: string) =>
     setAdmin((prev) =>
       prev.map((x) =>
-        x.id === id
-          ? { ...x, status: nextStatus(x.status) as AdminReminder['status'] }
-          : x,
+        x.id === id ? { ...x, status: nextStatus(x.status) as AdminReminder['status'] } : x,
       ),
     );
+
+  const switchCountry = (c: string) => {
+    setAdminCountry(c);
+    setAdmin(adminRemindersForCountry(c));
+  };
+
+  const addCarnet = () => {
+    const title = newTitle.trim();
+    if (!title) return;
+    setCarnet((prev) => [
+      {
+        id: `c-${Date.now()}`,
+        title,
+        km,
+        dateIso: new Date().toISOString().slice(0, 10),
+        cost: undefined,
+        currency: active?.currency ?? 'EUR',
+      },
+      ...prev,
+    ]);
+    setNewTitle('');
+  };
 
   const exportPdf = () => {
     setPdfMsg(
@@ -95,9 +201,10 @@ export default function EntretienScreen() {
       >
         <StubBanner text="STUB — export PDF certifié non branché ; rappels pays en règles locales mock" />
 
-        <Card title="Maintenance automatique">
+        <Card title="Maintenance automatique (km)">
           <Text style={styles.meta}>
-            Vidange, freins, distribution, pneus — selon kilométrage. Touchez pour faire défiler le statut.
+            Vidange, freins, distribution, pneus — selon kilométrage. Touchez pour faire défiler le
+            statut.
           </Text>
           {overdue.length > 0 ? (
             <View style={styles.alert}>
@@ -122,18 +229,18 @@ export default function EntretienScreen() {
           <Text style={styles.meta}>Batterie (suivi mock) : {batteryV.toFixed(1)} V — OK</Text>
         </Card>
 
-        <Card title={`Rappels administratifs · ${active?.country ?? 'FR'}`}>
+        <Card title={`Rappels administratifs · ${adminCountry}`}>
           <Text style={styles.meta}>
-            Plaques, assurance, contrôle technique / rego selon le pays du véhicule actif.
+            Plaques, assurance, contrôle technique / rego / inspection selon le pays.
           </Text>
           <View style={styles.regionRow}>
-            {(['FR', 'CA', 'US', 'AU'] as const).map((c) => (
+            {(['FR', 'CA', 'US', 'AU', 'DE'] as const).map((c) => (
               <Pressable
                 key={c}
-                style={[styles.chip, (active?.country ?? 'FR') === c && styles.chipOn]}
-                onPress={() => setAdmin(adminRemindersForCountry(c))}
+                style={[styles.chip, adminCountry === c && styles.chipOn]}
+                onPress={() => switchCountry(c)}
               >
-                <Text style={[styles.chipTxt, (active?.country ?? 'FR') === c && styles.chipTxtOn]}>{c}</Text>
+                <Text style={[styles.chipTxt, adminCountry === c && styles.chipTxtOn]}>{c}</Text>
               </Pressable>
             ))}
           </View>
@@ -152,9 +259,37 @@ export default function EntretienScreen() {
 
         <Card title="Carnet numérique">
           <Text style={styles.meta}>
-            Historique réparations / factures — {items.filter((i) => i.status === 'fait').length} entrée(s)
-            marquées « fait » dans cette session.
+            Historique réparations / factures — liste locale + entrées marquées « fait » (
+            {items.filter((i) => i.status === 'fait').length}).
           </Text>
+          <TextInput
+            value={newTitle}
+            onChangeText={setNewTitle}
+            placeholder="Ajouter une intervention…"
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+          />
+          <Pressable style={styles.btnDark} onPress={addCarnet}>
+            <Text style={styles.exportTxt}>Ajouter au carnet</Text>
+          </Pressable>
+          {carnet.map((e) => (
+            <View key={e.id} style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.name}>{e.title}</Text>
+                <Text style={styles.meta}>
+                  {e.dateIso} · {e.km.toLocaleString('fr-FR')} km
+                  {e.invoiceRef ? ` · ${e.invoiceRef}` : ''}
+                </Text>
+              </View>
+              {e.cost != null ? (
+                <Text style={styles.cost}>
+                  {e.cost} {e.currency}
+                </Text>
+              ) : (
+                <Text style={styles.meta}>—</Text>
+              )}
+            </View>
+          ))}
           <Pressable style={styles.export} onPress={exportPdf}>
             <Text style={styles.exportTxt}>Exporter carnet PDF</Text>
           </Pressable>
@@ -176,7 +311,30 @@ const styles = StyleSheet.create({
   name: { fontWeight: '700', color: colors.ink },
   meta: { color: colors.muted, fontSize: 12 },
   status: { fontWeight: '800', textTransform: 'uppercase', fontSize: 11 },
-  export: { backgroundColor: colors.asphalt, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 8 },
+  cost: { fontWeight: '800', color: colors.signal },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: colors.mist,
+    color: colors.ink,
+    marginTop: 6,
+  },
+  btnDark: {
+    backgroundColor: colors.asphalt,
+    borderRadius: 10,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  export: {
+    backgroundColor: colors.asphalt,
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
   exportTxt: { color: colors.white, fontWeight: '800' },
   pdfMsg: { color: colors.warn, fontWeight: '700', fontSize: 12, marginTop: 8 },
   alert: {

@@ -111,10 +111,11 @@ export default function ProScreen() {
 
   const addRating = async () => {
     const comment = rateComment.trim() || 'Sans commentaire';
+    const stars = Math.min(5, Math.max(1, rateStars)) as 1 | 2 | 3 | 4 | 5;
     const res = await submitGarageRating({
       garageId,
       authorUid: profile?.uid ?? 'client-demo',
-      stars: rateStars,
+      stars,
       comment,
     });
     setRatings((prev) => [

@@ -15,15 +15,46 @@ import {
 } from '../../src/services/youtube/youtubeSearch';
 import { colors } from '../../src/theme/colors';
 
+const EXTRA_TUTORIALS = [
+  {
+    id: 't3',
+    title: 'Remplacer filtre habitacle',
+    make: 'Ford',
+    model: 'F-150',
+    durationMin: 20,
+    steps: [
+      'Ouvrir boîte à gants / trappe filtre',
+      'Retirer l’ancien filtre',
+      'Noter le sens du flux d’air',
+      'Insérer le neuf et refermer',
+    ],
+  },
+  {
+    id: 't4',
+    title: 'Contrôle niveau AdBlue',
+    make: 'Mercedes-Benz',
+    model: 'Actros',
+    durationMin: 15,
+    steps: [
+      'Stationner à plat',
+      'Localiser trappe AdBlue',
+      'Lire niveau / jauge',
+      'Compléter si besoin (qualité ISO)',
+    ],
+  },
+];
+
 /** Module 11 — schémas locaux + suggestions YouTube (redirection, jamais de vidéo embarquée). */
 export default function TutorielsScreen() {
   useModuleVisit(11);
   const { active } = useFleet();
   const [query, setQuery] = useState('remplacer plaquettes de frein');
-  const [openId, setOpenId] = useState<string | null>(MOCK_TUTORIALS[0]?.id ?? null);
+  const tutorials = [...MOCK_TUTORIALS, ...EXTRA_TUTORIALS];
+  const [openId, setOpenId] = useState<string | null>(tutorials[0]?.id ?? null);
   const [yt, setYt] = useState<YoutubeVideoHit[]>([]);
   const [ytLabel, setYtLabel] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
+  const [stepDone, setStepDone] = useState<Record<string, boolean>>({});
 
   const load = useCallback(
     async (problem: string) => {
@@ -51,6 +82,9 @@ export default function TutorielsScreen() {
     const q = encodeURIComponent([active?.make, active?.model, query].filter(Boolean).join(' '));
     void Linking.openURL(`https://www.youtube.com/results?search_query=${q}`);
   };
+
+  const toggleStep = (key: string) =>
+    setStepDone((prev) => ({ ...prev, [key]: !prev[key] }));
 
   return (
     <>
@@ -80,13 +114,18 @@ export default function TutorielsScreen() {
           </View>
         </Card>
 
-        <Card title="Suggestions YouTube">
+        <Card title="Suggestions YouTube (redirection)">
+          <Text style={styles.meta}>
+            Aucun lecteur intégré — chaque suggestion ouvre YouTube (Watch ou recherche).
+          </Text>
           <YoutubeSuggestions items={yt} statusLabel={ytLabel} />
         </Card>
 
         <Card title="Schémas / étapes (texte local)">
-          <Text style={styles.meta}>Montage côté app en texte — pas de lecteur vidéo intégré.</Text>
-          {MOCK_TUTORIALS.map((t) => (
+          <Text style={styles.meta}>
+            Montage côté app en texte — cochez les étapes. Pas de lecteur vidéo intégré.
+          </Text>
+          {tutorials.map((t) => (
             <View key={t.id} style={styles.tut}>
               <Text style={styles.tutTitle}>{t.title}</Text>
               <Text style={styles.meta}>
@@ -97,11 +136,20 @@ export default function TutorielsScreen() {
               </Pressable>
               {openId === t.id ? (
                 <View style={styles.steps}>
-                  {t.steps.map((s, i) => (
-                    <Text key={s} style={styles.step}>
-                      {i + 1}. {s}
-                    </Text>
-                  ))}
+                  {t.steps.map((s, i) => {
+                    const key = `${t.id}-${i}`;
+                    const done = !!stepDone[key];
+                    return (
+                      <Pressable key={key} style={styles.stepRow} onPress={() => toggleStep(key)}>
+                        <Text style={[styles.stepCheck, done && styles.stepCheckOn]}>
+                          {done ? '✓' : '○'}
+                        </Text>
+                        <Text style={[styles.step, done && styles.stepDone]}>
+                          {i + 1}. {s}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
               ) : null}
               <Pressable
@@ -138,6 +186,10 @@ const styles = StyleSheet.create({
   link: { color: colors.signal, fontWeight: '800', marginTop: 4 },
   tut: { gap: 4, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.line },
   tutTitle: { fontWeight: '800', color: colors.ink },
-  steps: { gap: 4, backgroundColor: colors.mist, borderRadius: 8, padding: 10, marginTop: 4 },
-  step: { color: colors.slate },
+  steps: { gap: 6, backgroundColor: colors.mist, borderRadius: 8, padding: 10, marginTop: 4 },
+  stepRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+  stepCheck: { fontWeight: '900', color: colors.muted, width: 16 },
+  stepCheckOn: { color: colors.garage },
+  step: { color: colors.slate, flex: 1 },
+  stepDone: { textDecorationLine: 'line-through', color: colors.muted },
 });

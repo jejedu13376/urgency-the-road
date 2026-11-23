@@ -10,8 +10,9 @@ import { colors } from '../../src/theme/colors';
 type FlagKey =
   | 'multiIa'
   | 'obdLive'
-  | 'lydia'
   | 'stripe'
+  | 'paypal'
+  | 'appleGooglePay'
   | 'filVideo'
   | 'gpsPl'
   | 'rescuerScan'
@@ -70,8 +71,9 @@ export default function AdminScreen() {
   const [flags, setFlags] = useState<Record<FlagKey, boolean>>({
     multiIa: false,
     obdLive: false,
-    lydia: false,
     stripe: true,
+    paypal: true,
+    appleGooglePay: true,
     filVideo: true,
     gpsPl: true,
     rescuerScan: true,
@@ -197,7 +199,7 @@ export default function AdminScreen() {
         </Card>
 
         <Card title="Abonnements (supervision M15)">
-          <Text style={styles.line}>• Particulier / Routier Pro / Flotte — Lydia + Stripe labels</Text>
+          <Text style={styles.line}>• Particulier / Routier Pro / Flotte — Stripe · PayPal · Apple/Google Pay</Text>
           <Text style={styles.line}>• Secours : abo actif obligatoire pour scan fiche (M13)</Text>
           <Text style={styles.line}>• Pro : KYC atelier avant réservation en ligne</Text>
         </Card>

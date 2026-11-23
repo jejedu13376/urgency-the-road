@@ -11,9 +11,12 @@ import { MOCK_PLANS } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { signInEmail, signUpEmail } from '../../src/services/firebase';
 import {
+  isMethodConfigured,
   isPaymentsConfigured,
+  PAYMENT_METHODS,
   paymentsStatusLabel,
   startCheckout,
+  type PaymentMethod,
 } from '../../src/services/payments/paymentsService';
 import { colors } from '../../src/theme/colors';
 
@@ -27,7 +30,7 @@ function validatePassword(pw: string) {
   };
 }
 
-/** Module 15 — inscription, biométrie, abonnements (paiement sans faux succès). */
+/** Module 15 — Auth, bio, abonnements : Stripe · PayPal · Apple Pay · Google Pay (pas de Lydia). */
 export default function CompteScreen() {
   useModuleVisit(15);
   const { refresh, profile } = useAuth();
@@ -39,6 +42,7 @@ export default function CompteScreen() {
   const [pay, setPay] = useState<string | null>(null);
   const [authMsg, setAuthMsg] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
+  const [method, setMethod] = useState<PaymentMethod>('stripe_card');
 
   const tryBio = async () => {
     const has = await LocalAuthentication.hasHardwareAsync();
@@ -60,7 +64,7 @@ export default function CompteScreen() {
 
   const payPlan = async (planId: string) => {
     setPaying(true);
-    const r = await startCheckout(planId);
+    const r = await startCheckout(planId, method);
     setPaying(false);
     setPay(r.message);
   };
@@ -137,18 +141,37 @@ export default function CompteScreen() {
             <Text style={styles.btnTxt}>Empreinte / Face ID</Text>
           </Pressable>
           {bio ? <Text style={styles.msg}>{bio}</Text> : null}
+        </Card>
+
+        <Card title="Moyens de paiement">
           <Text style={styles.meta}>
-            Chiffrement bout-en-bout : engagement produit (couche crypto à brancher côté backend).
+            Stripe (cartes) · PayPal · Apple Pay · Google Pay — pas de Lydia.
+            {!isPaymentsConfigured()
+              ? ' Aucun succès simulé tant que les URLs / clés ne sont pas dans .env.'
+              : ''}
           </Text>
+          <View style={styles.methods}>
+            {PAYMENT_METHODS.map((m) => {
+              const on = method === m.id;
+              const ready = isMethodConfigured(m.id);
+              return (
+                <Pressable
+                  key={m.id}
+                  style={[styles.method, on && styles.methodOn]}
+                  onPress={() => setMethod(m.id)}
+                >
+                  <Text style={[styles.methodTitle, on && styles.methodTitleOn]}>{m.label}</Text>
+                  <Text style={[styles.methodHint, on && styles.methodHintOn]}>
+                    {m.hint}
+                    {ready ? ' · prêt' : ' · .env requis'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </Card>
 
         <Card title="Formules d’abonnement">
-          <Text style={styles.meta}>
-            Particulier · Routier Pro · Flotte — Lydia / Stripe / Apple Pay / Google Pay.
-            {!isPaymentsConfigured()
-              ? ' Paiement refusé tant que les clés ne sont pas configurées (aucun succès simulé).'
-              : ' Clés présentes ; SDK checkout encore à brancher.'}
-          </Text>
           {MOCK_PLANS.map((p) => (
             <View key={p.id} style={styles.plan}>
               <Text style={styles.planName}>
@@ -160,12 +183,16 @@ export default function CompteScreen() {
                 disabled={paying}
                 onPress={() => void payPlan(p.id)}
               >
-                <Text style={styles.btnTxt}>{paying ? 'Vérification…' : 'Payer (Lydia / Stripe)'}</Text>
+                <Text style={styles.btnTxt}>
+                  {paying
+                    ? 'Ouverture…'
+                    : `Payer · ${PAYMENT_METHODS.find((x) => x.id === method)?.label ?? method}`}
+                </Text>
               </Pressable>
             </View>
           ))}
           {pay ? (
-            <Text style={[styles.msg, isPaymentsConfigured() ? styles.ok : styles.bad]}>{pay}</Text>
+            <Text style={[styles.msg, isMethodConfigured(method) ? styles.ok : styles.bad]}>{pay}</Text>
           ) : null}
         </Card>
       </Screen>
@@ -190,6 +217,19 @@ const styles = StyleSheet.create({
   bad: { color: colors.danger },
   meta: { color: colors.muted, fontSize: 12 },
   rule: { color: colors.slate, fontSize: 12, fontWeight: '600' },
+  methods: { gap: 8, marginTop: 8 },
+  method: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: colors.mist,
+  },
+  methodOn: { backgroundColor: colors.asphalt, borderColor: colors.asphalt },
+  methodTitle: { fontWeight: '800', color: colors.ink },
+  methodTitleOn: { color: colors.white },
+  methodHint: { color: colors.muted, fontSize: 11, marginTop: 2 },
+  methodHintOn: { color: '#C5D2DE' },
   plan: { gap: 6, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.line },
   planName: { fontWeight: '800', color: colors.ink },
   pay: { backgroundColor: colors.garage, borderRadius: 8, padding: 10, alignItems: 'center' },
