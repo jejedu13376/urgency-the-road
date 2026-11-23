@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { Link, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
 import { useAuth } from '../../context/AuthContext';
@@ -228,6 +228,14 @@ export function GpsFullMap() {
   const placesConfigured = isGooglePlacesConfigured();
   const [destSelection, setDestSelection] = useState<GpsDestinationSelection | null>(null);
   const [destMenuOpen, setDestMenuOpen] = useState(false);
+  /** Post-trip CTA → voice logbook (carnet vocal). */
+  const [tripEnded, setTripEnded] = useState<{
+    lat: number;
+    lon: number;
+    mode: GpsVehicleMode;
+    label?: string;
+  } | null>(null);
+  const destLabelRef = useRef<string | undefined>(undefined);
 
   const chromePads = useMemo<ChromePads>(
     () => ({
@@ -657,6 +665,7 @@ export function GpsFullMap() {
       }
 
       if (msg.type === 'navigating' && msg.to) {
+        setTripEnded(null);
         setHudNote(
           msg.mode === 'camion'
             ? 'Navigation camion — marqueur = GPS live (pas de démo polyline)'
@@ -665,12 +674,22 @@ export function GpsFullMap() {
         return;
       }
 
-      if (msg.type === 'arrived') {
-        setHudNote('Arrivée — GPS live toujours actif');
+      if (msg.type === 'arrived' && msg.to) {
+        setTripEnded({
+          lat: msg.to.lat,
+          lon: msg.to.lon,
+          mode: msg.mode,
+          label: destLabelRef.current,
+        });
+        setHudNote('Arrivée — note vocale trajet dispo');
       }
     },
     [gpsOk, injectRoute, setMapOrigin, refreshLayers, injectLayers],
   );
+
+  useEffect(() => {
+    if (destSelection?.label) destLabelRef.current = destSelection.label;
+  }, [destSelection?.label]);
 
   const onMessage = useCallback(
     (ev: WebViewMessageEvent) => {
@@ -1056,6 +1075,48 @@ export function GpsFullMap() {
         </View>
       ) : null}
 
+      {tripEnded ? (
+        <View
+          style={[
+            styles.voiceCtaWrap,
+            {
+              top: chromePads.padTop + (hudNote ? 220 : 152),
+              left: chromePads.padLeft + 4,
+              right: chromePads.padRight + 4,
+            },
+          ]}
+        >
+          <Link
+            href={{
+              pathname: '/modules/carnet-vocal',
+              params: {
+                label: tripEnded.label ?? '',
+                lat: String(tripEnded.lat),
+                lon: String(tripEnded.lon),
+                mode: tripEnded.mode,
+              },
+            }}
+            asChild
+          >
+            <Pressable
+              style={styles.voiceCta}
+              accessibilityLabel="Ouvrir carnet vocal après trajet"
+            >
+              <Text style={styles.voiceCtaTxt}>
+                Note vocale après trajet →
+              </Text>
+            </Pressable>
+          </Link>
+          <Pressable
+            style={styles.voiceCtaDismiss}
+            onPress={() => setTripEnded(null)}
+            accessibilityLabel="Fermer invitation note vocale"
+          >
+            <Text style={styles.voiceCtaDismissTxt}>✕</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <GpsDestinationMenu
         visible={destMenuOpen}
         destination={destSelection}
@@ -1155,6 +1216,28 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   noteTxt: { color: colors.white, fontSize: 11, fontWeight: '600', lineHeight: 15 },
+  voiceCtaWrap: {
+    position: 'absolute',
+    zIndex: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  voiceCta: {
+    flex: 1,
+    backgroundColor: colors.signal,
+    borderRadius: 11,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  voiceCtaTxt: { color: colors.white, fontWeight: '800', fontSize: 13 },
+  voiceCtaDismiss: {
+    backgroundColor: 'rgba(16,24,32,0.88)',
+    borderRadius: 11,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  voiceCtaDismissTxt: { color: colors.white, fontWeight: '800', fontSize: 13 },
   reportRow: {
     position: 'absolute',
     flexDirection: 'row',

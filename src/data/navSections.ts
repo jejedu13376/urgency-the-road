@@ -54,6 +54,13 @@ export const NAV_SECTIONS: NavSection[] = [
         href: '/(tabs)/carte',
         moduleTag: 'M7',
       },
+      {
+        id: 'mv-voice',
+        title: 'Carnet vocal trajets',
+        short: 'Notes micro après arrivée · partage routiers',
+        href: '/modules/carnet-vocal',
+        moduleTag: 'M7+',
+      },
     ],
   },
   {
