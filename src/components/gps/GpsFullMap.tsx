@@ -188,6 +188,8 @@ export function GpsFullMap() {
   const lastWatchRef = useRef<{ lat: number; lon: number } | null>(null);
   /** Booted on France overview — first live tick must setMapOrigin (pan+zoom), not only move marker. */
   const recoveryRecenterRef = useRef(false);
+  /** Leaflet posted `ready` — setMapOrigin before this is dropped. */
+  const mapReadyRef = useRef(false);
   const lastLayersRef = useRef<{
     bridges: unknown[];
     weigh: unknown[];
@@ -436,9 +438,15 @@ export function GpsFullMap() {
               prev && /GPS appareil|GPS timeout|localisation/i.test(prev) ? null : prev,
             );
             if (recoveryRecenterRef.current) {
-              // Left France overview (or failed boot) — pan+zoom to live fix once.
-              recoveryRecenterRef.current = false;
-              setMapOrigin(pos.lat, pos.lon, true);
+              // Left France overview — pan+zoom once the map document is ready.
+              // Clearing the flag before ready drops setMapOrigin (iframe/WebView).
+              if (mapReadyRef.current) {
+                recoveryRecenterRef.current = false;
+                setMapOrigin(pos.lat, pos.lon, true);
+                return;
+              }
+              // Keep recovery flag; `ready` handler will setMapOrigin from lastWatchRef.
+              injectLivePosition(pos.lat, pos.lon, true, pos.headingDeg, pos.speedMps);
               return;
             }
             injectLivePosition(pos.lat, pos.lon, true, pos.headingDeg, pos.speedMps);
@@ -520,12 +528,18 @@ export function GpsFullMap() {
       if (!msg) return;
 
       if (msg.type === 'ready') {
+        mapReadyRef.current = true;
         setMapReady(true);
         if (msg.mode === 'voiture' || msg.mode === 'camion') setModeLabel(msg.mode);
         // Reinject any layers that raced before Leaflet boot — do NOT Overpass
         // around France overview; refreshLayers waits for real gpsOk.
         const cached = lastLayersRef.current;
         if (cached) injectLayers(cached);
+        // Live GPS may have arrived before Leaflet ready — pan+zoom now.
+        if (recoveryRecenterRef.current && lastWatchRef.current) {
+          recoveryRecenterRef.current = false;
+          setMapOrigin(lastWatchRef.current.lat, lastWatchRef.current.lon, true);
+        }
         return;
       }
 
