@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { MOCK_FEED } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
+import { createTextFeedPost, listFeedPosts } from '../../src/services/firebase/feedService';
 import type { FeedPost } from '../../src/types/modules';
 import { colors } from '../../src/theme/colors';
 
@@ -30,30 +31,47 @@ export default function FilMecaniqueScreen() {
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [liked, setLiked] = useState<Record<string, boolean>>({});
   const [captionDraft, setCaptionDraft] = useState('');
+  const [feedLabel, setFeedLabel] = useState<string | undefined>();
+
+  const loadFeed = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const res = await listFeedPosts(40);
+      if (res.data?.length) setPosts(res.data);
+      setFeedLabel(
+        res.stubLabel ?? (res.source === 'firebase' ? 'Fil Firestore LIVE' : undefined),
+      );
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadFeed();
+  }, [loadFeed]);
 
   const onRefresh = () => {
-    setRefreshing(true);
-    setTimeout(() => {
-      setPosts((p) => [
-        {
-          id: `fp-${Date.now()}`,
-          author: 'Fil live (mock)',
-          title: 'Actualisation rapide',
-          caption: 'Nouveau conseil après pull-to-refresh — structure réseau social mécanique.',
-          likes: 0,
-          comments: 0,
-          createdAt: new Date().toISOString(),
-        },
-        ...p,
-      ]);
-      setRefreshing(false);
-    }, 500);
+    void loadFeed();
   };
 
   const tryUpload = () => {
     setUploadMsg(
       'Publication vidéo non branchée — aucun upload réussi. Branchez stockage / CDN avant d’envoyer des clips. Aucune vidéo stockée dans l’app.',
     );
+  };
+
+  const publishCaption = async () => {
+    if (!captionDraft.trim()) return;
+    const res = await createTextFeedPost({
+      title: 'Conseil mécanique',
+      caption: captionDraft.trim(),
+      authorName: 'Vous',
+    });
+    setUploadMsg(res.stubLabel ?? (res.ok ? 'Publié' : 'Échec publication'));
+    if (res.data) {
+      setPosts((p) => [res.data as FeedPost, ...p]);
+      setCaptionDraft('');
+    }
   };
 
   const toggleLike = (id: string) => {
@@ -86,7 +104,8 @@ export default function FilMecaniqueScreen() {
       refreshing={refreshing}
       onRefresh={onRefresh}
     >
-      <StubBanner text="STUB — upload vidéo / CDN non branchés ; commentaires & likes locaux uniquement" />
+      <StubBanner text="Texte Firestore LIVE si Auth ; upload vidéo / CDN encore stub" />
+      {feedLabel ? <Text style={styles.meta}>{feedLabel}</Text> : null}
 
       <Pressable style={styles.refreshBar} onPress={onRefresh}>
         <Text style={styles.refreshTxt}>
@@ -96,23 +115,23 @@ export default function FilMecaniqueScreen() {
 
       <Card title="Publier une réparation">
         <Text style={styles.meta}>
-          Conducteurs et garagistes : partagez pannes, conseils et clips. Aucune vidéo stockée tant
-          que l’upload n’est pas configuré.
+          Conducteurs et garagistes : partagez pannes, conseils et clips. Vidéo = CDN à brancher ;
+          légende texte sync Firestore quand connecté.
         </Text>
         <TextInput
           value={captionDraft}
           onChangeText={setCaptionDraft}
-          placeholder="Légende (optionnelle)…"
+          placeholder="Légende / conseil…"
           placeholderTextColor={colors.muted}
           style={styles.input}
         />
+        <Pressable style={styles.send} onPress={() => void publishCaption()}>
+          <Text style={styles.uploadTxt}>Publier le texte</Text>
+        </Pressable>
         <Pressable style={styles.upload} onPress={tryUpload}>
-          <Text style={styles.uploadTxt}>Choisir une vidéo (stub)</Text>
+          <Text style={styles.uploadTxt}>Choisir une vidéo (stub CDN)</Text>
         </Pressable>
         {uploadMsg ? <Text style={styles.warn}>{uploadMsg}</Text> : null}
-        {captionDraft ? (
-          <Text style={styles.meta}>Légende prête — upload bloqué tant que le CDN n’est pas branché.</Text>
-        ) : null}
       </Card>
 
       {posts.map((p) => (

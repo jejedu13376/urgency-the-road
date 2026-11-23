@@ -7,6 +7,7 @@ import { StubBanner } from '../../src/components/StubBanner';
 import { YoutubeSuggestions } from '../../src/components/YoutubeSuggestions';
 import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
+import { runMultiIaDiagnostic } from '../../src/services/ai/multiIaRouter';
 import { stubAcoustic, stubAiDiagnose } from '../../src/services/stubs';
 import { searchYoutubeVideos, type YoutubeVideoHit } from '../../src/services/youtube/youtubeSearch';
 import { colors } from '../../src/theme/colors';
@@ -288,11 +289,16 @@ export default function DiagnosticIaScreen() {
             style={styles.btn}
             onPress={() => {
               const problem = note || 'panne inconnue';
-              const r = stubAiDiagnose(problem);
-              setFreeResult(
-                `${r.label}\n${r.data.summary}\nOutils mock · budget estimé 120–380 ${active?.currency ?? 'EUR'}`,
-              );
-              void loadYoutube(problem);
+              void (async () => {
+                const ctx = active
+                  ? `${active.make} ${active.model} ${active.year} ${active.vin ?? ''}`
+                  : '';
+                const r = await runMultiIaDiagnostic({ prompt: problem, context: ctx });
+                setFreeResult(
+                  `${r.label}\n${r.consensus}\nPièces: ${r.likelyParts.join(', ') || '—'}\nBudget indicatif 120–380 ${active?.currency ?? 'EUR'}`,
+                );
+                void loadYoutube(problem);
+              })();
             }}
           >
             <Text style={styles.btnTxt}>Lancer diagnostic</Text>

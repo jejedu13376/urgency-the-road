@@ -23,15 +23,16 @@ export function stubObdConnect(): StubResult<{ connected: false; protocol: strin
   };
 }
 
+/** @deprecated Prefer `runMultiIaDiagnostic` from `services/ai/multiIaRouter`. */
 export function stubAiDiagnose(prompt: string): StubResult<{ summary: string; models: string[] }> {
   return {
     ok: true,
     data: {
-      summary: `Analyse mock pour « ${prompt.slice(0, 80)} » — croisement multi-IA non connecté.`,
-      models: ['Claude*', 'Gemini*', 'GPT-4o*', 'Grok*', 'Mistral*', 'DeepSeek*'],
+      summary: `Délègue au routeur Multi-IA pour « ${prompt.slice(0, 80)} » — utiliser runMultiIaDiagnostic.`,
+      models: ['Claude', 'Gemini', 'GPT-4o', 'Grok', 'Mistral', 'DeepSeek'],
     },
     stub: true,
-    label: 'STUB IA — réponses mock, pas de Claude/GPT/Gemini live',
+    label: 'Multi-IA — utiliser runMultiIaDiagnostic (heuristique + live optionnel)',
   };
 }
 
@@ -44,6 +45,7 @@ export function stubPayment(planId: string): StubResult<{ checkoutUrl: null; pla
   };
 }
 
+/** @deprecated Prefer `fetchWeather` from `services/weather/openMeteo`. */
 export function stubWeather(): StubResult<{
   tempC: number;
   road: 'ouvertes' | 'fermees' | 'glacees';
@@ -57,7 +59,7 @@ export function stubWeather(): StubResult<{
       updatedAt: new Date().toISOString(),
     },
     stub: true,
-    label: 'STUB météo — valeurs locales mock',
+    label: 'Météo — utiliser fetchWeather (Open-Meteo live)',
   };
 }
 

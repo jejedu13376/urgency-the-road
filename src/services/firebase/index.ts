@@ -13,5 +13,7 @@ export * from './quotesService';
 export * from './insuranceService';
 export * from './appointmentsService';
 export * from './youtubeService';
+export * from './feedService';
+export * from './learnedFailuresService';
 
 export { firebaseStatusLabel, isFirebaseConfigured, getFirebase } from '../../firebase/config';

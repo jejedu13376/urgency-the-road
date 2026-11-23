@@ -8,45 +8,19 @@ import { StubBanner } from '../../src/components/StubBanner';
 import { YoutubeSuggestions } from '../../src/components/YoutubeSuggestions';
 import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
-import { stubAiDiagnose } from '../../src/services/stubs';
+import {
+  listIaEngines,
+  runMultiIaDiagnostic,
+  type IaEngineId,
+} from '../../src/services/ai/multiIaRouter';
+import { recordLearnedFailure } from '../../src/services/firebase/learnedFailuresService';
+import { fetchRecallsByVehicle, type RecallHit } from '../../src/services/recalls/nhtsaRecalls';
 import { searchYoutubeVideos, type YoutubeVideoHit } from '../../src/services/youtube/youtubeSearch';
 import { colors } from '../../src/theme/colors';
 
-const ALL_MODELS = ['Claude', 'Gemini', 'GPT-4o', 'Grok', 'Mistral', 'DeepSeek'] as const;
+const ALL_MODELS = listIaEngines();
 
 type ChatMsg = { role: 'user' | 'assistant'; text: string; at: string };
-
-type RecallStub = {
-  id: string;
-  title: string;
-  source: string;
-  severity: 'info' | 'warn' | 'critique';
-  region: string;
-};
-
-const RECALL_STUBS: RecallStub[] = [
-  {
-    id: 'r1',
-    title: 'Rappel freinage — plaquettes / étriers (mock TSB)',
-    source: 'TSB constructeur (web stub)',
-    severity: 'warn',
-    region: 'EU / NA',
-  },
-  {
-    id: 'r2',
-    title: 'Bulletin AdBlue / NOx — calibrage logiciel PL',
-    source: 'Recall mock SAE',
-    severity: 'critique',
-    region: 'EU',
-  },
-  {
-    id: 'r3',
-    title: 'Disponibilité pièce OEM — délai 3–7 j (mock stock)',
-    source: 'Recherche web pièces',
-    severity: 'info',
-    region: 'Monde',
-  },
-];
 
 /** Module 6 — multi-IA conversationnelle + YouTube suggestions. */
 export default function MultiIaScreen() {
@@ -62,44 +36,76 @@ export default function MultiIaScreen() {
   const [yt, setYt] = useState<YoutubeVideoHit[]>([]);
   const [ytLabel, setYtLabel] = useState<string | undefined>();
   const [recallsVisible, setRecallsVisible] = useState(true);
+  const [recalls, setRecalls] = useState<RecallHit[]>([]);
+  const [recallLabel, setRecallLabel] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
 
-  const activeModels = ALL_MODELS.filter((m) => enabled[m]);
+  const activeModels = ALL_MODELS.filter((m) => enabled[m]) as IaEngineId[];
 
   const run = async () => {
     const prompt = q.trim();
-    if (!prompt) return;
-    const ctx = [
-      active?.vin ? `VIN ${active.vin}` : null,
-      active ? `${active.make} ${active.model} ${active.year}` : null,
-      active?.vehicleClass,
-    ]
-      .filter(Boolean)
-      .join(' · ');
-    const r = stubAiDiagnose(ctx ? `${prompt} | ctx:${ctx}` : prompt);
-    const modelsLine = activeModels.length ? activeModels.join(', ') : 'aucun (réactivez un moteur)';
-    const text = [
-      r.label,
-      `Routeur mock — moteurs croisés : ${modelsLine}`,
-      ctx ? `Contexte flotte : ${ctx}` : 'Aucun véhicule actif — résultats génériques.',
-      'Web live recalls/TSB : stubs locaux (pas d’API constructeur).',
-      r.data.summary,
-      'Pistes : catalogue pièces (M3), OBD (M5), tutoriels YouTube (M11).',
-    ].join('\n');
-    setOut(text);
-    const now = new Date().toISOString();
-    setChat((prev) => [
-      ...prev,
-      { role: 'user', text: prompt, at: now },
-      { role: 'assistant', text, at: now },
-    ]);
-    const searchQ = [active?.make, active?.model, prompt].filter(Boolean).join(' ');
-    const ytRes = await searchYoutubeVideos(searchQ || prompt, 5);
-    setYt(ytRes.items);
-    setYtLabel(
-      ytRes.ok
-        ? `YouTube API HTTP ${ytRes.httpStatus} · ${ytRes.items.length} résultat(s)`
-        : ytRes.error ?? `YouTube HTTP ${ytRes.httpStatus}`,
-    );
+    if (!prompt || busy) return;
+    setBusy(true);
+    try {
+      const ctx = [
+        active?.vin ? `VIN ${active.vin}` : null,
+        active ? `${active.make} ${active.model} ${active.year}` : null,
+        active?.vehicleClass,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      const modelsLine = activeModels.length
+        ? activeModels.join(', ')
+        : 'aucun (réactivez un moteur)';
+      const [diag, recallRes, ytRes] = await Promise.all([
+        runMultiIaDiagnostic({ prompt, context: ctx, enabled: activeModels }),
+        fetchRecallsByVehicle({
+          make: active?.make,
+          model: active?.model,
+          year: active?.year,
+        }),
+        searchYoutubeVideos(
+          [active?.make, active?.model, prompt].filter(Boolean).join(' ') || prompt,
+          5,
+        ),
+      ]);
+      setRecalls(recallRes.items);
+      setRecallLabel(recallRes.label);
+      const engineLines = diag.engines
+        .map((e) => `· ${e.engine} [${e.source}/${e.latencyMs}ms]: ${e.summary}`)
+        .join('\n');
+      const text = [
+        diag.label,
+        `Moteurs : ${modelsLine}`,
+        ctx ? `Contexte flotte : ${ctx}` : 'Aucun véhicule actif — résultats génériques.',
+        diag.consensus,
+        engineLines,
+        recallRes.label,
+        'Pistes : catalogue pièces (M3), OBD (M5), tutoriels YouTube (M11).',
+      ].join('\n');
+      setOut(text);
+      const now = new Date().toISOString();
+      setChat((prev) => [
+        ...prev,
+        { role: 'user', text: prompt, at: now },
+        { role: 'assistant', text, at: now },
+      ]);
+      setYt(ytRes.items);
+      setYtLabel(
+        ytRes.ok
+          ? `YouTube ${ytRes.source} HTTP ${ytRes.httpStatus} · ${ytRes.items.length} résultat(s)${ytRes.cached ? ' · cache' : ''}`
+          : ytRes.error ?? `YouTube HTTP ${ytRes.httpStatus}`,
+      );
+      void recordLearnedFailure({
+        summary: diag.consensus.slice(0, 400),
+        likelyParts: diag.likelyParts,
+        make: active?.make,
+        model: active?.model,
+        vin: active?.vin,
+      });
+    } finally {
+      setBusy(false);
+    }
   };
 
   const speak = () => {
@@ -121,11 +127,12 @@ export default function MultiIaScreen() {
     <>
       <Stack.Screen options={{ title: 'Multi-IA' }} />
       <Screen title="Routeur multi-IA" subtitle="Module 6 — coach vocal + chat + YouTube">
-        <StubBanner text="STUB IA — multi-modèles mock ; YouTube Data API si EXPO_PUBLIC_YOUTUBE_API_KEY" />
+        <StubBanner text="Multi-IA : heuristique croisée live ; proxy/clés optionnels ; recalls NHTSA + YouTube" />
 
         <Card title="Moteurs ciblés (routeur)">
           <Text style={styles.hint}>
-            Claude · Gemini · GPT-4o · Grok · Mistral · DeepSeek — activez/désactivez pour simuler le croisement.
+            Claude · Gemini · GPT-4o · Grok · Mistral · DeepSeek — votes parallèles + consensus. Clés /
+            EXPO_PUBLIC_MULTI_IA_PROXY_URL optionnels.
           </Text>
           <View style={styles.chips}>
             {ALL_MODELS.map((m) => (
@@ -141,7 +148,7 @@ export default function MultiIaScreen() {
               </Pressable>
             ))}
           </View>
-          <Text style={styles.meta}>{activeModels.length} moteur(s) actifs · * = mock non connecté</Text>
+          <Text style={styles.meta}>{activeModels.length} moteur(s) actifs · parallel Promise.all</Text>
         </Card>
 
         <Card title="Contexte véhicule">
@@ -187,8 +194,14 @@ export default function MultiIaScreen() {
             placeholderTextColor={colors.muted}
             multiline
           />
-          <Pressable style={styles.btnFull} onPress={() => void run()}>
-            <Text style={styles.btnTxt}>Diagnostiquer + suggérer YouTube</Text>
+          <Pressable
+            style={[styles.btnFull, busy && { opacity: 0.6 }]}
+            onPress={() => void run()}
+            disabled={busy}
+          >
+            <Text style={styles.btnTxt}>
+              {busy ? 'Analyse multi-IA…' : 'Diagnostiquer + YouTube + recalls'}
+            </Text>
           </Pressable>
           {chat.length ? (
             <Pressable style={styles.clearChat} onPress={() => setChat([])}>
@@ -209,23 +222,27 @@ export default function MultiIaScreen() {
           </View>
         </Card>
 
-        <Card title="Recherche web — recalls / TSB (stubs)">
+        <Card title="Recherche web — recalls NHTSA (live)">
           <Pressable onPress={() => setRecallsVisible((v) => !v)}>
             <Text style={styles.section}>
-              {recallsVisible ? 'Masquer' : 'Afficher'} rappels constructeurs mock
+              {recallsVisible ? 'Masquer' : 'Afficher'} rappels constructeurs
             </Text>
           </Pressable>
+          {recallLabel ? <Text style={styles.meta}>{recallLabel}</Text> : null}
           {recallsVisible
-            ? RECALL_STUBS.map((r) => (
+            ? (recalls.length ? recalls : []).map((r) => (
                 <View key={r.id} style={styles.recallRow}>
                   <Text style={styles.recallTitle}>{r.title}</Text>
                   <Text style={styles.meta}>
                     {r.source} · {r.region} · {r.severity}
+                    {r.component ? ` · ${r.component}` : ''}
                   </Text>
                 </View>
               ))
             : null}
-          <Text style={styles.hint}>Accès internet temps réel non branché — stubs locaux pour UX.</Text>
+          <Text style={styles.hint}>
+            API NHTSA gratuite (NA). EU/AU TSB : à croiser via proxy Multi-IA quand disponible.
+          </Text>
         </Card>
 
         {out ? (

@@ -258,7 +258,12 @@ service cloud.firestore {
 
     match /learnedFailures/{id} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create: if signedIn()
+        && request.resource.data.authorUid == uid()
+        && request.resource.data.summary is string
+        && request.resource.data.summary.size() > 0
+        && request.resource.data.summary.size() < 2000;
+      allow update, delete: if isAdmin();
     }
 
     match /feedPosts/{id} {
