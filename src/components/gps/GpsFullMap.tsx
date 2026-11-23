@@ -46,6 +46,12 @@ import {
 } from '../../services/prefs/gpsNavPrefs';
 import { colors } from '../../theme/colors';
 import { buildGpsMapHtml } from './buildGpsMapHtml';
+import {
+  GpsDestinationMenu,
+  type GpsDestinationSelection,
+  type GpsRouteStatus,
+} from './GpsDestinationMenu';
+import { findSavedPlace } from '../../services/prefs/gpsSavedPlaces';
 
 /** RN WebView prop intersection can collapse to `never` under strict TS — cast for SDK 58. */
 type WebViewHandle = {
@@ -220,6 +226,8 @@ export function GpsFullMap() {
   const searchReqIdRef = useRef(0);
   const skipSuggestRef = useRef(false);
   const placesConfigured = isGooglePlacesConfigured();
+  const [destSelection, setDestSelection] = useState<GpsDestinationSelection | null>(null);
+  const [destMenuOpen, setDestMenuOpen] = useState(false);
 
   const chromePads = useMemo<ChromePads>(
     () => ({
@@ -330,6 +338,14 @@ export function GpsFullMap() {
     },
     [injectJs],
   );
+
+  const startNavigation = useCallback(() => {
+    if (Platform.OS === 'web') {
+      postGpsCmd(iframeWinRef.current, { cmd: 'startNavigation' });
+      return;
+    }
+    injectJs(`window.__gpsStartNavigation && window.__gpsStartNavigation()`);
+  }, [injectJs]);
 
   const refreshLayers = useCallback(async () => {
     // Overpass around a real device fix only — never France overview centroid.
@@ -736,6 +752,26 @@ export function GpsFullMap() {
     return () => clearTimeout(timer);
   }, [searchQ, placesConfigured]);
 
+  /** Confirm a resolved place: fill search, open dest menu, center map. */
+  const commitDestination = useCallback(
+    (lat: number, lon: number, label: string, noteSuffix?: string) => {
+      applyDestinationLabel(label);
+      setDestSelection({ lat, lon, label });
+      setLastRoute(null);
+      proposeDestination(lat, lon, label);
+      setDestMenuOpen(true);
+      setHudNote(noteSuffix ? `Destination · ${label} · ${noteSuffix}` : `Destination · ${label}`);
+      void (async () => {
+        const saved = await findSavedPlace(lat, lon);
+        if (!saved?.tag) return;
+        setDestSelection((prev) =>
+          prev && prev.lat === lat && prev.lon === lon ? { ...prev, tag: saved.tag } : prev,
+        );
+      })();
+    },
+    [applyDestinationLabel, proposeDestination],
+  );
+
   /** Explicit OK: Places resolve if one hit, else Open-Meteo/Photon fallback. */
   const runSearch = useCallback(async () => {
     const q = searchQ.trim();
@@ -754,9 +790,7 @@ export function GpsFullMap() {
           const coords = await resolvePlaceCoords(only.placeId, placesSessionRef.current);
           placesSessionRef.current = newPlacesSessionToken();
           if (coords.ok && coords.lat != null && coords.lon != null) {
-            applyDestinationLabel(coords.label ?? only.label);
-            proposeDestination(coords.lat, coords.lon, coords.label ?? only.label);
-            setHudNote(`Destination · ${coords.label ?? only.label}`);
+            commitDestination(coords.lat, coords.lon, coords.label ?? only.label);
             return;
           }
         }
@@ -768,9 +802,7 @@ export function GpsFullMap() {
       const res = await geocodePlace(q, 6);
       if (res.ok && res.hits[0]) {
         const hit = res.hits[0];
-        applyDestinationLabel(hit.label);
-        proposeDestination(hit.lat, hit.lon, hit.label);
-        setHudNote(`Destination · ${hit.label} · ${res.source}`);
+        commitDestination(hit.lat, hit.lon, hit.label, res.source);
       } else {
         setSearchHits([]);
         setHudNote(
@@ -781,7 +813,7 @@ export function GpsFullMap() {
     } finally {
       setSearchBusy(false);
     }
-  }, [searchQ, placesConfigured, applyDestinationLabel, proposeDestination]);
+  }, [searchQ, placesConfigured, commitDestination]);
 
   const pickSearchHit = useCallback(
     (hit: PlacesSuggestion) => {
@@ -796,16 +828,20 @@ export function GpsFullMap() {
             setHudNote(coords.error ?? 'Place Details KO');
             return;
           }
-          applyDestinationLabel(coords.label ?? hit.label);
-          proposeDestination(coords.lat, coords.lon, coords.label ?? hit.label);
-          setHudNote(`Destination · ${coords.label ?? hit.label}`);
+          commitDestination(coords.lat, coords.lon, coords.label ?? hit.label);
         } finally {
           setSearchBusy(false);
         }
       })();
     },
-    [invalidateInFlightSuggest, applyDestinationLabel, proposeDestination],
+    [invalidateInFlightSuggest, commitDestination],
   );
+
+  const destRouteStatus: GpsRouteStatus = !lastRoute
+    ? 'pending'
+    : lastRoute.ok
+      ? 'ready'
+      : 'failed';
 
   /** One-tap Police = AsyncStorage local pin only — never auto-upload GPS/uid. */
   const dropPoliceReport = useCallback(() => {
@@ -1019,6 +1055,34 @@ export function GpsFullMap() {
           </Text>
         </View>
       ) : null}
+
+      <GpsDestinationMenu
+        visible={destMenuOpen}
+        destination={destSelection}
+        getMyLocation={() =>
+          gpsOk ? (lastWatchRef.current ?? liveOriginRef.current) : null
+        }
+        routeStatus={destRouteStatus}
+        onClose={() => setDestMenuOpen(false)}
+        onStartNavigation={() => {
+          if (!gpsOk || !lastRoute?.ok) return false;
+          startNavigation();
+          setHudNote(
+            modeLabel === 'camion'
+              ? 'Navigation camion — marqueur = GPS live'
+              : 'Navigation voiture — marqueur = GPS live',
+          );
+          return true;
+        }}
+        onLabelUpdated={(place) => {
+          setDestSelection((prev) =>
+            prev
+              ? { ...prev, label: place.label, tag: place.tag }
+              : { lat: place.lat, lon: place.lon, label: place.label, tag: place.tag },
+          );
+        }}
+        onFeedback={setHudNote}
+      />
     </View>
   );
 }
