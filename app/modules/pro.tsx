@@ -23,6 +23,7 @@ import {
 } from '../../src/services/admin/adminLocalStore';
 import type { AppointmentDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 const STATUS_FLOW: AppointmentDoc['status'][] = [
   'requested',
@@ -44,6 +45,7 @@ type RatingRow = { id: string; stars: 1 | 2 | 3 | 4 | 5; comment: string; client
 
 /** Module 17a — espace Pro atelier : dashboard, RDV CRUD, pièces, notations. */
 export default function ProScreen() {
+  const { t } = useI18n();
   useModuleVisit(17);
   const { profile } = useAuth();
   const garageId = profile?.uid ?? 'garage-pro-1';
@@ -220,9 +222,9 @@ export default function ProScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Espace Pro' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.pro') }} />
       <Screen
-        variant="stack" title="Pro garagistes" subtitle="Module 17 — atelier · RDV · pièces · notes">
+        variant="stack" title={t('moduleTitles.pro')} subtitle={t('moduleTitles.proSub')}>
         <BackendStatusBanner />
         {label ? <StubBanner text={label} /> : null}
 

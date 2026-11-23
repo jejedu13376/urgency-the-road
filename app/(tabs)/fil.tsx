@@ -4,6 +4,7 @@ import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
+import { useI18n } from '../../src/context/I18nContext';
 import { MOCK_FEED } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import {
@@ -20,6 +21,7 @@ import { colors } from '../../src/theme/colors';
 
 /** Module 12 — Fil mécanique texte (Firestore + commentaires locaux). Vidéo CDN = stub honnête. */
 export default function FilMecaniqueScreen() {
+  const { t } = useI18n();
   useModuleVisit(12);
   const { profile } = useAuth();
   const [posts, setPosts] = useState<FeedPost[]>(MOCK_FEED);
@@ -149,12 +151,12 @@ export default function FilMecaniqueScreen() {
 
   return (
     <Screen
-      title="Fil mécanique"
-      subtitle="Module 12 — texte LIVE · vidéo CDN à brancher"
+      title={t('fil.title')}
+      subtitle={t('fil.subtitle')}
       refreshing={refreshing}
       onRefresh={onRefresh}
     >
-      <StubBanner text="Texte Firestore LIVE si Auth · pick vidéo locale · upload CDN = bloqué" />
+      <StubBanner text={t('fil.stub')} />
       {feedLabel ? <Text style={styles.meta}>{feedLabel}</Text> : null}
 
       <Pressable style={styles.refreshBar} onPress={onRefresh}>
@@ -163,7 +165,7 @@ export default function FilMecaniqueScreen() {
         </Text>
       </Pressable>
 
-      <Card title="Publier une réparation (texte)">
+      <Card title={t('fil.publish')}>
         <Text style={styles.meta}>
           Conducteurs et garagistes : partagez pannes et conseils. Vidéo = CDN à brancher ; légende
           texte sync Firestore quand connecté.
@@ -198,7 +200,7 @@ export default function FilMecaniqueScreen() {
       </Card>
 
       {posts.length === 0 ? (
-        <Card title="Fil vide">
+        <Card title={t('fil.empty')}>
           <Text style={styles.meta}>
             Aucune publication pour l’instant — écrivez un conseil ci-dessus ou tirez pour
             rafraîchir. Soft-fail Firebase n’injecte plus de posts mock.

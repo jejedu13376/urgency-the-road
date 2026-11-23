@@ -14,9 +14,11 @@ import {
 } from '../../src/services/firebase/learnedFailuresService';
 import { checkOtaChannel, type OtaProbe } from '../../src/services/ota/checkOtaChannel';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 /** Module 14 — learnedFailures Firestore owner-only + OTA probe honnête. */
 export default function BasesScreen() {
+  const { t } = useI18n();
   useModuleVisit(14);
   const { profile } = useAuth();
   const { active } = useFleet();
@@ -84,9 +86,9 @@ export default function BasesScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Bases & OTA' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.bases') }} />
       <Screen
-        variant="stack" title="Bases évolutives" subtitle="Module 14 — auto-apprentissage & OTA">
+        variant="stack" title={t('moduleTitles.bases')} subtitle={t('moduleTitles.basesSub')}>
         <StubBanner
           text={
             label ??

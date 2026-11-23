@@ -12,6 +12,7 @@ import { listGaragesNearby, submitGarageRating } from '../../src/services/fireba
 import type { NearbyGaragesMeta } from '../../src/services/firebase/garagesService';
 import type { GarageDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 const KIND_LABEL: Record<GarageDoc['kind'], string> = {
   garage: 'Garage indépendant',
@@ -34,6 +35,7 @@ const KIND_FILTERS: (GarageDoc['kind'] | 'all')[] = [
 
 /** Module 9 — OSM Overpass + GPS device ; tel: / maps ; contexte PL → M7/M8. */
 export default function GaragesScreen() {
+  const { t } = useI18n();
   useModuleVisit(9);
   const { profile } = useAuth();
   const { active } = useFleet();
@@ -97,11 +99,11 @@ export default function GaragesScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Garages GPS' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.garages') }} />
       <Screen
         variant="stack"
-        title="Autour de moi"
-        subtitle={`Module 9 · ${places.length} pin(s)${isPl ? ' · contexte PL' : ''}`}
+        title={t('moduleTitles.garages')}
+        subtitle={`${t('moduleTitles.garagesSub')} · ${places.length} pin(s)${isPl ? ' · PL' : ''}`}
       >
         <BackendStatusBanner />
         {label ? <StubBanner text={label} /> : null}

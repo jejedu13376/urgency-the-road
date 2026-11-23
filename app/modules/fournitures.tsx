@@ -5,23 +5,25 @@ import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { MOCK_MAINTENANCE, MOCK_PARTS, MOCK_PLACES } from '../../src/data/mocks';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 /**
  * Hub « Je fournis / L’app fournit » — documents, pièces, services.
  * Branche les mocks partage (M16) · pièces (M3) · pro (M17). Hors parcours XP.
  */
 export default function FournituresHub() {
+  const { t } = useI18n();
   const docsUser = MOCK_MAINTENANCE.filter((m) => m.title.toLowerCase().includes('assurance') || m.title.toLowerCase().includes('contrôle'));
   const pieceSample = MOCK_PARTS.slice(0, 2);
   const serviceSample = MOCK_PLACES.filter((p) => p.kind === 'garage' || p.kind === 'pieces').slice(0, 2);
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Je fournis / L’app fournit' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.fournitures') }} />
       <Screen
         variant="stack"
-        title="Je fournis / L’app fournit"
-        subtitle="Documents · pièces · services — qui apporte quoi"
+        title={t('moduleTitles.fournitures')}
+        subtitle={t('moduleTitles.fournituresSub')}
       >
         <StubBanner text="MOCK local — aperçu fournitures (catalogue / lieux mocks). Pas d’API Places ni OEM." />
 

@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Urgency Road"
+  },
+  "android": {
+    "app_name": "Urgency Road"
+  }
+}

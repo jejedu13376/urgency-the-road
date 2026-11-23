@@ -10,6 +10,7 @@ import {
 import { Stack } from 'expo-router';
 import { GpsFullMap } from '../../src/components/gps/GpsFullMap';
 import { useAuth } from '../../src/context/AuthContext';
+import { useI18n } from '../../src/context/I18nContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { listRoadHazards, reportHazard } from '../../src/services/firebase';
 import { getDeviceCoords } from '../../src/services/geo/deviceLocation';
@@ -25,15 +26,6 @@ const HAZARD_KINDS: RoadHazardDoc['kind'][] = [
   'autre',
 ];
 
-const HAZARD_LABEL: Record<RoadHazardDoc['kind'], string> = {
-  danger: 'Danger',
-  accident: 'Accident',
-  obstacle: 'Obstacle',
-  travaux: 'Travaux',
-  radar: 'Radar',
-  autre: 'Autre',
-};
-
 /**
  * Module 7 — même carte GPS plein écran (voiture/camion) que l’onglet Carte.
  * Signalements routiers en feuille modale (hors surface carte).
@@ -41,11 +33,29 @@ const HAZARD_LABEL: Record<RoadHazardDoc['kind'], string> = {
 export default function GpsScreen() {
   useModuleVisit(7);
   const { profile } = useAuth();
+  const { t } = useI18n();
   const [sheet, setSheet] = useState(false);
   const [hazards, setHazards] = useState<RoadHazardDoc[]>([]);
   const [hazardKind, setHazardKind] = useState<RoadHazardDoc['kind']>('danger');
   const [hazardNote, setHazardNote] = useState('');
   const [reportMsg, setReportMsg] = useState<string | null>(null);
+
+  const hazardLabel = (k: RoadHazardDoc['kind']) => {
+    switch (k) {
+      case 'danger':
+        return t('gpsScreen.kindDanger');
+      case 'accident':
+        return t('gpsScreen.kindAccident');
+      case 'obstacle':
+        return t('gpsScreen.kindObstacle');
+      case 'travaux':
+        return t('gpsScreen.kindTravaux');
+      case 'radar':
+        return t('gpsScreen.kindRadar');
+      default:
+        return t('gpsScreen.kindAutre');
+    }
+  };
 
   useEffect(() => {
     void (async () => {
@@ -57,22 +67,22 @@ export default function GpsScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Double GPS' }} />
+      <Stack.Screen options={{ title: t('gpsScreen.title') }} />
       <View style={styles.fill}>
         <GpsFullMap />
         <Pressable style={styles.hazBtn} onPress={() => setSheet(true)}>
-          <Text style={styles.hazTxt}>Signalements</Text>
+          <Text style={styles.hazTxt}>{t('gpsScreen.hazards')}</Text>
         </Pressable>
       </View>
 
       <Modal visible={sheet} animationType="slide" transparent onRequestClose={() => setSheet(false)}>
         <View style={styles.sheetWrap}>
           <View style={styles.sheet}>
-            <Text style={styles.sheetTitle}>Signalements routiers</Text>
-            <Text style={styles.hint}>Hors carte — GPS appareil requis pour publier.</Text>
+            <Text style={styles.sheetTitle}>{t('gpsScreen.hazardsTitle')}</Text>
+            <Text style={styles.hint}>{t('gpsScreen.hazardsHint')}</Text>
             {hazards.slice(0, 8).map((h) => (
               <Text key={h.id} style={styles.hint}>
-                · {HAZARD_LABEL[h.kind]} — {h.note ?? '—'}
+                · {hazardLabel(h.kind)} — {h.note ?? '—'}
               </Text>
             ))}
             <View style={styles.row}>
@@ -83,7 +93,7 @@ export default function GpsScreen() {
                   onPress={() => setHazardKind(k)}
                 >
                   <Text style={[styles.chipTxt, hazardKind === k && styles.chipTxtOn]}>
-                    {HAZARD_LABEL[k]}
+                    {hazardLabel(k)}
                   </Text>
                 </Pressable>
               ))}
@@ -92,7 +102,7 @@ export default function GpsScreen() {
               value={hazardNote}
               onChangeText={setHazardNote}
               style={styles.input}
-              placeholder="Note"
+              placeholder={t('note')}
               placeholderTextColor={colors.muted}
             />
             <Pressable
@@ -101,11 +111,11 @@ export default function GpsScreen() {
                 void (async () => {
                   const fresh = await getDeviceCoords({ allowFallback: false });
                   if (!fresh.ok || fresh.data?.source !== 'device') {
-                    setReportMsg('Signalement refusé — GPS appareil requis.');
+                    setReportMsg(t('gpsScreen.needDeviceGps'));
                     return;
                   }
                   if (!profile?.uid) {
-                    setReportMsg('Connectez-vous (M15) pour publier.');
+                    setReportMsg(t('gpsScreen.needLogin'));
                     return;
                   }
                   const r = await reportHazard({
@@ -113,22 +123,22 @@ export default function GpsScreen() {
                     kind: hazardKind,
                     lat: fresh.data.lat,
                     lon: fresh.data.lon,
-                    note: hazardNote || HAZARD_LABEL[hazardKind],
+                    note: hazardNote || hazardLabel(hazardKind),
                   });
                   if (r.ok === false) {
-                    setReportMsg(r.stubLabel ?? 'Signalement refusé');
+                    setReportMsg(r.stubLabel ?? t('gpsScreen.refused'));
                     return;
                   }
                   setHazards((prev) => [r.data, ...prev]);
-                  setReportMsg('Signalement publié');
+                  setReportMsg(t('gpsScreen.published'));
                 })()
               }
             >
-              <Text style={styles.sendTxt}>Publier</Text>
+              <Text style={styles.sendTxt}>{t('publish')}</Text>
             </Pressable>
             {reportMsg ? <Text style={styles.ok}>{reportMsg}</Text> : null}
             <Pressable style={styles.close} onPress={() => setSheet(false)}>
-              <Text style={styles.closeTxt}>Fermer</Text>
+              <Text style={styles.closeTxt}>{t('close')}</Text>
             </Pressable>
           </View>
         </View>

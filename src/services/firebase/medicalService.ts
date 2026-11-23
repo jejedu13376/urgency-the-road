@@ -115,7 +115,8 @@ function toPublicPreview(scanCode: string): MedicalPublicPreview {
     scanCode,
     brandLabel: 'Urgence Mécanique — fiche médicale',
     sosHint:
-      'Scan public limité : appelez les secours (112). Données médicales réservées aux intervenants autorisés.',
+      'Scan public limité : choisissez un n° d’urgence (112 universal/EU, 000 AU, 911 NA). Données médicales réservées aux intervenants autorisés.',
+    /** Suggested default only — UI shows the full regional dial list. */
     emergencyDial: '112',
   };
 }

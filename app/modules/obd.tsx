@@ -23,6 +23,7 @@ import { recommendValiseForVehicle } from '../../src/services/obd/recommendValis
 import { listObdHistory, readObdSnapshot } from '../../src/services/firebase';
 import type { ObdProtocol, ObdReadingDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 const PROTOCOL_HELP: Record<ObdProtocol, string> = {
   OBD2: 'Voitures légères / pick-up — ISO 15765 / CAN (Amérique du Nord & monde).',
@@ -46,6 +47,7 @@ const SEV_STYLE = {
 
 /** Module 5 — VIN → recommandation prise/valise (achat abonné) + BLE / DTC. */
 export default function ObdScreen() {
+  const { t } = useI18n();
   useModuleVisit(5);
   const { profile } = useAuth();
   const { active } = useFleet();
@@ -235,10 +237,10 @@ export default function ObdScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Valise OBD' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.obd') }} />
       <Screen
         variant="stack"
-        title="Diagnostic OBD / PL"
+        title={t('moduleTitles.obd')}
         subtitle={`Module 5 — Bluetooth / Wi-Fi / USB${active ? ` · ${active.make} ${active.model}` : ''}`}
       >
         <BackendStatusBanner />

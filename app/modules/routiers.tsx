@@ -12,6 +12,7 @@ import type { WeighListMeta } from '../../src/services/firebase/weighService';
 import { haversineKm } from '../../src/services/geo/deviceLocation';
 import type { WeighStationDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 const LAW_BY_REGION: Record<WeighStationDoc['region'], { title: string; lines: string[] }> = {
   EU: {
@@ -53,6 +54,7 @@ function statusBadge(w: WeighStationDoc): { lit: boolean; text: string } {
 
 /** Module 8 — balances OSM + dépôts PL ; pas de faux ON/OFF sans tag. */
 export default function RoutiersScreen() {
+  const { t } = useI18n();
   useModuleVisit(8);
   const { active } = useFleet();
   const [stations, setStations] = useState<WeighStationDoc[]>([]);
@@ -106,11 +108,11 @@ export default function RoutiersScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Routiers' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.routiers') }} />
       <Screen
         variant="stack"
-        title="Module routiers"
-        subtitle={`Module 8 — pesage & dépôts${active?.vehicleClass === 'poids_lourd' ? ' · véhicule PL actif' : ''}`}
+        title={t('moduleTitles.routiers')}
+        subtitle={t('moduleTitles.routiersSub')}
       >
         <BackendStatusBanner />
         {label ? <StubBanner text={label} /> : null}

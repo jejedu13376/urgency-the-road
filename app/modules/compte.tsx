@@ -24,6 +24,7 @@ import {
   type PaymentMethod,
 } from '../../src/services/payments/paymentsService';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 function validatePassword(pw: string) {
   const ok = pw.length >= 6 && /[A-Z]/.test(pw) && /[^A-Za-z0-9]/.test(pw);
@@ -37,6 +38,7 @@ function validatePassword(pw: string) {
 
 /** Module 15 — Auth, bio, abonnements : Stripe · PayPal · Apple Pay · Google Pay (pas de Lydia). */
 export default function CompteScreen() {
+  const { t } = useI18n();
   useModuleVisit(15);
   const { refresh, profile } = useAuth();
   const [email, setEmail] = useState('');
@@ -125,9 +127,9 @@ export default function CompteScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Compte' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.compte') }} />
       <Screen
-        variant="stack" title="Compte & abonnements" subtitle="Module 15">
+        variant="stack" title={t('moduleTitles.compte')} subtitle={t('moduleTitles.compteSub')}>
         <BackendStatusBanner />
         <StubBanner text={paymentsStatusLabel()} />
 
