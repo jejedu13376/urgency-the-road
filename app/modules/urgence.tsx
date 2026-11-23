@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Linking, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
+import { EmergencyDialList } from '../../src/components/EmergencyDialList';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
@@ -15,6 +16,16 @@ import {
   upsertMedicalCard,
 } from '../../src/services/firebase';
 import { getDeviceCoords, type DeviceCoords } from '../../src/services/geo/deviceLocation';
+import {
+  emergencyOptionById,
+  suggestEmergencyNumberId,
+} from '../../src/services/urgence/emergencyNumbers';
+import {
+  formatSosAlertMessage,
+  isValidSosEmail,
+  loadSosEmail,
+  saveSosEmail,
+} from '../../src/services/urgence/sosEmail';
 import type {
   MedicalCardDoc,
   MedicalEmergencyView,
@@ -50,9 +61,21 @@ export default function UrgenceScreen() {
   const [scanMsg, setScanMsg] = useState<string | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [sosMsg, setSosMsg] = useState<string | null>(null);
+  const [sosEmail, setSosEmail] = useState('');
+  const [emailErr, setEmailErr] = useState<string | null>(null);
   const [gpsErr, setGpsErr] = useState<string | null>(null);
   const [label, setLabel] = useState<string | undefined>();
   const [coords, setCoords] = useState<DeviceCoords | null>(null);
+
+  const suggestedEmergencyId = useMemo(
+    () =>
+      suggestEmergencyNumberId({
+        lat: coords?.lat,
+        lon: coords?.lon,
+      }),
+    [coords?.lat, coords?.lon],
+  );
+  const suggestedEmergency = emergencyOptionById(suggestedEmergencyId);
 
   // Align with firestore.rules ownerIsActiveSubscriber — flag only, never plan name / !profile.
   const subscriberActive = profile?.subscriptionActive === true;
@@ -71,7 +94,59 @@ export default function UrgenceScreen() {
       if (r.ok && r.data?.source === 'device') setCoords(r.data);
       else setGpsErr(r.ok ? 'fallback interdit' : r.error);
     });
+    void loadSosEmail().then(setSosEmail);
   }, []);
+
+  const onSosEmailChange = (value: string) => {
+    setSosEmail(value);
+    setEmailErr(null);
+  };
+
+  const persistSosEmail = async (): Promise<string | null> => {
+    const trimmed = sosEmail.trim();
+    if (!trimmed) {
+      setEmailErr('Email requis pour envoyer l’alerte SOS.');
+      return null;
+    }
+    if (!isValidSosEmail(trimmed)) {
+      setEmailErr('Format email invalide (ex. nom@domaine.com).');
+      return null;
+    }
+    const saved = await saveSosEmail(trimmed);
+    setSosEmail(saved);
+    setEmailErr(null);
+    return saved;
+  };
+
+  const sendSosAlert = async () => {
+    setSosMsg(null);
+    const email = await persistSosEmail();
+    if (!email) return;
+
+    const fresh = await getDeviceCoords({ allowFallback: false });
+    if (!fresh.ok || fresh.data?.source !== 'device') {
+      const err = !fresh.ok ? fresh.error : 'fallback interdit';
+      setSosMsg(`Partage SOS refusé — GPS appareil requis (${err}).`);
+      return;
+    }
+    const device = fresh.data;
+    setCoords(device);
+    const suggested = emergencyOptionById(
+      suggestEmergencyNumberId({ lat: device.lat, lon: device.lon }),
+    );
+    const message = formatSosAlertMessage({
+      kind: 'sos_alert',
+      email,
+      lat: device.lat,
+      lon: device.lon,
+      accuracyM: device.accuracyM ?? undefined,
+      // Own personal QR only — never the "Code QR scanné" field (may be a third party).
+      scanCode: card?.scanCode || '',
+      suggestedEmergency: `${suggested.number} (${suggested.regionLabel})`,
+      createdAt: new Date().toISOString(),
+    });
+    await Share.share({ message });
+  };
 
   const hydrateForm = useCallback((c: MedicalCardDoc) => {
     setFullName(c.fullName);
@@ -216,7 +291,9 @@ export default function UrgenceScreen() {
 
         <Card title="SOS Urgence médicale">
           <Text style={styles.meta}>
-            Bouton SOS flottant + cet écran. Appel services d’urgence locaux (112 EU).
+            Bouton SOS flottant + cet écran. Appelez un n° d’urgence (tous visibles) ou envoyez une
+            alerte avec email + GPS. Suggestion : {suggestedEmergency.number} (
+            {suggestedEmergency.regionLabel}).
           </Text>
           <Text style={styles.coords}>
             {coords
@@ -227,8 +304,32 @@ export default function UrgenceScreen() {
                 ? `GPS appareil indisponible — ${gpsErr}`
                 : 'GPS appareil…'}
           </Text>
+          <Text style={styles.label}>Email contact (requis pour alerte / partage)</Text>
+          <TextInput
+            value={sosEmail}
+            onChangeText={onSosEmailChange}
+            onBlur={() => {
+              if (sosEmail.trim() && isValidSosEmail(sosEmail)) {
+                void saveSosEmail(sosEmail).then(setSosEmail);
+              }
+            }}
+            style={styles.input}
+            placeholder="vous@exemple.com"
+            placeholderTextColor={colors.muted}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="email"
+            textContentType="emailAddress"
+            accessibilityLabel="Email contact SOS"
+          />
+          {emailErr ? <Text style={styles.err}>{emailErr}</Text> : null}
+          <Text style={styles.meta}>
+            L’email n’est pas requis pour composer un numéro d’urgence — seulement avant « Envoyer
+            alerte ».
+          </Text>
           <Pressable
-            style={styles.share}
+            style={styles.gpsBtn}
             onPress={() =>
               void getDeviceCoords({ allowFallback: false }).then((r) => {
                 if (r.ok && r.data?.source === 'device') {
@@ -243,32 +344,10 @@ export default function UrgenceScreen() {
           >
             <Text style={styles.sosTxt}>Rafraîchir GPS</Text>
           </Pressable>
-          <View style={styles.row}>
-            <Pressable style={styles.sos} onPress={() => void Linking.openURL('tel:112')}>
-              <Text style={styles.sosTxt}>Appeler 112</Text>
-            </Pressable>
-            <Pressable
-              style={styles.share}
-              onPress={() =>
-                void (async () => {
-                  setSosMsg(null);
-                  const fresh = await getDeviceCoords({ allowFallback: false });
-                  if (!fresh.ok || fresh.data?.source !== 'device') {
-                    const err = !fresh.ok ? fresh.error : 'fallback interdit';
-                    setSosMsg(`Partage SOS refusé — GPS appareil requis (${err}).`);
-                    return;
-                  }
-                  const device = fresh.data;
-                  setCoords(device);
-                  await Share.share({
-                    message: `URGENCE — GPS appareil ${device.lat}, ${device.lon}. Code QR : ${scanCode || '—'}.`,
-                  });
-                })()
-              }
-            >
-              <Text style={styles.sosTxt}>SMS / partage</Text>
-            </Pressable>
-          </View>
+          <EmergencyDialList suggestedId={suggestedEmergencyId} />
+          <Pressable style={styles.sosWide} onPress={() => void sendSosAlert()}>
+            <Text style={styles.sosTxt}>Envoyer alerte (SMS / partage)</Text>
+          </Pressable>
           {sosMsg ? <Text style={styles.meta}>{sosMsg}</Text> : null}
         </Card>
 
@@ -343,9 +422,7 @@ export default function UrgenceScreen() {
             <View style={styles.preview}>
               <Text style={styles.previewTitle}>{publicView.brandLabel}</Text>
               <Text style={styles.meta}>{publicView.sosHint}</Text>
-              <Pressable style={styles.btn} onPress={() => void Linking.openURL(`tel:${publicView.emergencyDial}`)}>
-                <Text style={styles.sosTxt}>Appeler {publicView.emergencyDial}</Text>
-              </Pressable>
+              <EmergencyDialList suggestedId={suggestedEmergencyId} compact />
             </View>
           ) : null}
 
@@ -415,9 +492,24 @@ const styles = StyleSheet.create({
   label: { color: colors.slate, fontWeight: '700', fontSize: 12, marginTop: 6 },
   row: { flexDirection: 'row', gap: 8, marginTop: 8 },
   sos: { flex: 1, backgroundColor: colors.danger, borderRadius: 10, padding: 12, alignItems: 'center' },
+  sosWide: {
+    backgroundColor: colors.danger,
+    borderRadius: 10,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  gpsBtn: {
+    backgroundColor: colors.asphalt,
+    borderRadius: 10,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
   share: { flex: 1, backgroundColor: colors.asphalt, borderRadius: 10, padding: 12, alignItems: 'center' },
   btn: { backgroundColor: colors.signal, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 8 },
   sosTxt: { color: colors.white, fontWeight: '800', fontSize: 12 },
+  err: { color: colors.danger, fontWeight: '700', fontSize: 12, marginTop: 4 },
   input: {
     borderWidth: 1,
     borderColor: colors.line,

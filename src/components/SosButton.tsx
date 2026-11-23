@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 
 /**
- * Module 13 — bouton SOS toujours accessible → écran Urgence (112 sur l’écran).
+ * Module 13 — bouton SOS toujours accessible → écran Urgence (numéros régionaux + alerte).
  * Sits above the tab bar: safe-area bottom + tab content (~40) + small gap.
  * Keep in sync with `app/(tabs)/_layout.tsx` TAB_CONTENT / PAD_TOP.
  */
