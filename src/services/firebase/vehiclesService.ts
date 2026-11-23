@@ -16,8 +16,23 @@ import type { VehicleProfile } from '../../types/vehicle';
 import { decodeVinNhtsa } from '../vin/nhtsaDecode';
 import { liveResult, mockResult, ServiceResult } from './result';
 
-function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { id?: string } {
-  return {
+/** Strip undefined (Firestore rejects them; no ignoreUndefinedProperties). */
+function omitUndefined<T extends Record<string, unknown>>(obj: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out as T;
+}
+
+function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { id?: string; techNotes?: string[]; fluidsSource?: string } {
+  const fluids = omitUndefined({
+    engineOilL: v.fluids.engineOilL,
+    coolantL: v.fluids.coolantL,
+    washerL: v.fluids.washerL,
+    fuelL: v.fluids.fuelL,
+  });
+  return omitUndefined({
     id: v.id,
     ownerUid,
     vin: v.vin,
@@ -29,17 +44,19 @@ function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { 
     year: v.year,
     powertrain: v.powertrain,
     vehicleClass: v.vehicleClass,
-    fluids: v.fluids,
+    fluids,
     commonFailures: v.commonFailures,
     odometerKm: v.odometerKm,
     unitSystem: v.unitSystem,
     currency: v.currency,
+    techNotes: v.techNotes,
+    fluidsSource: v.fluidsSource,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-  };
+  });
 }
 
-function fromDoc(d: VehicleDoc): VehicleProfile {
+function fromDoc(d: VehicleDoc & { techNotes?: string[]; fluidsSource?: string }): VehicleProfile {
   return {
     id: d.id,
     label: d.label,
@@ -56,6 +73,8 @@ function fromDoc(d: VehicleDoc): VehicleProfile {
     odometerKm: d.odometerKm,
     unitSystem: d.unitSystem,
     currency: d.currency as VehicleProfile['currency'],
+    techNotes: d.techNotes,
+    fluidsSource: d.fluidsSource === 'oem_api' ? 'oem_api' : d.fluidsSource === 'local_estimate' ? 'local_estimate' : undefined,
   };
 }
 

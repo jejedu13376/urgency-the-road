@@ -8,6 +8,8 @@ import type {
   SubscriptionPlan,
   TutorialItem,
 } from '../types/modules';
+import { buildLocalCommonFailures } from '../services/vehicle/localFailures';
+import { estimateLocalFluids } from '../services/vehicle/localFluids';
 import { hintFromWmi, normalizeVin, vinCheckDigitOk } from '../services/vin/vinNormalize';
 
 export const MOCK_FLEET: VehicleProfile[] = [
@@ -336,13 +338,21 @@ export function mockDecodeVin(vin: string): VehicleProfile | null {
   const clean = normalizeVin(vin);
   if (clean.length < 11) return null;
   const hit = MOCK_FLEET.find((v) => v.vin === clean);
-  if (hit) return { ...hit, id: `decoded-${Date.now()}`, label: `${hit.make} ${hit.model}` };
+  if (hit) {
+    return {
+      ...hit,
+      id: `decoded-${Date.now()}`,
+      label: `${hit.make} ${hit.model}`,
+      fluidsSource: hit.fluidsSource ?? 'local_estimate',
+      techNotes: hit.techNotes ?? ['Fiche flotte locale — fluides non issus d’une API OEM'],
+    };
+  }
 
   const hint = hintFromWmi(clean);
   const check = vinCheckDigitOk(clean);
   const year = 2000 + (parseInt(clean.slice(-2), 36) % 25);
   const powertrain = hint.powertrainHint ?? 'essence';
-  const vehicleClass = hint.vehicleClassHint ?? 'voiture';
+  const vehicleClass = hint.vehicleClassHint ?? 'voiture';  const fluidsEst = estimateLocalFluids({ vehicleClass, powertrain });
   return {
     id: `decoded-${Date.now()}`,
     label: `${hint.make} (WMI mock) ${year}`,
@@ -354,21 +364,23 @@ export function mockDecodeVin(vin: string): VehicleProfile | null {
     year,
     powertrain,
     vehicleClass,
-    fluids:
-      vehicleClass === 'poids_lourd'
-        ? { engineOilL: 32, coolantL: 45, washerL: 12, fuelL: 600 }
-        : { engineOilL: 5, coolantL: 6, washerL: 3, fuelL: 50 },
-    commonFailures: [
-      {
-        id: 'gen',
-        title: 'Fallback WMI local',
-        symptoms: [
-          'NHTSA indisponible — estimation par préfixe VIN',
-          check === false ? 'Chiffre de contrôle VIN invalide (ISO 3779)' : 'Préfixe WMI reconnu',
-        ],
-        severity: check === false ? 'moyen' : 'faible',
-      },
+    fluids: fluidsEst.fluids,
+    fluidsSource: 'local_estimate',
+    techNotes: [
+      'NHTSA indisponible — estimation par préfixe VIN',
+      fluidsEst.label,
+      'API fluides OEM constructeur : non branchée',
+      check === false ? 'Chiffre de contrôle VIN invalide (ISO 3779)' : 'Préfixe WMI reconnu',
     ],
+    commonFailures: buildLocalCommonFailures({
+      make: hint.make,
+      powertrain,
+      vehicleClass,
+      nhtsaHints: [
+        'NHTSA indisponible — estimation par préfixe VIN',
+        check === false ? 'Chiffre de contrôle VIN invalide (ISO 3779)' : 'Préfixe WMI reconnu',
+      ],
+    }),
     odometerKm: 0,
     unitSystem: hint.continent === 'NA' ? 'imperial' : 'metric', // AU = metric
     currency:
