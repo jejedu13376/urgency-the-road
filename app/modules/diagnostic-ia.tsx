@@ -52,6 +52,7 @@ export default function DiagnosticIaScreen() {
   const [acousticGuess, setAcousticGuess] = useState<string | null>(null);
   const [acousticBars] = useState(() => [4, 10, 6, 14, 8, 12, 5, 11, 7, 13]);
   const [qResult, setQResult] = useState<string | null>(null);
+  const [qBusy, setQBusy] = useState(false);
   const [freeResult, setFreeResult] = useState<string | null>(null);
   const [freeBusy, setFreeBusy] = useState(false);
   const [yt, setYt] = useState<YoutubeVideoHit[]>([]);
@@ -105,6 +106,7 @@ export default function DiagnosticIaScreen() {
   };
 
   const answer = (yes: boolean) => {
+    if (qBusy) return;
     const next = [...answers, yes ? 'oui' : 'non'];
     setAnswers(next);
     if (step + 1 >= QUESTIONS.length) {
@@ -112,15 +114,21 @@ export default function DiagnosticIaScreen() {
       const ctx = active
         ? `${active.make} ${active.model} ${active.year}`
         : '';
+      setQBusy(true);
       void (async () => {
-        const r = await runMultiIaDiagnostic({ prompt, context: ctx });
-        setQResult(`${r.label}\n${r.consensus}\nPièces: ${r.likelyParts.join(', ') || '—'}`);
-        void loadYoutube('bruit moteur voyant diagnostic automobile');
+        try {
+          const r = await runMultiIaDiagnostic({ prompt, context: ctx });
+          setQResult(`${r.label}\n${r.consensus}\nPièces: ${r.likelyParts.join(', ') || '—'}`);
+          void loadYoutube('bruit moteur voyant diagnostic automobile');
+        } finally {
+          setQBusy(false);
+        }
       })();
     } else setStep(step + 1);
   };
 
   const resetQuestions = () => {
+    if (qBusy) return;
     setStep(0);
     setAnswers([]);
     setQResult(null);
@@ -215,11 +223,19 @@ export default function DiagnosticIaScreen() {
               <Text style={styles.q}>{QUESTIONS[Math.min(step, QUESTIONS.length - 1)].q}</Text>
               <Text style={styles.hint}>{QUESTIONS[Math.min(step, QUESTIONS.length - 1)].hint}</Text>
               <View style={styles.row}>
-                <Pressable style={styles.yes} onPress={() => answer(true)}>
-                  <Text style={styles.btnTxt}>Oui</Text>
+                <Pressable
+                  style={[styles.yes, qBusy && styles.btnDisabled]}
+                  disabled={qBusy}
+                  onPress={() => answer(true)}
+                >
+                  <Text style={styles.btnTxt}>{qBusy ? 'Analyse…' : 'Oui'}</Text>
                 </Pressable>
-                <Pressable style={styles.no} onPress={() => answer(false)}>
-                  <Text style={styles.btnTxt}>Non</Text>
+                <Pressable
+                  style={[styles.no, qBusy && styles.btnDisabled]}
+                  disabled={qBusy}
+                  onPress={() => answer(false)}
+                >
+                  <Text style={styles.btnTxt}>{qBusy ? 'Analyse…' : 'Non'}</Text>
                 </Pressable>
               </View>
               {answers.length ? (
