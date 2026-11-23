@@ -39,6 +39,27 @@ function mintScanCode(): string {
   return `UM-QR-${rand}`;
 }
 
+/** Reject UM-QR-{uid[0:8]} (and similar) — rescuers must not guess PHI from public uids. */
+function isUidDerivedScanCode(code: string, uid: string): boolean {
+  const c = code.trim().toUpperCase();
+  if (!c || !uid) return false;
+  const slice8 = uid.slice(0, 8).toUpperCase();
+  const slice12 = uid.slice(0, 12).toUpperCase();
+  return (
+    c === `UM-QR-${slice8}` ||
+    c === `UM-QR-${slice12}` ||
+    c === `UM-QR-${uid.toUpperCase()}` ||
+    c === uid.toUpperCase()
+  );
+}
+
+/** Prefer existing opaque code; remint if empty or uid-derived. */
+function resolveOpaqueScanCode(requested: string, uid: string): string {
+  const code = requested.trim().toUpperCase();
+  if (!code || isUidDerivedScanCode(code, uid)) return mintScanCode();
+  return code;
+}
+
 function canRescuerFull(profile: UserDoc | null | undefined): boolean {
   return Boolean(
     profile &&
@@ -194,20 +215,20 @@ export function medicalCardDocId(ownerUid: string): string {
   return `med-${ownerUid}`;
 }
 
-/** Module 13 — owner write. Keeps medicalScanIndex/{scanCode} in sync; scanCode immutable. */
+/** Module 13 — owner write. Keeps medicalScanIndex/{scanCode} in sync; scanCode immutable once opaque. */
 export async function upsertMedicalCard(
   card: Omit<MedicalCardDoc, 'updatedAt'>,
 ): Promise<ServiceResult<MedicalCardDoc>> {
   const fb = getFirebase();
   const uid = getSignedInUid();
-  const requestedCode = (card.scanCode || '').trim().toUpperCase();
+  const ownerUid = uid ?? card.ownerUid;
   // Force path under caller's slot — cannot occupy med-{victim}
-  const cardId = medicalCardDocId(uid ?? card.ownerUid);
+  const cardId = medicalCardDocId(ownerUid);
   const payload: MedicalCardDoc = {
     ...card,
     id: cardId,
-    ownerUid: uid ?? card.ownerUid,
-    scanCode: requestedCode || mintScanCode(),
+    ownerUid,
+    scanCode: resolveOpaqueScanCode(card.scanCode || '', ownerUid),
     updatedAt: new Date().toISOString(),
   };
 
@@ -221,24 +242,64 @@ export async function upsertMedicalCard(
     const existingCard = await getDoc(cardRef);
     const legacyCard = existingCard.exists() ? null : await getDoc(legacyRef);
 
-    // Prefer existing scanCode from canonical or legacy uid-keyed doc (migrate)
+    let previousScanCode: string | null = null;
+
+    // Prefer existing opaque scanCode; remint if legacy/uid-derived (rules freeze scanCode on update → recreate)
     if (existingCard.exists()) {
       const prev = existingCard.data() as MedicalCardDoc;
-      payload.scanCode = prev.scanCode;
+      previousScanCode = prev.scanCode || null;
+      if (prev.scanCode && !isUidDerivedScanCode(prev.scanCode, uid)) {
+        payload.scanCode = prev.scanCode;
+      } else {
+        payload.scanCode = mintScanCode();
+        try {
+          await deleteDoc(cardRef);
+        } catch {
+          /* recreate below */
+        }
+      }
     } else if (legacyCard?.exists()) {
       const prev = legacyCard.data() as MedicalCardDoc;
-      payload.scanCode = prev.scanCode || payload.scanCode;
+      previousScanCode = prev.scanCode || null;
+      if (prev.scanCode && !isUidDerivedScanCode(prev.scanCode, uid)) {
+        payload.scanCode = prev.scanCode;
+      } else {
+        payload.scanCode = mintScanCode();
+      }
     } else {
+      payload.scanCode = resolveOpaqueScanCode(payload.scanCode, uid);
       const indexRef = doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode);
       const clash = await getDoc(indexRef);
       if (clash.exists()) {
         const owner = (clash.data() as { ownerUid?: string })?.ownerUid;
         if (owner === uid) {
-          // Own leftover index — reuse scanCode, migrate card to med-{uid}
-          payload.scanCode = (clash.data() as { scanCode?: string }).scanCode ?? payload.scanCode;
+          const existingCode = (clash.data() as { scanCode?: string }).scanCode ?? payload.scanCode;
+          if (isUidDerivedScanCode(existingCode, uid)) {
+            payload.scanCode = mintScanCode();
+            try {
+              await deleteDoc(indexRef);
+            } catch {
+              /* continue with new mint */
+            }
+          } else {
+            payload.scanCode = existingCode;
+          }
         } else {
           return failResult(payload, 'scanCode déjà utilisé — collision / hijack bloqué');
         }
+      }
+    }
+
+    // Drop orphan index if we rotated away from a uid-derived / previous code
+    if (
+      previousScanCode &&
+      previousScanCode !== payload.scanCode &&
+      isUidDerivedScanCode(previousScanCode, uid)
+    ) {
+      try {
+        await deleteDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, previousScanCode));
+      } catch {
+        /* non-fatal */
       }
     }
 
@@ -252,6 +313,16 @@ export async function upsertMedicalCard(
       } catch {
         /* non-fatal */
       }
+    }
+
+    // Rescue index only for active subscribers with an opaque minted QR — never uid-guessable
+    if (!payload.subscriberActive) {
+      try {
+        await deleteDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode));
+      } catch {
+        /* none or already gone */
+      }
+      return liveResult(payload, 'Fiche enregistrée — index secours après abonnement + QR opaque');
     }
 
     const indexRef = doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode);

@@ -107,7 +107,8 @@ export default function UrgenceScreen() {
       return;
     }
     const uid = profile.uid;
-    const code = card?.scanCode || scanCode || `UM-QR-${uid.slice(0, 8).toUpperCase()}`;
+    // Never derive from uid — empty → upsertMedicalCard mints opaque UM-QR-* (mintScanCode).
+    const code = (card?.scanCode || scanCode || '').trim().toUpperCase();
     const payload: MedicalCardDoc = {
       id: `med-${uid}`,
       ownerUid: uid,
