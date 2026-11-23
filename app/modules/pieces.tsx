@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Link, Stack } from 'expo-router';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
@@ -10,6 +10,7 @@ import { useFleet } from '../../src/context/FleetContext';
 import { useProgress } from '../../src/context/ProgressContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { listPartsForVin, scanQuoteStub } from '../../src/services/firebase';
+import { OCR_ML_BLOCKED, OEM_CATALOGUE_BLOCKED } from '../../src/services/parts/vinPartsCatalog';
 import type { PartDoc, QuoteDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
 
@@ -41,18 +42,24 @@ export default function PiecesScreen() {
   const [catFilter, setCatFilter] = useState<PartDoc['category'] | 'all'>('all');
   const [scanMode, setScanMode] = useState<ScanMode>('photo');
   const [funnelStep, setFunnelStep] = useState<0 | 1 | 2 | 3>(0);
+  const [manualPart, setManualPart] = useState('');
+  const [manualLabor, setManualLabor] = useState('');
 
   useEffect(() => {
     void (async () => {
       const res = await listPartsForVin(active?.vin, {
         isHeavyTruck: active?.vehicleClass === 'poids_lourd',
+        make: active?.make,
+        model: active?.model,
+        year: active?.year,
+        currency: active?.currency,
       });
       setParts(res.data);
       setLabel(res.stubLabel);
       setSelectedId(res.data[0]?.id ?? null);
       setFunnelStep(res.data.length ? 1 : 0);
     })();
-  }, [active?.vin, active?.vehicleClass]);
+  }, [active?.vin, active?.vehicleClass, active?.make, active?.model, active?.year, active?.currency]);
 
   const filtered = useMemo(
     () => (catFilter === 'all' ? parts : parts.filter((p) => p.category === catFilter)),
@@ -80,6 +87,7 @@ export default function PiecesScreen() {
       >
         <BackendStatusBanner />
         {label ? <StubBanner text={label} /> : null}
+        <StubBanner text={`${OEM_CATALOGUE_BLOCKED} · ${OCR_ML_BLOCKED}`} />
 
         <Card title="Parcours vendeur (pièce → achat → réparation → devis)">
           <Text style={styles.hint}>
@@ -200,18 +208,28 @@ export default function PiecesScreen() {
             <Text style={styles.hint}>
               Meilleur prix catalogue local : {bestBuy} {selected.currency} (neuf / OEM / adaptable — pas d’API OEM mondiale).
             </Text>
-            <Pressable
-              style={styles.cta}
-              onPress={() => {
-                setFunnelStep(1);
-                if (selected.buyUrlStub) void Linking.openURL(selected.buyUrlStub);
-              }}
-            >
-              <Text style={styles.ctaTxt}>
-                1. Où acheter — ouvrir recherche web
-                {selected.oemSku ? ` · ${selected.oemSku}` : ''}
-              </Text>
-            </Pressable>
+            <View style={styles.buyCol}>
+              {(selected.buyUrls?.length
+                ? selected.buyUrls
+                : selected.buyUrlStub
+                  ? [{ label: 'Recherche web', url: selected.buyUrlStub }]
+                  : []
+              ).map((b) => (
+                <Pressable
+                  key={b.label}
+                  style={styles.cta}
+                  onPress={() => {
+                    setFunnelStep(1);
+                    void Linking.openURL(b.url);
+                  }}
+                >
+                  <Text style={styles.ctaTxt}>
+                    1. {b.label}
+                    {selected.oemSku ? ` · ${selected.oemSku}` : ''}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
             <Link href="/modules/tutoriels" asChild>
               <Pressable style={styles.ctaAlt} onPress={() => setFunnelStep(2)}>
                 <Text style={styles.ctaTxt}>2. Proposer la réparation (tutoriel M11) →</Text>
@@ -248,20 +266,42 @@ export default function PiecesScreen() {
 
         <Card title="Scanner devis garage (anti-arnaque)">
           <Text style={styles.hint}>
-            Pas d’OCR image encore — heuristique marché vs pièce sélectionnée (photo/PDF = mode saisie). Aucun
-            « devis scanné avec succès » inventé.
+            OCR ML non branché — saisissez les montants du devis garage, ou lancez l’heuristique marché vs pièce
+            sélectionnée. Aucun « devis scanné avec succès » inventé.
           </Text>
           <View style={styles.funnelRow}>
             <Pressable style={[styles.funnelChip, scanMode === 'photo' && styles.funnelChipOn]} onPress={() => setScanMode('photo')}>
-              <Text style={[styles.funnelTxt, scanMode === 'photo' && styles.funnelTxtOn]}>Photo papier</Text>
+              <Text style={[styles.funnelTxt, scanMode === 'photo' && styles.funnelTxtOn]}>Mode photo</Text>
             </Pressable>
             <Pressable style={[styles.funnelChip, scanMode === 'pdf' && styles.funnelChipOn]} onPress={() => setScanMode('pdf')}>
-              <Text style={[styles.funnelTxt, scanMode === 'pdf' && styles.funnelTxtOn]}>PDF garage</Text>
+              <Text style={[styles.funnelTxt, scanMode === 'pdf' && styles.funnelTxtOn]}>Mode PDF</Text>
             </Pressable>
+          </View>
+          <Text style={styles.meta}>Montants saisis (pièce + main-d’œuvre du devis garage)</Text>
+          <View style={styles.funnelRow}>
+            <TextInput
+              value={manualPart}
+              onChangeText={setManualPart}
+              keyboardType="decimal-pad"
+              placeholder={`Pièce (${active?.currency ?? 'EUR'})`}
+              placeholderTextColor={colors.muted}
+              style={styles.manualInput}
+            />
+            <TextInput
+              value={manualLabor}
+              onChangeText={setManualLabor}
+              keyboardType="decimal-pad"
+              placeholder={`MO (${active?.currency ?? 'EUR'})`}
+              placeholderTextColor={colors.muted}
+              style={styles.manualInput}
+            />
           </View>
           <Pressable
             style={styles.scan}
-            onPress={() =>
+            onPress={() => {
+              const partN = parseFloat(manualPart.replace(',', '.'));
+              const laborN = parseFloat(manualLabor.replace(',', '.'));
+              const hasManual = Number.isFinite(partN) && Number.isFinite(laborN);
               void scanQuoteStub({
                 ownerUid: profile?.uid,
                 vin: active?.vin,
@@ -269,19 +309,23 @@ export default function PiecesScreen() {
                 model: active?.model,
                 mode: scanMode,
                 anchorOemSku: selected?.oemSku,
+                currency: active?.currency ?? selected?.currency,
+                manualPartPrice: hasManual ? partN : undefined,
+                manualLaborPrice: hasManual ? laborN : undefined,
               }).then((r) => {
                 setScanQuote(r.data.quote);
                 setScanLabel(
                   `${r.data.scanLabel ?? 'Scan'} · ${scanMode}${
-                    !profile ? ' · local (connectez-vous pour sync)' : ''
-                  }`,
+                    hasManual ? ' · saisie manuelle' : ' · heuristique'
+                  }${!profile ? ' · local (connectez-vous pour sync)' : ''}`,
                 );
-              })
-            }
+              });
+            }}
           >
             <Text style={styles.scanTxt}>
-              Analyser un devis ({scanMode}
-              {active?.make ? ` · ${active.make}` : ''} — heuristique marché)
+              Comparer au marché
+              {active?.make ? ` · ${active.make}` : ''}
+              {manualPart || manualLabor ? ' (montants saisis)' : ' (heuristique)'}
             </Text>
           </Pressable>
           {scanLabel ? <StubBanner text={scanLabel} /> : null}
@@ -349,10 +393,22 @@ const styles = StyleSheet.create({
   ctaAlt: { backgroundColor: colors.garage, borderRadius: 10, padding: 12 },
   ctaDark: { backgroundColor: colors.asphalt, borderRadius: 10, padding: 12 },
   ctaTxt: { color: colors.white, fontWeight: '800', fontSize: 13 },
+  buyCol: { gap: 6 },
   devisBox: { backgroundColor: colors.garageSoft, borderRadius: 10, padding: 10, gap: 4 },
   devisTitle: { fontWeight: '800', color: colors.garage },
   scan: { backgroundColor: colors.asphalt, borderRadius: 12, padding: 14, alignItems: 'center' },
   scanTxt: { color: colors.white, fontWeight: '800' },
+  manualInput: {
+    flexGrow: 1,
+    minWidth: '40%',
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: colors.ink,
+    backgroundColor: colors.mist,
+  },
   compareGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   compareCell: {
     flexGrow: 1,

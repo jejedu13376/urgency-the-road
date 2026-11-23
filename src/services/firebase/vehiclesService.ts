@@ -16,7 +16,7 @@ import type { VehicleProfile } from '../../types/vehicle';
 import { decodeVinNhtsa } from '../vin/nhtsaDecode';
 import { liveResult, mockResult, ServiceResult } from './result';
 
-function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { id?: string } {
+function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { id?: string; techNotes?: string[]; fluidsSource?: string } {
   return {
     id: v.id,
     ownerUid,
@@ -34,12 +34,14 @@ function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { 
     odometerKm: v.odometerKm,
     unitSystem: v.unitSystem,
     currency: v.currency,
+    techNotes: v.techNotes,
+    fluidsSource: v.fluidsSource,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 }
 
-function fromDoc(d: VehicleDoc): VehicleProfile {
+function fromDoc(d: VehicleDoc & { techNotes?: string[]; fluidsSource?: string }): VehicleProfile {
   return {
     id: d.id,
     label: d.label,
@@ -56,6 +58,8 @@ function fromDoc(d: VehicleDoc): VehicleProfile {
     odometerKm: d.odometerKm,
     unitSystem: d.unitSystem,
     currency: d.currency as VehicleProfile['currency'],
+    techNotes: d.techNotes,
+    fluidsSource: d.fluidsSource === 'oem_api' ? 'oem_api' : d.fluidsSource === 'local_estimate' ? 'local_estimate' : undefined,
   };
 }
 

@@ -12,6 +12,7 @@ import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { fr } from '../../src/i18n/fr';
 import { decodeVinRemote } from '../../src/services/firebase';
+import { fetchRecallsByVehicle, type RecallHit } from '../../src/services/recalls/nhtsaRecalls';
 import { colors } from '../../src/theme/colors';
 import type { VehicleProfile } from '../../src/types/vehicle';
 
@@ -54,15 +55,43 @@ export default function MonVehiculeScreen() {
   const [busy, setBusy] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [sourceLabel, setSourceLabel] = useState<string | undefined>();
+  const [recalls, setRecalls] = useState<RecallHit[]>([]);
+  const [recallLabel, setRecallLabel] = useState<string | null>(null);
+  const [odoDraft, setOdoDraft] = useState(active ? String(active.odometerKm) : '');
 
   useEffect(() => {
     if (active?.vin) setVin(active.vin);
-  }, [active?.id, active?.vin]);
+    if (active) setOdoDraft(String(active.odometerKm));
+  }, [active?.id, active?.vin, active?.odometerKm]);
+
+  useEffect(() => {
+    if (!active?.make || !active?.model || !active?.year) {
+      setRecalls([]);
+      setRecallLabel(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const res = await fetchRecallsByVehicle({
+        make: active.make,
+        model: active.model,
+        year: active.year,
+      });
+      if (cancelled) return;
+      setRecalls(res.items);
+      setRecallLabel(res.label);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active?.make, active?.model, active?.year]);
 
   const applyDecoded = async (decoded: VehicleProfile, stub?: string) => {
+    const sameVin = Boolean(active && active.vin && active.vin === decoded.vin);
     const merged: VehicleProfile = {
       ...decoded,
-      label: active?.label && active.vin === decoded.vin ? active.label : decoded.label,
+      label: sameVin && active?.label ? active.label : decoded.label,
+      odometerKm: sameVin && active ? active.odometerKm : decoded.odometerKm,
     };
     // FleetContext syncs to Firestore when Auth — avoid double addDoc for cascade-/decoded- ids
     upsertVehicle(merged);
@@ -112,6 +141,23 @@ export default function MonVehiculeScreen() {
     }
   };
 
+  const saveOdometer = () => {
+    if (!active) return;
+    const n = parseInt(odoDraft.replace(/\s/g, ''), 10);
+    if (!Number.isFinite(n) || n < 0) {
+      setMsg('Kilométrage invalide');
+      return;
+    }
+    const next = { ...active, odometerKm: n };
+    // FleetContext syncs Firestore when Auth — no direct upsertVehicleRemote
+    upsertVehicle(next);
+    setMsg(
+      profile?.uid
+        ? `Kilométrage sync flotte : ${n.toLocaleString('fr-FR')} km`
+        : `Kilométrage local : ${n.toLocaleString('fr-FR')} km`,
+    );
+  };
+
   return (
     <Screen
       title={fr.tabMonVehicule}
@@ -122,7 +168,7 @@ export default function MonVehiculeScreen() {
       <StubBanner
         text={
           sourceLabel ??
-          'VIN : NHTSA vPIC live · fallback WMI · scan caméra + saisie manuelle.'
+          'VIN : NHTSA vPIC live · fallback WMI · fluides locaux · recalls NHTSA · pas d’API fluides OEM.'
         }
       />
       <VinCameraScanner
@@ -187,9 +233,29 @@ export default function MonVehiculeScreen() {
             label="Zone"
             value={`${CONTINENT_FR[active.continent] ?? active.continent} / ${active.country} · ${active.currency} · ${active.unitSystem === 'metric' ? 'métrique' : 'impérial'}`}
           />
-          <Field label="Kilométrage" value={`${active.odometerKm.toLocaleString('fr-FR')} km`} />
+
+          <Text style={styles.section}>Kilométrage (local)</Text>
+          <View style={styles.row}>
+            <TextInput
+              value={odoDraft}
+              onChangeText={setOdoDraft}
+              keyboardType="number-pad"
+              placeholder="km"
+              placeholderTextColor={colors.muted}
+              style={[styles.input, { flex: 1 }]}
+              accessibilityLabel="Kilométrage"
+            />
+            <Pressable style={styles.secondary} onPress={saveOdometer}>
+              <Text style={styles.secondaryTxt}>Sauver</Text>
+            </Pressable>
+          </View>
 
           <Text style={styles.section}>Capacité des fluides</Text>
+          <Text style={styles.hint}>
+            {active.fluidsSource === 'oem_api'
+              ? 'Source OEM API'
+              : 'Estimation locale (classe / motorisation / cylindrée NHTSA) — API fluides OEM non branchée.'}
+          </Text>
           <View style={styles.fluids}>
             <FluidChip label="Huile moteur" value={`${active.fluids.engineOilL} L`} />
             <FluidChip label="Liquide refroid." value={`${active.fluids.coolantL} L`} />
@@ -199,7 +265,18 @@ export default function MonVehiculeScreen() {
             ) : null}
           </View>
 
-          <Text style={styles.section}>Pannes fréquentes (ce modèle)</Text>
+          {active.techNotes && active.techNotes.length > 0 ? (
+            <>
+              <Text style={styles.section}>Notes techniques (NHTSA / local)</Text>
+              {active.techNotes.map((n) => (
+                <Text key={n} style={styles.hint}>
+                  · {n}
+                </Text>
+              ))}
+            </>
+          ) : null}
+
+          <Text style={styles.section}>Pannes fréquentes (catalogue local)</Text>
           {active.commonFailures.length === 0 ? (
             <Text style={styles.hint}>Aucune panne fréquente en base pour ce véhicule.</Text>
           ) : (
@@ -221,6 +298,27 @@ export default function MonVehiculeScreen() {
           <Text style={styles.hint}>Décodez un VIN ou ouvrez la flotte (Module 2).</Text>
         </Card>
       )}
+
+      {active ? (
+        <Card title="Rappels constructeur (NHTSA recalls)">
+          <Text style={styles.hint}>
+            {recallLabel ?? 'Interrogation NHTSA recallsByVehicle (API publique gratuite)…'}
+          </Text>
+          {recalls.length === 0 ? (
+            <Text style={styles.hint}>Aucun rappel listé pour cette fiche (ou hors couverture NA).</Text>
+          ) : (
+            recalls.map((r) => (
+              <View key={r.id} style={styles.fail}>
+                <Text style={styles.failTitle}>{r.title}</Text>
+                <Text style={styles.failBody}>
+                  {r.component ? `${r.component} · ` : ''}
+                  {r.source} · {r.severity}
+                </Text>
+              </View>
+            ))
+          )}
+        </Card>
+      ) : null}
 
       {vehicles.length > 1 ? (
         <Card title="Basculer rapidement (flotte)">
@@ -306,14 +404,6 @@ const styles = StyleSheet.create({
   },
   secondaryTxt: { color: colors.slate, fontWeight: '700' },
   disabled: { opacity: 0.6 },
-  scanBox: {
-    backgroundColor: colors.asphalt,
-    borderRadius: 10,
-    padding: 12,
-    gap: 4,
-  },
-  scanTitle: { color: colors.white, fontWeight: '800' },
-  scanBody: { color: '#C5D2DE', fontSize: 12, lineHeight: 17 },
   msg: { color: colors.garage, fontSize: 13, fontWeight: '600' },
   line: { color: colors.slate, fontSize: 14, lineHeight: 21 },
   k: { fontWeight: '700', color: colors.ink },

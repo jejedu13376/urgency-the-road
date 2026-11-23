@@ -55,6 +55,8 @@ export interface PartDoc {
   currency: string;
   region: string;
   buyUrlStub?: string;
+  /** Real web search URLs (Google / Amazon / retailer) — not OEM API deep-links */
+  buyUrls?: Array<{ label: string; url: string }>;
   updatedAt: string;
 }
 

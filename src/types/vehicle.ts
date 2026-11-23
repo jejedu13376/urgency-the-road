@@ -40,4 +40,11 @@ export interface VehicleProfile {
   odometerKm: number;
   unitSystem: 'metric' | 'imperial';
   currency: 'EUR' | 'USD' | 'CAD' | 'AUD';
+  /**
+   * Free-path tech notes (NHTSA fields / local fluids label).
+   * Never populated from a paid OEM fluids API.
+   */
+  techNotes?: string[];
+  /** Honesty marker for fluids — `local_estimate` until OEM API exists */
+  fluidsSource?: 'local_estimate' | 'oem_api';
 }

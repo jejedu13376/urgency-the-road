@@ -13,7 +13,29 @@ type RegionPricing = {
   multiplier: number;
 };
 
-function pricingForMakeHint(make?: string, countryHint?: string): RegionPricing {
+export type BuildCatalogOpts = {
+  isHeavyTruck?: boolean;
+  /** Prefer fleet make/model/year over WMI-only when available (M1 active vehicle). */
+  make?: string;
+  model?: string;
+  year?: number;
+  currency?: string;
+};
+
+function pricingForMakeHint(make?: string, countryHint?: string, currencyOverride?: string): RegionPricing {
+  if (currencyOverride === 'USD') {
+    return { currency: 'USD', region: 'NA-US', laborRate: 135, multiplier: 1.2 };
+  }
+  if (currencyOverride === 'CAD') {
+    return { currency: 'CAD', region: 'NA-CA', laborRate: 120, multiplier: 1.15 };
+  }
+  if (currencyOverride === 'AUD') {
+    return { currency: 'AUD', region: 'AU', laborRate: 140, multiplier: 1.25 };
+  }
+  if (currencyOverride === 'EUR') {
+    return { currency: 'EUR', region: 'EU-FR', laborRate: 85, multiplier: 1 };
+  }
+
   const m = (make ?? '').toLowerCase();
   const c = (countryHint ?? '').toUpperCase();
   // WMI country wins before make heuristics (US/AU Ford ≠ CAD)
@@ -35,7 +57,9 @@ function pricingForMakeHint(make?: string, countryHint?: string): RegionPricing 
   return { currency: 'EUR', region: 'EU-FR', laborRate: 85, multiplier: 1 };
 }
 
-const EXTRA_TEMPLATES: Array<Omit<PartDoc, 'id' | 'currency' | 'region' | 'laborRate' | 'updatedAt' | 'buyUrlStub' | 'vinPrefix' | 'vehicleMake'>> = [
+const EXTRA_TEMPLATES: Array<
+  Omit<PartDoc, 'id' | 'currency' | 'region' | 'laborRate' | 'updatedAt' | 'buyUrlStub' | 'buyUrls' | 'vinPrefix' | 'vehicleMake' | 'vehicleModel'>
+> = [
   {
     name: 'Filtre à air',
     category: 'filtre',
@@ -108,6 +132,24 @@ const EXTRA_TEMPLATES: Array<Omit<PartDoc, 'id' | 'currency' | 'region' | 'labor
     priceAftermarket: 9,
     laborHours: 0.3,
   },
+  {
+    name: 'Courroie accessoire',
+    category: 'mecanique',
+    oemSku: 'OE-BELT-A',
+    priceNew: 48,
+    priceOem: 72,
+    priceAftermarket: 32,
+    laborHours: 0.9,
+  },
+  {
+    name: 'Thermostat',
+    category: 'mecanique',
+    oemSku: 'OE-THERM',
+    priceNew: 55,
+    priceOem: 85,
+    priceAftermarket: 38,
+    laborHours: 1.4,
+  },
 ];
 
 const PL_EXTRAS: typeof EXTRA_TEMPLATES = [
@@ -140,9 +182,23 @@ const PL_EXTRAS: typeof EXTRA_TEMPLATES = [
   },
 ];
 
-function buyUrl(name: string, oemSku: string, make?: string): string {
-  const q = [make, oemSku, name, 'pièce auto'].filter(Boolean).join(' ');
-  return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+function buildBuyUrls(name: string, oemSku: string, make?: string, model?: string, year?: number): Array<{ label: string; url: string }> {
+  const qCore = [make, model, year ? String(year) : '', oemSku, name].filter(Boolean).join(' ');
+  const qShort = [make, oemSku, name, 'pièce auto'].filter(Boolean).join(' ');
+  return [
+    {
+      label: 'Recherche web',
+      url: `https://www.google.com/search?q=${encodeURIComponent(qCore || qShort)}`,
+    },
+    {
+      label: 'Amazon',
+      url: `https://www.amazon.fr/s?k=${encodeURIComponent([make, oemSku, name].filter(Boolean).join(' '))}`,
+    },
+    {
+      label: 'RockAuto (NA)',
+      url: `https://www.rockauto.com/en/catalog/?search=${encodeURIComponent([make, model, oemSku].filter(Boolean).join(' '))}`,
+    },
+  ];
 }
 
 function scalePrice(n: number, mult: number): number {
@@ -179,14 +235,18 @@ function makeAllowsSku(oemSku: string, makeKey?: string, isHeavyTruck?: boolean)
 }
 
 /**
- * Build a VIN-compatible shopping list from local templates + WMI make hint.
+ * Build a VIN-compatible shopping list from local templates + WMI / fleet make hint.
  * Labels must stay honest: not a live OEM mondial catalogue.
  */
-export function buildVinPartsCatalog(vin?: string, opts?: { isHeavyTruck?: boolean }): PartDoc[] {
+export function buildVinPartsCatalog(vin?: string, opts?: BuildCatalogOpts): PartDoc[] {
   const clean = vin ? normalizeVin(vin) : '';
   const hint = clean.length >= 3 ? hintFromWmi(clean) : null;
-  const pricing = pricingForMakeHint(hint?.make, hint?.country);
-  const makeKey = hint?.make?.split(/[\s/]/)[0] ?? undefined;
+  const makeFromFleet = opts?.make?.trim();
+  const makeKey =
+    makeFromFleet?.split(/[\s/]/)[0] ?? hint?.make?.split(/[\s/]/)[0] ?? undefined;
+  const pricing = pricingForMakeHint(makeKey ?? hint?.make, hint?.country, opts?.currency);
+  const model = opts?.model?.trim();
+  const year = opts?.year;
 
   const base = [
     ...MOCK_PARTS.map((p) => ({
@@ -210,7 +270,6 @@ export function buildVinPartsCatalog(vin?: string, opts?: { isHeavyTruck?: boole
 
   const filteredTemplates = [...bySku.values()].filter((p) => {
     if (p.category === 'filtre' || p.category === 'fluide') {
-      // Consumables always OK unless make-locked SKU (Mercedes NOx filter AdBlue PL handled below)
       if (isMercedesSku(p.oemSku) || isHeavyTruckSku(p.oemSku)) {
         return makeAllowsSku(p.oemSku, makeKey, opts?.isHeavyTruck);
       }
@@ -219,29 +278,42 @@ export function buildVinPartsCatalog(vin?: string, opts?: { isHeavyTruck?: boole
     return makeAllowsSku(p.oemSku, makeKey, opts?.isHeavyTruck);
   });
 
-  return filteredTemplates.map((p, i) => ({
-    id: `vp-${i + 1}-${p.oemSku}`,
-    name: makeKey && makeKey !== 'Générique' ? `${p.name} (${makeKey})` : p.name,
-    category: p.category,
-    oemSku: p.oemSku,
-    priceNew: scalePrice(p.priceNew, pricing.multiplier),
-    priceOem: scalePrice(p.priceOem, pricing.multiplier),
-    priceAftermarket: scalePrice(p.priceAftermarket, pricing.multiplier),
-    laborHours: p.laborHours,
-    laborRate: pricing.laborRate,
-    currency: pricing.currency,
-    region: pricing.region,
-    buyUrlStub: buyUrl(p.name, p.oemSku, makeKey),
-    vinPrefix: clean.length >= 8 ? clean.slice(0, 8) : undefined,
-    vehicleMake: hint?.make,
-    updatedAt: new Date().toISOString(),
-  }));
+  return filteredTemplates.map((p, i) => {
+    const buyUrls = buildBuyUrls(p.name, p.oemSku, makeKey, model, year);
+    const displayMake = makeKey && makeKey !== 'Générique' ? makeKey : undefined;
+    return {
+      id: `vp-${i + 1}-${p.oemSku}`,
+      name: displayMake ? `${p.name} (${displayMake})` : p.name,
+      category: p.category,
+      oemSku: p.oemSku,
+      priceNew: scalePrice(p.priceNew, pricing.multiplier),
+      priceOem: scalePrice(p.priceOem, pricing.multiplier),
+      priceAftermarket: scalePrice(p.priceAftermarket, pricing.multiplier),
+      laborHours: p.laborHours,
+      laborRate: pricing.laborRate,
+      currency: pricing.currency,
+      region: pricing.region,
+      buyUrlStub: buyUrls[0]?.url,
+      buyUrls,
+      vinPrefix: clean.length >= 8 ? clean.slice(0, 8) : undefined,
+      vehicleMake: makeFromFleet || hint?.make,
+      vehicleModel: model,
+      updatedAt: new Date().toISOString(),
+    };
+  });
 }
 
 export function catalogLabel(vin?: string, source: 'firebase' | 'local' = 'local'): string {
   const clean = vin ? normalizeVin(vin) : '';
   if (source === 'firebase') return 'Catalogue Firestore LIVE';
-  if (!clean) return 'Catalogue local générique — activez un VIN (M1/M2)';
+  if (!clean) return 'Catalogue local générique — activez un VIN (M1/M2) · pas d’API OEM mondiale';
   const hint = hintFromWmi(clean);
   return `Liste d’achats locale VIN ${clean.slice(0, 8)}… · WMI ${hint?.make ?? 'générique'} (pas d’API OEM mondiale)`;
 }
+
+/** OCR ML Kit / Document AI — blocked; documented for MODULES-STATUS. */
+export const OEM_CATALOGUE_BLOCKED =
+  'Catalogue OEM mondial non branché — liste locale WMI/VIN + recherches web uniquement.';
+
+export const OCR_ML_BLOCKED =
+  'OCR ML Kit / Document AI non branché — saisie manuelle des montants devis ou heuristique marché.';

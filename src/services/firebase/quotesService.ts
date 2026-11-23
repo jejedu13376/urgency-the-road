@@ -15,6 +15,13 @@ export type QuoteScanInput = {
   mode: QuoteScanMode;
   /** Optional selected catalogue part to anchor market comparison */
   anchorOemSku?: string;
+  currency?: string;
+  /**
+   * Manual garage totals (anti-arnaque without OCR ML).
+   * When set, compare typed amounts vs local catalogue market — no image OCR.
+   */
+  manualPartPrice?: number;
+  manualLaborPrice?: number;
 };
 
 function marketBench(make?: string, oemSku?: string) {
@@ -43,25 +50,40 @@ export function analyzeQuoteScan(input: QuoteScanInput): {
   marketLabor: number;
 } {
   const bench = marketBench(input.make, input.anchorOemSku);
-  // Simulated OCR totals: slightly above market for photo, higher variance for PDF
+  const hasManual =
+    typeof input.manualPartPrice === 'number' &&
+    Number.isFinite(input.manualPartPrice) &&
+    typeof input.manualLaborPrice === 'number' &&
+    Number.isFinite(input.manualLaborPrice);
+
+  // Manual path = real typed garage amounts. Heuristic path = market inflate (not OCR ML).
   const inflate = input.mode === 'pdf' ? 1.35 : 1.18;
-  const partPrice = Math.round(bench.avgAfter * inflate);
-  const laborPrice = Math.round(bench.avgLabor * (input.mode === 'pdf' ? 1.4 : 1.15));
+  const partPrice = hasManual
+    ? Math.round(input.manualPartPrice as number)
+    : Math.round(bench.avgAfter * inflate);
+  const laborPrice = hasManual
+    ? Math.round(input.manualLaborPrice as number)
+    : Math.round(bench.avgLabor * (input.mode === 'pdf' ? 1.4 : 1.15));
   const delta = (partPrice + laborPrice) / Math.max(bench.avgAfter + bench.avgLabor, 1);
   const overchargeRisk: NonNullable<QuoteDoc['overchargeRisk']> =
     delta >= 1.45 ? 'eleve' : delta >= 1.2 ? 'moyen' : 'faible';
   const vehicleBit = [input.make, input.model, input.vin ? `VIN ${input.vin.slice(0, 8)}…` : '']
     .filter(Boolean)
     .join(' ');
+  const modeLabel = hasManual
+    ? 'saisie manuelle devis'
+    : input.mode === 'photo'
+      ? 'heuristique photo (pas OCR ML)'
+      : 'heuristique PDF (pas OCR ML)';
   return {
     lines: [
       {
-        label: `Pièce ${bench.sample?.name ?? 'catalogue'} (${input.mode === 'photo' ? 'OCR photo' : 'OCR PDF'})`,
+        label: `Pièce ${bench.sample?.name ?? 'catalogue'} (${modeLabel})`,
         partPrice,
         laborPrice: 0,
       },
       {
-        label: 'Main d’œuvre atelier (estim. OCR)',
+        label: hasManual ? 'Main d’œuvre atelier (saisie)' : 'Main d’œuvre atelier (estim. marché)',
         partPrice: 0,
         laborPrice,
       },
@@ -72,7 +94,11 @@ export function analyzeQuoteScan(input: QuoteScanInput): {
       },
     ],
     overchargeRisk,
-    note: `${vehicleBit || 'Véhicule'} · écart ×${delta.toFixed(2)} vs marché adaptable. Aucun OCR image — heuristique catalogue uniquement.`,
+    note: `${vehicleBit || 'Véhicule'} · écart ×${delta.toFixed(2)} vs marché adaptable. ${
+      hasManual
+        ? 'Comparaison saisie manuelle — OCR ML Kit / Document AI non branché.'
+        : 'Aucun OCR image — heuristique catalogue uniquement (OCR ML bloqué).'
+    }`,
     marketPart: bench.avgAfter,
     marketLabor: bench.avgLabor,
   };
@@ -109,7 +135,7 @@ export async function scanQuoteStub(
     id: `q-scan-${Date.now()}`,
     ownerUid: uid,
     lines: analysis.lines,
-    currency: 'EUR',
+    currency: opts.currency ?? 'EUR',
     overchargeRisk: analysis.overchargeRisk,
     source: 'scan_stub',
     createdAt: new Date().toISOString(),
