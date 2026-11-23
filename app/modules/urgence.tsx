@@ -102,10 +102,14 @@ export default function UrgenceScreen() {
   };
 
   const saveCard = async () => {
-    const uid = profile?.uid ?? 'mock-local-user';
+    if (!profile?.uid) {
+      setLabel('Connexion requise pour enregistrer la fiche médicale');
+      return;
+    }
+    const uid = profile.uid;
     const code = card?.scanCode || scanCode || `UM-QR-${uid.slice(0, 8).toUpperCase()}`;
     const payload: MedicalCardDoc = {
-      id: card?.id ?? `med-${uid}`,
+      id: `med-${uid}`,
       ownerUid: uid,
       scanCode: code,
       fullName: fullName.trim() || 'Utilisateur',

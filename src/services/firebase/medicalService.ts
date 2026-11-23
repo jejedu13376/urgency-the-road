@@ -4,15 +4,7 @@
  * - emergency_full: active rescuer get(medicalScanIndex/{scanCode}) only — never list all cards
  * Printed QR sticker/card only — not AirTag/NFC beacon.
  */
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  setDoc,
-  where,
-} from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { getFirebase, getSignedInUid } from '../../firebase/config';
 import type {
   MedicalCardDoc,
@@ -147,8 +139,9 @@ export async function ensurePersonalQr(
   }
 
   const scanCode = mintScanCode();
+  const cardId = `med-${ownerUid}`;
   const card: MedicalCardDoc = {
-    id: `med-${ownerUid}`,
+    id: cardId,
     ownerUid,
     scanCode,
     fullName: MOCK_CARD.fullName,
@@ -175,6 +168,11 @@ export async function ensurePersonalQr(
   };
 }
 
+/** Canonical medical card doc id — matches rules (uid or med-{uid}). */
+export function medicalCardDocId(ownerUid: string): string {
+  return `med-${ownerUid}`;
+}
+
 /** Module 13 — owner write. Keeps medicalScanIndex/{scanCode} in sync; scanCode immutable. */
 export async function upsertMedicalCard(
   card: Omit<MedicalCardDoc, 'updatedAt'>,
@@ -182,8 +180,12 @@ export async function upsertMedicalCard(
   const fb = getFirebase();
   const uid = getSignedInUid();
   const scanCode = (card.scanCode || mintScanCode()).trim().toUpperCase();
+  // Force path under caller's slot — cannot occupy med-{victim}
+  const cardId = medicalCardDocId(uid ?? card.ownerUid);
   const payload: MedicalCardDoc = {
     ...card,
+    id: cardId,
+    ownerUid: uid ?? card.ownerUid,
     scanCode,
     updatedAt: new Date().toISOString(),
   };
@@ -193,7 +195,7 @@ export async function upsertMedicalCard(
   }
 
   try {
-    const cardRef = doc(fb.db, COLLECTIONS.medicalCards, card.id);
+    const cardRef = doc(fb.db, COLLECTIONS.medicalCards, cardId);
     const indexRef = doc(fb.db, COLLECTIONS.medicalScanIndex, scanCode);
     const existingCard = await getDoc(cardRef);
 
@@ -213,7 +215,7 @@ export async function upsertMedicalCard(
     const cardPayload = stripUndefined({ ...payload } as Record<string, unknown>);
     await setDoc(cardRef, cardPayload, { merge: true });
 
-    const indexPayload = indexFromCard({ ...payload, scanCode: payload.scanCode });
+    const indexPayload = indexFromCard({ ...payload, id: cardId, scanCode: payload.scanCode });
     const indexSnap = await getDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode));
     if (indexSnap.exists()) {
       await setDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, payload.scanCode), indexPayload, {
@@ -236,16 +238,19 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
   const uid = getSignedInUid();
   if (!fb || !uid) {
     return mockResult(
-      { ...MOCK_CARD, ownerUid, scanCode: MOCK_CARD.scanCode },
+      { ...MOCK_CARD, ownerUid, id: medicalCardDocId(ownerUid), scanCode: MOCK_CARD.scanCode },
       'MOCK medical card — QR personnel démo',
     );
   }
 
-  const q = query(collection(fb.db, COLLECTIONS.medicalCards), where('ownerUid', '==', uid));
-  const snap = await getDocs(q);
-  if (snap.empty) return liveResult(null);
-  const d = snap.docs[0];
-  return liveResult({ id: d.id, ...(d.data() as Omit<MedicalCardDoc, 'id'>) });
+  // Prefer canonical path med-{uid}; fall back to uid-keyed doc
+  for (const id of [medicalCardDocId(uid), uid]) {
+    const snap = await getDoc(doc(fb.db, COLLECTIONS.medicalCards, id));
+    if (snap.exists()) {
+      return liveResult({ id: snap.id, ...(snap.data() as Omit<MedicalCardDoc, 'id'>) });
+    }
+  }
+  return liveResult(null);
 }
 
 /**
