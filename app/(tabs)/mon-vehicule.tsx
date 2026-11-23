@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useFocusEffect } from 'expo-router';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
 import { ProgressHero } from '../../src/components/ProgressHero';
@@ -69,26 +69,29 @@ export default function MonVehiculeScreen() {
     if (active) setOdoDraft(String(active.odometerKm));
   }, [active?.id, active?.vin, active?.odometerKm]);
 
-  useEffect(() => {
-    const vehicleKey = active?.id ?? active?.vin ?? 'default';
-    let cancelled = false;
-    void (async () => {
-      const stored = await loadCarnet(vehicleKey);
-      if (cancelled) return;
-      const open = (stored?.maintenance ?? []).filter((m) => m.status !== 'fait').slice(0, 3);
-      setReminders(open);
-      setRemindersLabel(
-        stored
-          ? open.length
-            ? null
-            : 'Carnet local — aucun rappel ouvert'
-          : 'Aucun carnet local — ouvrez Entretien (M10) pour en créer un',
-      );
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [active?.id, active?.vin]);
+  // Reload on focus so returning from Entretien (M10) refreshes AsyncStorage rappels.
+  useFocusEffect(
+    useCallback(() => {
+      const vehicleKey = active?.id ?? active?.vin ?? 'default';
+      let cancelled = false;
+      void (async () => {
+        const stored = await loadCarnet(vehicleKey);
+        if (cancelled) return;
+        const open = (stored?.maintenance ?? []).filter((m) => m.status !== 'fait').slice(0, 3);
+        setReminders(open);
+        setRemindersLabel(
+          stored
+            ? open.length
+              ? null
+              : 'Carnet local — aucun rappel ouvert'
+            : 'Aucun carnet local — ouvrez Entretien (M10) pour en créer un',
+        );
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [active?.id, active?.vin]),
+  );
 
   useEffect(() => {
     if (!active?.make || !active?.model || !active?.year) {
