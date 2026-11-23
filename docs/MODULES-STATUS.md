@@ -3,7 +3,7 @@
 **App:** `jejedu13376/urgency-the-road`  
 **Shell:** Expo Router · tabs FR · onglet exact **« Mon véhicule »**  
 **Formations:** PAUSED (untouched)  
-**Updated:** 2026-11-23 — Batch A [#13](https://github.com/jejedu13376/urgency-the-road/pull/13) `671f2a5` · Batch B [#15](https://github.com/jejedu13376/urgency-the-road/pull/15) `77c3d90` · Photon reverse follow-up [#18](https://github.com/jejedu13376/urgency-the-road/pull/18)
+**Updated:** 2026-11-23 — Batch A [#13](https://github.com/jejedu13376/urgency-the-road/pull/13) `671f2a5` · Batch B [#15](https://github.com/jejedu13376/urgency-the-road/pull/15) `77c3d90` · Photon reverse [#18](https://github.com/jejedu13376/urgency-the-road/pull/18) `cdf3e04` · Batch C [#16](https://github.com/jejedu13376/urgency-the-road/pull/16) `c31633d` · **#19 pending** (security/crash) · Deploy blocked: `FIREBASE_TOKEN` / Multi-IA / `EXPO_TOKEN`
 
 ## UX vendeur / addiction (leviers)
 
