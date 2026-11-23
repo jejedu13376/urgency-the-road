@@ -10,37 +10,72 @@ import { useAuth } from '../../src/context/AuthContext';
 import { MOCK_PLANS } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { signInEmail, signUpEmail } from '../../src/services/firebase';
-import { stubPayment } from '../../src/services/stubs';
+import {
+  isPaymentsConfigured,
+  paymentsStatusLabel,
+  startCheckout,
+} from '../../src/services/payments/paymentsService';
 import { colors } from '../../src/theme/colors';
 
 function validatePassword(pw: string) {
   const ok = pw.length >= 6 && /[A-Z]/.test(pw) && /[^A-Za-z0-9]/.test(pw);
-  return ok
-    ? 'Mot de passe conforme (6+ · 1 majuscule · 1 spécial).'
-    : 'Invalidé : min. 6 caractères, 1 majuscule, 1 caractère spécial.';
+  return {
+    ok,
+    msg: ok
+      ? 'Mot de passe conforme (6+ · 1 majuscule · 1 caractère spécial).'
+      : 'Invalidé : min. 6 caractères, 1 majuscule, 1 caractère spécial.',
+  };
 }
 
-/** Module 15 — inscription, biométrie, abonnements, Lydia stub. */
+/** Module 15 — inscription, biométrie, abonnements (paiement sans faux succès). */
 export default function CompteScreen() {
   useModuleVisit(15);
   const { refresh, profile } = useAuth();
   const [email, setEmail] = useState('');
   const [pw, setPw] = useState('');
   const [pwMsg, setPwMsg] = useState<string | null>(null);
+  const [pwOk, setPwOk] = useState(false);
   const [bio, setBio] = useState<string | null>(null);
   const [pay, setPay] = useState<string | null>(null);
   const [authMsg, setAuthMsg] = useState<string | null>(null);
+  const [paying, setPaying] = useState(false);
 
   const tryBio = async () => {
     const has = await LocalAuthentication.hasHardwareAsync();
     if (!has) {
-      setBio('STUB bio — matériel non dispo ici ; API prête (empreinte / Face ID).');
+      setBio('Biométrie indisponible sur cet appareil — API prête (empreinte / Face ID).');
+      return;
+    }
+    const enrolled = await LocalAuthentication.isEnrolledAsync();
+    if (!enrolled) {
+      setBio('Aucun biométrique enregistré sur l’appareil.');
       return;
     }
     const res = await LocalAuthentication.authenticateAsync({
       promptMessage: 'Connexion Urgence Mécanique',
+      cancelLabel: 'Annuler',
     });
-    setBio(res.success ? 'Biométrie OK' : 'Biométrie annulée / échec');
+    setBio(res.success ? 'Biométrie OK — session déverrouillée' : 'Biométrie annulée / échec');
+  };
+
+  const payPlan = async (planId: string) => {
+    setPaying(true);
+    const r = await startCheckout(planId);
+    setPaying(false);
+    setPay(r.message);
+  };
+
+  const onSignUp = async () => {
+    const v = validatePassword(pw);
+    setPwMsg(v.msg);
+    setPwOk(v.ok);
+    if (!v.ok) {
+      setAuthMsg('Inscription bloquée — mot de passe non conforme.');
+      return;
+    }
+    const r = await signUpEmail(email, pw);
+    setAuthMsg(r.stubLabel ?? `Compte ${r.data.email}`);
+    await refresh();
   };
 
   return (
@@ -48,9 +83,13 @@ export default function CompteScreen() {
       <Stack.Screen options={{ title: 'Compte' }} />
       <Screen title="Compte & abonnements" subtitle="Module 15">
         <BackendStatusBanner />
-        <StubBanner text="STUB paiement — Lydia / Stripe / Apple Pay / Google Pay non branchés" />
-        <Card title="Inscription / Auth Firebase">
-          <Text style={styles.meta}>Profil : {profile?.email ?? 'non connecté (mock possible)'}</Text>
+        <StubBanner text={paymentsStatusLabel()} />
+
+        <Card title="Inscription / Auth">
+          <Text style={styles.meta}>Profil : {profile?.email ?? 'non connecté'}</Text>
+          <Text style={styles.rule}>
+            Mot de passe : minimum 6 caractères, dont au moins 1 majuscule et 1 caractère spécial.
+          </Text>
           <TextInput
             value={email}
             onChangeText={setEmail}
@@ -58,28 +97,24 @@ export default function CompteScreen() {
             placeholderTextColor={colors.muted}
             style={styles.input}
             autoCapitalize="none"
+            keyboardType="email-address"
           />
           <TextInput
             value={pw}
-            onChangeText={setPw}
+            onChangeText={(t) => {
+              setPw(t);
+              const v = validatePassword(t);
+              setPwOk(v.ok);
+              setPwMsg(v.msg);
+            }}
             placeholder="Mot de passe"
             placeholderTextColor={colors.muted}
             secureTextEntry
             style={styles.input}
           />
-          <Pressable style={styles.btn} onPress={() => setPwMsg(validatePassword(pw))}>
-            <Text style={styles.btnTxt}>Valider mot de passe</Text>
-          </Pressable>
+          {pwMsg ? <Text style={[styles.msg, pwOk ? styles.ok : styles.bad]}>{pwMsg}</Text> : null}
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable
-              style={[styles.btn, { flex: 1 }]}
-              onPress={() =>
-                void signUpEmail(email, pw).then(async (r) => {
-                  setAuthMsg(r.stubLabel ?? `Compte ${r.data.email}`);
-                  await refresh();
-                })
-              }
-            >
+            <Pressable style={[styles.btn, { flex: 1 }]} onPress={() => void onSignUp()}>
               <Text style={styles.btnTxt}>S’inscrire</Text>
             </Pressable>
             <Pressable
@@ -94,17 +129,26 @@ export default function CompteScreen() {
               <Text style={styles.btnTxt}>Connexion</Text>
             </Pressable>
           </View>
-          {pwMsg ? <Text style={styles.msg}>{pwMsg}</Text> : null}
           {authMsg ? <Text style={styles.msg}>{authMsg}</Text> : null}
         </Card>
+
         <Card title="Authentification biométrique">
           <Pressable style={styles.btnDark} onPress={() => void tryBio()}>
             <Text style={styles.btnTxt}>Empreinte / Face ID</Text>
           </Pressable>
           {bio ? <Text style={styles.msg}>{bio}</Text> : null}
-          <Text style={styles.meta}>Chiffrement bout-en-bout : engagement produit (non implémenté crypto ici).</Text>
+          <Text style={styles.meta}>
+            Chiffrement bout-en-bout : engagement produit (couche crypto à brancher côté backend).
+          </Text>
         </Card>
-        <Card title="Formules">
+
+        <Card title="Formules d’abonnement">
+          <Text style={styles.meta}>
+            Particulier · Routier Pro · Flotte — Lydia / Stripe / Apple Pay / Google Pay.
+            {!isPaymentsConfigured()
+              ? ' Paiement refusé tant que les clés ne sont pas configurées (aucun succès simulé).'
+              : ' Clés présentes ; SDK checkout encore à brancher.'}
+          </Text>
           {MOCK_PLANS.map((p) => (
             <View key={p.id} style={styles.plan}>
               <Text style={styles.planName}>
@@ -112,17 +156,17 @@ export default function CompteScreen() {
               </Text>
               <Text style={styles.meta}>{p.perks.join(' · ')}</Text>
               <Pressable
-                style={styles.pay}
-                onPress={() => {
-                  const r = stubPayment(p.id);
-                  setPay(`${r.label} · plan ${r.data.planId}`);
-                }}
+                style={[styles.pay, paying && styles.payDisabled]}
+                disabled={paying}
+                onPress={() => void payPlan(p.id)}
               >
-                <Text style={styles.btnTxt}>Payer (Lydia stub)</Text>
+                <Text style={styles.btnTxt}>{paying ? 'Vérification…' : 'Payer (Lydia / Stripe)'}</Text>
               </Pressable>
             </View>
           ))}
-          {pay ? <Text style={styles.msg}>{pay}</Text> : null}
+          {pay ? (
+            <Text style={[styles.msg, isPaymentsConfigured() ? styles.ok : styles.bad]}>{pay}</Text>
+          ) : null}
         </Card>
       </Screen>
     </>
@@ -141,9 +185,13 @@ const styles = StyleSheet.create({
   btn: { backgroundColor: colors.signal, borderRadius: 10, padding: 12, alignItems: 'center' },
   btnDark: { backgroundColor: colors.asphalt, borderRadius: 10, padding: 12, alignItems: 'center' },
   btnTxt: { color: colors.white, fontWeight: '800' },
-  msg: { color: colors.garage, fontWeight: '700' },
+  msg: { fontWeight: '700', fontSize: 12 },
+  ok: { color: colors.garage },
+  bad: { color: colors.danger },
   meta: { color: colors.muted, fontSize: 12 },
+  rule: { color: colors.slate, fontSize: 12, fontWeight: '600' },
   plan: { gap: 6, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.line },
   planName: { fontWeight: '800', color: colors.ink },
   pay: { backgroundColor: colors.garage, borderRadius: 8, padding: 10, alignItems: 'center' },
+  payDisabled: { opacity: 0.6 },
 });

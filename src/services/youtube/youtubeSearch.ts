@@ -1,0 +1,107 @@
+/**
+ * YouTube Data API v3 — search.list utility.
+ * Key from EXPO_PUBLIC_YOUTUBE_API_KEY only (never hardcode).
+ * Opens watch URLs only — no embedded video files.
+ */
+
+export type YoutubeVideoHit = {
+  videoId: string;
+  title: string;
+  channelTitle: string;
+  watchUrl: string;
+  thumbnailUrl?: string;
+};
+
+export type YoutubeSearchResult = {
+  ok: boolean;
+  httpStatus: number;
+  items: YoutubeVideoHit[];
+  error?: string;
+  source: 'youtube_api' | 'fallback_search_url';
+};
+
+function getApiKey(): string {
+  return (process.env.EXPO_PUBLIC_YOUTUBE_API_KEY ?? '').trim();
+}
+
+export function isYoutubeApiConfigured(): boolean {
+  return getApiKey().length > 0;
+}
+
+export function watchUrlFor(videoId: string): string {
+  return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+}
+
+/**
+ * Search top relevant videos for a mechanic problem keyword.
+ * @example searchYoutubeVideos('remplacement plaquettes de frein')
+ */
+export async function searchYoutubeVideos(
+  keyword: string,
+  maxResults = 5,
+): Promise<YoutubeSearchResult> {
+  const q = keyword.trim() || 'réparation automobile';
+  const key = getApiKey();
+
+  if (!key) {
+    return {
+      ok: false,
+      httpStatus: 0,
+      items: [],
+      error: 'EXPO_PUBLIC_YOUTUBE_API_KEY manquant — fallback search URL only',
+      source: 'fallback_search_url',
+    };
+  }
+
+  const url = new URL('https://www.googleapis.com/youtube/v3/search');
+  url.searchParams.set('part', 'snippet');
+  url.searchParams.set('type', 'video');
+  url.searchParams.set('maxResults', String(Math.min(Math.max(maxResults, 1), 10)));
+  url.searchParams.set('q', q);
+  url.searchParams.set('key', key);
+
+  try {
+    const res = await fetch(url.toString());
+    const httpStatus = res.status;
+    const body = (await res.json()) as {
+      error?: { message?: string; errors?: { reason?: string }[] };
+      items?: Array<{
+        id?: { videoId?: string };
+        snippet?: { title?: string; channelTitle?: string; thumbnails?: { default?: { url?: string } } };
+      }>;
+    };
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        httpStatus,
+        items: [],
+        error: body.error?.message ?? `YouTube search.list HTTP ${httpStatus}`,
+        source: 'youtube_api',
+      };
+    }
+
+    const items: YoutubeVideoHit[] = [];
+    for (const it of body.items ?? []) {
+      const videoId = it.id?.videoId;
+      if (!videoId) continue;
+      items.push({
+        videoId,
+        title: it.snippet?.title ?? videoId,
+        channelTitle: it.snippet?.channelTitle ?? '',
+        watchUrl: watchUrlFor(videoId),
+        thumbnailUrl: it.snippet?.thumbnails?.default?.url,
+      });
+    }
+
+    return { ok: true, httpStatus, items, source: 'youtube_api' };
+  } catch (e) {
+    return {
+      ok: false,
+      httpStatus: 0,
+      items: [],
+      error: e instanceof Error ? e.message : String(e),
+      source: 'youtube_api',
+    };
+  }
+}
