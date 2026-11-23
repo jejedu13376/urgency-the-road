@@ -6,6 +6,7 @@
 
 import { etaMinutesFromKm, haversineKm } from '../geo/deviceLocation';
 import type { GarageDoc, WeighStationDoc } from '../../types/firestore';
+import { advisoryFromOpeningHours } from './openingHours';
 
 const UA = 'UrgencyRoad/1.0 (https://github.com/jejedu13376/urgency-the-road)';
 const ENDPOINTS = [
@@ -206,17 +207,21 @@ out center tags 30;`;
       if (!c) continue;
       const tags = el.tags ?? {};
       const name = tags.name ?? tags.operator ?? `Pesage OSM #${el.id}`;
-      // Static OSM tags (access=yes, 24/7) are NOT a live ON/OFF feed — stay unknown.
+      // opening_hours = static OSM advisory only — NOT a live jurisdiction ON/OFF feed.
+      const hours = advisoryFromOpeningHours(tags.opening_hours);
       const country = tags['addr:country'] ?? tags['is_in:country_code'];
+      const baseAddr = addressOf(tags);
       stations.push({
         id: `osm-w-${el.type}-${el.id}`,
         name,
-        address: addressOf(tags),
+        address: tags.opening_hours
+          ? `${baseAddr} · ${hours.note}`
+          : baseAddr,
         lat: c.lat,
         lon: c.lon,
         region: country ? regionFromCountry(country) : regionFromLatLon(c.lat, c.lon),
-        status: 'unknown',
-        litUp: false,
+        status: hours.status,
+        litUp: hours.litUp,
         heightLimitM: tags.maxheight ? Number.parseFloat(tags.maxheight) || undefined : undefined,
         weightLimitT: tags.maxweight ? Number.parseFloat(tags.maxweight) || undefined : undefined,
         updatedAt: new Date().toISOString(),
@@ -225,13 +230,14 @@ out center tags 30;`;
     stations.sort(
       (a, b) => haversineKm(lat, lon, a.lat, a.lon) - haversineKm(lat, lon, b.lat, b.lon),
     );
+    const known = stations.filter((s) => s.status !== 'unknown').length;
     return {
       ok: stations.length > 0,
       stations,
       source: 'overpass',
       label:
         stations.length > 0
-          ? `LIVE Overpass OSM · ${stations.length} balance(s) · statut UNKNOWN (pas de feed ON/OFF live)`
+          ? `LIVE Overpass OSM · ${stations.length} balance(s) · ${known} advisory opening_hours · pas de feed juridiction live`
           : 'Overpass pesage vide — fallback mock',
       error: stations.length ? undefined : 'Aucune weighbridge OSM proche',
     };

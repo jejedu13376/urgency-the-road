@@ -8,7 +8,11 @@ import { useFleet } from '../../src/context/FleetContext';
 import { MOCK_MAINTENANCE } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { loadCarnet, saveCarnet } from '../../src/services/carnet/carnetStorage';
-import { shareCarnetHtmlLite, shareCarnetText } from '../../src/services/carnet/exportCarnet';
+import {
+  shareCarnetHtmlLite,
+  shareCarnetPdf,
+  shareCarnetText,
+} from '../../src/services/carnet/exportCarnet';
 import type { MaintenanceItem } from '../../src/types/modules';
 import { colors } from '../../src/theme/colors';
 
@@ -248,6 +252,10 @@ export default function EntretienScreen() {
     void shareCarnetHtmlLite(exportPayload()).then((r) => setPdfMsg(r.message));
   };
 
+  const exportPdf = () => {
+    void shareCarnetPdf(exportPayload()).then((r) => setPdfMsg(r.message));
+  };
+
   return (
     <>
       <Stack.Screen options={{ title: 'Entretien' }} />
@@ -255,7 +263,7 @@ export default function EntretienScreen() {
         title="Entretien & carnet"
         subtitle={`Module 10 · ${active?.label ?? 'véhicule'} · ${km.toLocaleString('fr-FR')} km`}
       >
-        <StubBanner text="Carnet persisté + share texte/HTML-lite LIVE · PDF certifié / signature serveur non branché" />
+        <StubBanner text="Carnet persisté + texte/HTML-lite + PDF imprimable LIVE · signature certifiée serveur non branchée" />
 
         <Card title="Maintenance automatique (km)">
           <Text style={styles.meta}>
@@ -352,8 +360,11 @@ export default function EntretienScreen() {
           <Pressable style={styles.exportAlt} onPress={exportHtml}>
             <Text style={styles.exportTxt}>Partager HTML-lite (imprimable)</Text>
           </Pressable>
+          <Pressable style={styles.exportPdf} onPress={exportPdf}>
+            <Text style={styles.exportTxt}>Générer PDF (non certifié)</Text>
+          </Pressable>
           <Text style={styles.meta}>
-            PDF certifié = backend de signature à brancher — aucun faux « PDF certifié généré ».
+            PDF réel via expo-print — pas certifié / signé. Backend de signature = séparément.
           </Text>
           {pdfMsg ? <Text style={styles.pdfMsg}>{pdfMsg}</Text> : null}
         </Card>
@@ -399,6 +410,13 @@ const styles = StyleSheet.create({
   },
   exportAlt: {
     backgroundColor: colors.signal,
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  exportPdf: {
+    backgroundColor: colors.garage,
     borderRadius: 12,
     padding: 14,
     alignItems: 'center',

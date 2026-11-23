@@ -13,6 +13,7 @@ import {
   saveLiked,
   type LocalComment,
 } from '../../src/services/feed/feedComments';
+import { pickLocalVideo, VIDEO_CDN_BLOCKED } from '../../src/services/feed/pickLocalVideo';
 import { createTextFeedPost, listFeedPosts } from '../../src/services/firebase/feedService';
 import type { FeedPost } from '../../src/types/modules';
 import { colors } from '../../src/theme/colors';
@@ -31,6 +32,7 @@ export default function FilMecaniqueScreen() {
   const [captionDraft, setCaptionDraft] = useState('');
   const [titleDraft, setTitleDraft] = useState('Conseil mécanique');
   const [feedLabel, setFeedLabel] = useState<string | undefined>();
+  const [localVideoUri, setLocalVideoUri] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -72,26 +74,46 @@ export default function FilMecaniqueScreen() {
     void loadFeed();
   };
 
-  const tryUpload = () => {
-    setUploadMsg(
-      'Publication vidéo non branchée — aucun upload réussi. Branchez stockage / CDN avant d’envoyer des clips. Aucune vidéo stockée dans l’app.',
-    );
+  const tryPickVideo = async () => {
+    const pick = await pickLocalVideo();
+    setUploadMsg(pick.label);
+    if (pick.ok) {
+      setLocalVideoUri(pick.uri);
+      if (!captionDraft.trim()) {
+        setCaptionDraft(
+          `[vidéo locale]${pick.durationSec != null ? ` ~${pick.durationSec}s` : ''} — clip on-device, CDN non branché`,
+        );
+      }
+    }
   };
 
   const publishCaption = async () => {
-    if (!captionDraft.trim()) return;
+    if (!captionDraft.trim() && !localVideoUri) return;
+    const caption =
+      captionDraft.trim() ||
+      (localVideoUri ? '[vidéo locale] — fichier on-device uniquement' : '');
     const res = await createTextFeedPost({
-      title: titleDraft.trim() || 'Conseil mécanique',
-      caption: captionDraft.trim(),
+      title: titleDraft.trim() || (localVideoUri ? 'Clip réparation (local)' : 'Conseil mécanique'),
+      caption,
       // Never publish email — feedPosts is world-readable
       authorName:
         profile?.displayName?.trim() ||
         (profile?.uid ? `Conducteur-${profile.uid.slice(0, 6)}` : 'Conducteur'),
     });
-    setUploadMsg(res.stubLabel ?? (res.ok ? 'Publié' : 'Échec publication'));
+    setUploadMsg(
+      localVideoUri
+        ? `${res.stubLabel ?? (res.ok ? 'Publié (méta texte)' : 'Échec')} · ${VIDEO_CDN_BLOCKED}`
+        : res.stubLabel ?? (res.ok ? 'Publié' : 'Échec publication'),
+    );
     if (res.data) {
-      setPosts((p) => [res.data as FeedPost, ...p]);
+      const post: FeedPost = {
+        ...(res.data as FeedPost),
+        localMediaUri: localVideoUri ?? undefined,
+        mediaKind: localVideoUri ? 'video_local' : 'text',
+      };
+      setPosts((p) => [post, ...p]);
       setCaptionDraft('');
+      setLocalVideoUri(null);
     }
   };
 
@@ -127,7 +149,7 @@ export default function FilMecaniqueScreen() {
       refreshing={refreshing}
       onRefresh={onRefresh}
     >
-      <StubBanner text="Texte Firestore LIVE si Auth · likes/commentaires persistés · upload vidéo = stub honnête" />
+      <StubBanner text="Texte Firestore LIVE si Auth · pick vidéo locale · upload CDN = bloqué" />
       {feedLabel ? <Text style={styles.meta}>{feedLabel}</Text> : null}
 
       <Pressable style={styles.refreshBar} onPress={onRefresh}>
@@ -156,27 +178,37 @@ export default function FilMecaniqueScreen() {
           style={styles.input}
           multiline
         />
+        {localVideoUri ? (
+          <Text style={styles.meta}>Vidéo locale prête (on-device) — ne sera pas uploadée.</Text>
+        ) : null}
         <Pressable style={styles.send} onPress={() => void publishCaption()}>
-          <Text style={styles.uploadTxt}>Publier le texte</Text>
+          <Text style={styles.uploadTxt}>
+            {localVideoUri ? 'Publier méta + légende (sans CDN)' : 'Publier le texte'}
+          </Text>
         </Pressable>
-        <Pressable style={styles.upload} onPress={tryUpload}>
-          <Text style={styles.uploadTxt}>Choisir une vidéo (stub CDN)</Text>
+        <Pressable style={styles.upload} onPress={() => void tryPickVideo()}>
+          <Text style={styles.uploadTxt}>Choisir une vidéo locale</Text>
         </Pressable>
         {uploadMsg ? <Text style={styles.warn}>{uploadMsg}</Text> : null}
       </Card>
 
       {posts.map((p) => {
-        const isTextOnly = !p.title.toLowerCase().includes('vidéo') && !p.caption.toLowerCase().includes('[vidéo]');
+        const isLocalVideo =
+          p.mediaKind === 'video_local' ||
+          Boolean(p.localMediaUri) ||
+          p.caption.toLowerCase().includes('[vidéo');
         return (
           <Card key={p.id} title={p.title}>
             <Text style={styles.meta}>
               {p.author} · {new Date(p.createdAt).toLocaleString('fr-FR')}
             </Text>
             <Text style={styles.caption}>{p.caption}</Text>
-            {!isTextOnly ? (
+            {isLocalVideo ? (
               <View style={styles.videoStub}>
                 <Text style={styles.videoStubTxt}>
-                  [aperçu vidéo — pas de fichier embarqué · CDN non branché]
+                  {p.localMediaUri
+                    ? '[vidéo locale on-device — pas d’hébergement CDN]'
+                    : '[réf. vidéo — CDN non branché · pas de fichier embarqué]'}
                 </Text>
               </View>
             ) : (

@@ -312,9 +312,10 @@ export function catalogLabel(vin?: string, source: 'firebase' | 'local' = 'local
   return `Liste d’achats locale VIN ${clean.slice(0, 8)}… · WMI ${hint?.make ?? 'générique'} (pas d’API OEM mondiale)`;
 }
 
-/** OCR ML Kit / Document AI — blocked; documented for MODULES-STATUS. */
+/** OEM deep catalogue — blocked; documented for MODULES-STATUS. */
 export const OEM_CATALOGUE_BLOCKED =
   'Catalogue OEM mondial non branché — liste locale WMI/VIN + recherches web uniquement.';
 
+/** Cloud / on-device ML OCR still blocked; OCR-lite paste text is available. */
 export const OCR_ML_BLOCKED =
-  'OCR ML Kit / Document AI non branché — saisie manuelle des montants devis ou heuristique marché.';
+  'OCR ML Kit / Document AI non branché — OCR-lite collage texte + saisie manuelle / heuristique marché.';
