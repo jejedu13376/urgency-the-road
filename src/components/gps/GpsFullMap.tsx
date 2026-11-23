@@ -136,6 +136,16 @@ function allowMapDocumentLoad(url: string): boolean {
   return false;
 }
 
+/** One-shot GPS with hard timeout — permission prompts / hung getCurrentPosition must not block UI. */
+async function getDeviceCoordsTimed(timeoutMs = 8000) {
+  return Promise.race([
+    getDeviceCoords({ allowFallback: false }),
+    new Promise<{ ok: false; error: string }>((resolve) => {
+      setTimeout(() => resolve({ ok: false, error: `GPS timeout (${timeoutMs / 1000}s)` }), timeoutMs);
+    }),
+  ]);
+}
+
 const MAP_ORIGIN_WHITELIST = ['about:blank', 'about:srcdoc', 'https://localhost'];
 
 type MapWindow = Window & {
@@ -176,6 +186,8 @@ export function GpsFullMap() {
   const liveOriginRef = useRef<{ lat: number; lon: number } | null>(null);
   /** Last successful watchDevicePosition tick — preferred for recenter over one-shot. */
   const lastWatchRef = useRef<{ lat: number; lon: number } | null>(null);
+  /** Booted on France overview — first live tick must setMapOrigin (pan+zoom), not only move marker. */
+  const recoveryRecenterRef = useRef(false);
   const lastLayersRef = useRef<{
     bridges: unknown[];
     weigh: unknown[];
@@ -363,12 +375,7 @@ export function GpsFullMap() {
 
       // Never block Carte forever on a hung getCurrentPosition (web / Expo Go).
       // Timeout must NOT clobber a live watch fix that arrived during the wait.
-      const loc = await Promise.race([
-        getDeviceCoords({ allowFallback: false }),
-        new Promise<{ ok: false; error: string }>((resolve) => {
-          setTimeout(() => resolve({ ok: false, error: 'GPS timeout (8s)' }), 8000);
-        }),
-      ]);
+      const loc = await getDeviceCoordsTimed(8000);
       if (cancelled) return;
 
       const watchFix = lastWatchRef.current;
@@ -384,6 +391,8 @@ export function GpsFullMap() {
       liveOriginRef.current = origin;
       setModeLabel(initial.mode);
       setGpsOk(deviceOk);
+      // France / failed boot → first live tick must pan+zoom (setMapOrigin), not marker-only.
+      recoveryRecenterRef.current = !deviceOk;
       if (!deviceOk) {
         setHudNote(
           loc.ok === false
@@ -426,6 +435,12 @@ export function GpsFullMap() {
             setHudNote((prev) =>
               prev && /GPS appareil|GPS timeout|localisation/i.test(prev) ? null : prev,
             );
+            if (recoveryRecenterRef.current) {
+              // Left France overview (or failed boot) — pan+zoom to live fix once.
+              recoveryRecenterRef.current = false;
+              setMapOrigin(pos.lat, pos.lon, true);
+              return;
+            }
             injectLivePosition(pos.lat, pos.lon, true, pos.headingDeg, pos.speedMps);
           },
           (err) => {
@@ -450,7 +465,7 @@ export function GpsFullMap() {
         cancelled = true;
         sub?.remove();
       };
-    }, [injectLivePosition]),
+    }, [injectLivePosition, setMapOrigin]),
   );
 
   useEffect(() => {
@@ -525,10 +540,11 @@ export function GpsFullMap() {
 
       if (msg.type === 'recenter') {
         void (async () => {
-          const loc = await getDeviceCoords({ allowFallback: false });
+          const loc = await getDeviceCoordsTimed(8000);
           const deviceOk = loc.ok === true && loc.data?.source === 'device';
           if (deviceOk) {
             lastWatchRef.current = { lat: loc.data.lat, lon: loc.data.lon };
+            recoveryRecenterRef.current = false;
             setGpsOk(true);
             setHudNote('GPS appareil OK — suivi live');
             setMapOrigin(loc.data.lat, loc.data.lon, true);
