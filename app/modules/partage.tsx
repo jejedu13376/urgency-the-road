@@ -5,15 +5,14 @@ import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
+import {
+  openInstallUrl,
+  resolveInstallUrl,
+  shareInstallLink,
+} from '../../src/services/share/installUrl';
 import { colors } from '../../src/theme/colors';
 
-function resolveInstallUrl(): { url: string; configured: boolean } {
-  const fromEnv = (process.env.EXPO_PUBLIC_INSTALL_URL ?? '').trim();
-  if (fromEnv) return { url: fromEnv, configured: true };
-  return { url: 'https://urgence-mecanique.app/install', configured: false };
-}
-
-/** Module 16 — partage viral SMS / WhatsApp / email / share sheet + install universelle. */
+/** Module 16 — partage viral SMS / WhatsApp / email / share sheet + install URL wiring. */
 export default function PartageScreen() {
   useModuleVisit(16);
   const install = resolveInstallUrl();
@@ -78,6 +77,14 @@ export default function PartageScreen() {
       .catch(() => setLast('Client mail indisponible — utilisez la share sheet.'));
   };
 
+  const openLink = () => {
+    void openInstallUrl(INSTALL_URL).then((r) => setLast(r.message));
+  };
+
+  const shareLinkOnly = () => {
+    void shareInstallLink(INSTALL_URL, region).then((r) => setLast(r.message));
+  };
+
   return (
     <>
       <Stack.Screen options={{ title: 'Partage' }} />
@@ -85,10 +92,21 @@ export default function PartageScreen() {
         <StubBanner
           text={
             install.configured
-              ? `Lien install LIVE (.env) · ${INSTALL_URL}`
+              ? `Lien install LIVE (${install.source}) · ${INSTALL_URL}`
               : 'Lien install stub — définissez EXPO_PUBLIC_INSTALL_URL (store / PWA) ; aucun listing inventé'
           }
         />
+
+        <Card title="Lien d’installation">
+          <Text style={styles.meta}>Source : {install.source} · configuré : {install.configured ? 'oui' : 'non'}</Text>
+          <Text style={styles.url}>{INSTALL_URL}</Text>
+          <Pressable style={styles.btn} onPress={openLink}>
+            <Text style={styles.btnTxt}>Ouvrir le lien install</Text>
+          </Pressable>
+          <Pressable style={styles.btnDark} onPress={shareLinkOnly}>
+            <Text style={styles.btnTxt}>Partager le lien seul</Text>
+          </Pressable>
+        </Card>
 
         <Card title="Région destinataire">
           <View style={styles.regionRow}>
@@ -158,7 +176,6 @@ export default function PartageScreen() {
           <Text style={styles.line}>• Android & iPhone (Expo / stores)</Text>
           <Text style={styles.line}>• Ordinateur Web / Desktop (PWA — ajout écran d’accueil)</Text>
           <Text style={styles.meta}>Plateforme actuelle : {Platform.OS}</Text>
-          <Text style={styles.meta}>URL : {INSTALL_URL}</Text>
         </Card>
 
         {last ? <Text style={styles.ok}>{last}</Text> : null}
@@ -205,5 +222,6 @@ const styles = StyleSheet.create({
   btnTxt: { color: colors.white, fontWeight: '800', fontSize: 12, textAlign: 'center' },
   line: { color: colors.ink, fontWeight: '700', marginBottom: 4 },
   meta: { color: colors.muted, fontSize: 12 },
+  url: { color: colors.ink, fontWeight: '700', fontSize: 13, marginTop: 4 },
   ok: { color: colors.garage, fontWeight: '700', marginTop: 8 },
 });

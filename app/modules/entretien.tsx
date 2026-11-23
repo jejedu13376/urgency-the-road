@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { Card } from '../../src/components/Card';
@@ -7,7 +7,8 @@ import { StubBanner } from '../../src/components/StubBanner';
 import { useFleet } from '../../src/context/FleetContext';
 import { MOCK_MAINTENANCE } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
-import { shareCarnetText } from '../../src/services/carnet/exportCarnet';
+import { loadCarnet, saveCarnet } from '../../src/services/carnet/carnetStorage';
+import { shareCarnetHtmlLite, shareCarnetText } from '../../src/services/carnet/exportCarnet';
 import type { MaintenanceItem } from '../../src/types/modules';
 import { colors } from '../../src/theme/colors';
 
@@ -112,6 +113,12 @@ function statusColor(s: string) {
   return colors.signal;
 }
 
+const DEFAULT_ITEMS: MaintenanceItem[] = [
+  ...MOCK_MAINTENANCE,
+  { id: 'm5', title: 'Distribution / chaîne', dueKm: 120000, status: 'planifie' },
+  { id: 'm6', title: 'Pneus (usure / pression)', dueKm: 75000, status: 'a_faire' },
+];
+
 const INITIAL_CARNET: CarnetEntry[] = [
   {
     id: 'c1',
@@ -133,22 +140,60 @@ const INITIAL_CARNET: CarnetEntry[] = [
   },
 ];
 
-/** Module 10 — entretien prédictif, rappels admin localisés, carnet PDF (stub clair). */
+/** Module 10 — entretien prédictif, rappels admin, carnet persisté + share texte/HTML-lite. */
 export default function EntretienScreen() {
   useModuleVisit(10);
   const { active } = useFleet();
   const km = active?.odometerKm ?? 0;
-  const [items, setItems] = useState<MaintenanceItem[]>([
-    ...MOCK_MAINTENANCE,
-    { id: 'm5', title: 'Distribution / chaîne', dueKm: 120000, status: 'planifie' },
-    { id: 'm6', title: 'Pneus (usure / pression)', dueKm: 75000, status: 'a_faire' },
-  ]);
+  const vehicleKey = active?.id ?? active?.vin ?? 'default';
+  const [items, setItems] = useState<MaintenanceItem[]>(DEFAULT_ITEMS);
   const [adminCountry, setAdminCountry] = useState(active?.country ?? 'FR');
   const [admin, setAdmin] = useState(() => adminRemindersForCountry(active?.country));
   const [carnet, setCarnet] = useState<CarnetEntry[]>(INITIAL_CARNET);
   const [newTitle, setNewTitle] = useState('');
   const [pdfMsg, setPdfMsg] = useState<string | null>(null);
   const [batteryV] = useState(12.6);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHydrated(false);
+    void (async () => {
+      const stored = await loadCarnet(vehicleKey);
+      if (cancelled) return;
+      if (stored) {
+        setCarnet(
+          stored.entries.map((e, i) => ({
+            id: `c-${vehicleKey}-${i}-${e.dateIso}`,
+            title: e.title,
+            km: e.km,
+            dateIso: e.dateIso,
+            cost: e.cost,
+            currency: e.currency,
+            invoiceRef: e.invoiceRef,
+          })),
+        );
+        if (stored.maintenance?.length) setItems(stored.maintenance);
+      } else {
+        setCarnet(INITIAL_CARNET);
+        setItems(DEFAULT_ITEMS);
+      }
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vehicleKey]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    void saveCarnet({
+      vehicleKey,
+      entries: carnet,
+      maintenance: items,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [carnet, items, vehicleKey, hydrated]);
 
   const overdue = useMemo(
     () => items.filter((m) => m.status !== 'fait' && m.dueKm <= km),
@@ -187,14 +232,20 @@ export default function EntretienScreen() {
     setNewTitle('');
   };
 
+  const exportPayload = () => ({
+    vehicleLabel: active?.label ?? `${active?.make ?? 'Véhicule'} ${active?.model ?? ''}`.trim(),
+    vin: active?.vin,
+    odometerKm: km,
+    entries: carnet,
+    maintenanceDone: items.filter((i) => i.status === 'fait').map((i) => i.title),
+  });
+
   const exportCarnet = () => {
-    void shareCarnetText({
-      vehicleLabel: active?.label ?? `${active?.make ?? 'Véhicule'} ${active?.model ?? ''}`.trim(),
-      vin: active?.vin,
-      odometerKm: km,
-      entries: carnet,
-      maintenanceDone: items.filter((i) => i.status === 'fait').map((i) => i.title),
-    }).then((r) => setPdfMsg(r.message));
+    void shareCarnetText(exportPayload()).then((r) => setPdfMsg(r.message));
+  };
+
+  const exportHtml = () => {
+    void shareCarnetHtmlLite(exportPayload()).then((r) => setPdfMsg(r.message));
   };
 
   return (
@@ -204,7 +255,7 @@ export default function EntretienScreen() {
         title="Entretien & carnet"
         subtitle={`Module 10 · ${active?.label ?? 'véhicule'} · ${km.toLocaleString('fr-FR')} km`}
       >
-        <StubBanner text="Export carnet texte LIVE (share sheet) · PDF certifié / signature serveur non branché" />
+        <StubBanner text="Carnet persisté + share texte/HTML-lite LIVE · PDF certifié / signature serveur non branché" />
 
         <Card title="Maintenance automatique (km)">
           <Text style={styles.meta}>
@@ -264,8 +315,8 @@ export default function EntretienScreen() {
 
         <Card title="Carnet numérique">
           <Text style={styles.meta}>
-            Historique réparations / factures — liste locale + entrées marquées « fait » (
-            {items.filter((i) => i.status === 'fait').length}).
+            Historique réparations / factures — persisté AsyncStorage par véhicule (
+            {items.filter((i) => i.status === 'fait').length} entretiens « fait »).
           </Text>
           <TextInput
             value={newTitle}
@@ -297,6 +348,9 @@ export default function EntretienScreen() {
           ))}
           <Pressable style={styles.export} onPress={exportCarnet}>
             <Text style={styles.exportTxt}>Partager carnet (texte)</Text>
+          </Pressable>
+          <Pressable style={styles.exportAlt} onPress={exportHtml}>
+            <Text style={styles.exportTxt}>Partager HTML-lite (imprimable)</Text>
           </Pressable>
           <Text style={styles.meta}>
             PDF certifié = backend de signature à brancher — aucun faux « PDF certifié généré ».
@@ -338,6 +392,13 @@ const styles = StyleSheet.create({
   },
   export: {
     backgroundColor: colors.asphalt,
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  exportAlt: {
+    backgroundColor: colors.signal,
     borderRadius: 12,
     padding: 14,
     alignItems: 'center',
