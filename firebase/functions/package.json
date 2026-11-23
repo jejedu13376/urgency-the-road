@@ -1,0 +1,24 @@
+{
+  "name": "urgency-road-multi-ia-proxy",
+  "description": "Firebase HTTPS proxy for Multi-IA — server-side LLM keys only",
+  "private": true,
+  "main": "lib/index.js",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "serve": "npm run build && firebase emulators:start --only functions --config ../firebase.json",
+    "deploy": "firebase deploy --config ../firebase.json --only functions:multiIa",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.2",
+    "firebase-functions": "^6.3.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.3"
+  }
+}

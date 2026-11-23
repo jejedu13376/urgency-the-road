@@ -125,6 +125,13 @@ Sign in (Module 15) → save medical fiche / vehicle → no permission-denied on
 
 Never put OpenAI / Anthropic / Gemini / Grok / Mistral / DeepSeek keys in `EXPO_PUBLIC_*` (they ship in the app bundle).
 
-1. Deploy a Cloud Function / backend that holds the provider keys.
-2. Set only `EXPO_PUBLIC_MULTI_IA_PROXY_URL` in the app `.env`.
-3. Proxy should verify the Firebase ID token from `Authorization: Bearer <idToken>` when present.
+**Full guide:** [`docs/MULTI-IA-PROXY.md`](./MULTI-IA-PROXY.md) (function code in `firebase/functions/`).
+
+```bash
+cd firebase/functions && npm install && npm run build && cd ../..
+firebase deploy --config firebase/firebase.json --only functions:multiIa
+```
+
+1. Set provider secrets server-side (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY` — only those you use).
+2. Paste the function URL into app `.env` as `EXPO_PUBLIC_MULTI_IA_PROXY_URL`.
+3. Proxy requires `Authorization: Bearer <Firebase ID token>` on every POST.

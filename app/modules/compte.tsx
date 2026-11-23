@@ -9,7 +9,12 @@ import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
 import { MOCK_PLANS } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
-import { signInEmail, signUpEmail } from '../../src/services/firebase';
+import {
+  isCurrentEmailVerified,
+  resendEmailVerification,
+  signInEmail,
+  signUpEmail,
+} from '../../src/services/firebase';
 import {
   isMethodConfigured,
   isPaymentsConfigured,
@@ -83,7 +88,10 @@ export default function CompteScreen() {
         setAuthMsg(r.stubLabel ?? 'Inscription échouée');
         return;
       }
-      setAuthMsg(r.stubLabel ?? `Compte ${r.data.email}`);
+      setAuthMsg(
+        r.stubLabel ??
+          `Compte ${r.data.email} — vérifie ton email (lien envoyé) avant le Multi-IA LIVE`,
+      );
       await refresh();
     } catch (e) {
       setAuthMsg(e instanceof Error ? e.message : 'Inscription échouée');
@@ -97,11 +105,21 @@ export default function CompteScreen() {
         setAuthMsg(r.stubLabel ?? 'Connexion échouée');
         return;
       }
-      setAuthMsg(r.stubLabel ?? `Connecté ${r.data.email}`);
       await refresh();
+      const verified = await isCurrentEmailVerified();
+      setAuthMsg(
+        verified
+          ? (r.stubLabel ?? `Connecté ${r.data.email}`)
+          : `Connecté ${r.data.email} — vérifie ton email pour activer le Multi-IA LIVE`,
+      );
     } catch (e) {
       setAuthMsg(e instanceof Error ? e.message : 'Connexion échouée');
     }
+  };
+
+  const onResendVerify = async () => {
+    const r = await resendEmailVerification();
+    setAuthMsg(r.stubLabel ?? (r.ok ? 'Email renvoyé' : 'Échec renvoi'));
   };
 
   return (
@@ -147,6 +165,9 @@ export default function CompteScreen() {
               <Text style={styles.btnTxt}>Connexion</Text>
             </Pressable>
           </View>
+          <Pressable style={[styles.btnDark, { marginTop: 8 }]} onPress={() => void onResendVerify()}>
+            <Text style={styles.btnTxt}>Renvoyer l’email de vérification</Text>
+          </Pressable>
           {authMsg ? <Text style={styles.msg}>{authMsg}</Text> : null}
         </Card>
 

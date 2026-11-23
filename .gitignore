@@ -45,6 +45,11 @@ docs/ENV-YOUTUBE.env
 .env.secret*
 **/secrets.env
 !.env.example
+!**/.env.example
+
+# Firebase Functions build output
+firebase/functions/lib/
+firebase/functions/node_modules/
 
 # typescript
 *.tsbuildinfo

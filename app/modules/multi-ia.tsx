@@ -13,6 +13,7 @@ import {
   runMultiIaDiagnostic,
   type IaEngineId,
 } from '../../src/services/ai/multiIaRouter';
+import { resendEmailVerification } from '../../src/services/firebase';
 import { recordLearnedFailure } from '../../src/services/firebase/learnedFailuresService';
 import { fetchRecallsByVehicle, type RecallHit } from '../../src/services/recalls/nhtsaRecalls';
 import { searchYoutubeVideos, type YoutubeVideoHit } from '../../src/services/youtube/youtubeSearch';
@@ -39,8 +40,15 @@ export default function MultiIaScreen() {
   const [recalls, setRecalls] = useState<RecallHit[]>([]);
   const [recallLabel, setRecallLabel] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  const [needVerify, setNeedVerify] = useState(false);
+  const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
 
   const activeModels = ALL_MODELS.filter((m) => enabled[m]) as IaEngineId[];
+
+  const onResendVerify = async () => {
+    const r = await resendEmailVerification();
+    setVerifyMsg(r.stubLabel ?? (r.ok ? 'Email renvoyé' : 'Échec renvoi'));
+  };
 
   const run = async () => {
     const prompt = q.trim();
@@ -84,6 +92,7 @@ export default function MultiIaScreen() {
         'Pistes : catalogue pièces (M3), OBD (M5), tutoriels YouTube (M11).',
       ].join('\n');
       setOut(text);
+      setNeedVerify(Boolean(diag.emailVerificationRequired));
       const now = new Date().toISOString();
       setChat((prev) => [
         ...prev,
@@ -128,6 +137,18 @@ export default function MultiIaScreen() {
       <Stack.Screen options={{ title: 'Multi-IA' }} />
       <Screen title="Routeur multi-IA" subtitle="Module 6 — coach vocal + chat + YouTube">
         <StubBanner text="Multi-IA : heuristique croisée ; LIVE via proxy serveur uniquement ; recalls NHTSA + YouTube" />
+
+        {needVerify ? (
+          <Card title="Vérifie ton email">
+            <Text style={styles.hint}>
+              Le proxy LIVE exige un email vérifié. Ouvre le lien reçu, puis relance l’analyse.
+            </Text>
+            <Pressable style={styles.btnFull} onPress={() => void onResendVerify()}>
+              <Text style={styles.btnTxt}>Renvoyer l’email de vérification</Text>
+            </Pressable>
+            {verifyMsg ? <Text style={styles.meta}>{verifyMsg}</Text> : null}
+          </Card>
+        ) : null}
 
         <Card title="Moteurs ciblés (routeur)">
           <Text style={styles.hint}>

@@ -2,6 +2,7 @@ import {
   User,
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
@@ -105,10 +106,52 @@ export async function signUpEmail(
   try {
     const cred = await createUserWithEmailAndPassword(fb.auth, email, password);
     if (displayName) await updateProfile(cred.user, { displayName });
+    try {
+      await sendEmailVerification(cred.user);
+    } catch {
+      // Account created — verification email may still be resent from Compte / Multi-IA
+    }
     const profile = await ensureUserDoc(cred.user.uid, email, displayName);
-    return liveResult(profile);
+    return liveResult(
+      profile,
+      'Compte créé — vérifie ton email (lien envoyé) avant le Multi-IA LIVE',
+    );
   } catch (e) {
     return failResult(MOCK_USER, authErrorMessage(e));
+  }
+}
+
+/** True when a Firebase user is signed in with a verified email (or mock/unconfigured). */
+export async function isCurrentEmailVerified(): Promise<boolean> {
+  if (!isFirebaseConfigured()) return true;
+  const fb = getFirebase();
+  const u = fb?.auth.currentUser;
+  if (!u) return false;
+  try {
+    await u.reload();
+    await u.getIdToken(true);
+  } catch {
+    // fall through to cached flag
+  }
+  return Boolean(fb?.auth.currentUser?.emailVerified);
+}
+
+/** Resend Firebase verification email to the signed-in user. */
+export async function resendEmailVerification(): Promise<ServiceResult<{ sent: boolean }>> {
+  const fb = getFirebase();
+  if (!fb) {
+    return mockResult({ sent: true }, 'MOCK Auth — email de vérification simulé');
+  }
+  const u = fb.auth.currentUser;
+  if (!u) return failResult({ sent: false }, 'Connecte-toi d’abord (Module 15).');
+  if (u.emailVerified) {
+    return liveResult({ sent: false }, 'Email déjà vérifié');
+  }
+  try {
+    await sendEmailVerification(u);
+    return liveResult({ sent: true }, 'Email de vérification renvoyé — consulte ta boîte');
+  } catch (e) {
+    return failResult({ sent: false }, authErrorMessage(e));
   }
 }
 

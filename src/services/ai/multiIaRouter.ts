@@ -31,6 +31,8 @@ export type MultiIaResult = {
   heuristicCount: number;
   totalMs: number;
   label: string;
+  /** True when signed in but email not verified — LIVE proxy blocked server-side. */
+  emailVerificationRequired?: boolean;
 };
 
 const ALL: IaEngineId[] = ['Claude', 'Gemini', 'GPT-4o', 'Grok', 'Mistral', 'DeepSeek'];
@@ -101,36 +103,66 @@ function heuristicVote(engine: IaEngineId, prompt: string, context: string): IaE
   };
 }
 
-async function authBearerForProxy(): Promise<string | undefined> {
+/**
+ * Reload Auth user + force-refresh ID token so emailVerified is fresh after the
+ * user clicks the verification link (without requiring full sign-out).
+ * needsVerification is only true when still signed in AND !emailVerified
+ * (read after reload when reload ran). Signed-out → never set the banner.
+ */
+async function refreshAuthUserForProxy(): Promise<{
+  bearer?: string;
+  needsVerification: boolean;
+}> {
+  const fb = getFirebase();
+  const user = fb?.auth.currentUser;
+  if (!user) return { needsVerification: false };
   try {
-    const fb = getFirebase();
-    const user = fb?.auth.currentUser;
-    if (!user) return undefined;
-    const token = await user.getIdToken();
-    return token ? `Bearer ${token}` : undefined;
+    await user.reload();
+    const fresh = fb.auth.currentUser;
+    if (!fresh) {
+      // Clearly signed out after reload — drop verify banner.
+      return { needsVerification: false };
+    }
+    if (!fresh.emailVerified) return { needsVerification: true };
+    const token = await fresh.getIdToken(true);
+    return token
+      ? { bearer: `Bearer ${token}`, needsVerification: false }
+      : { needsVerification: false };
   } catch {
-    return undefined;
+    // reload or getIdToken failed — read emailVerified from currentUser as-is
+    // (post-reload if reload already succeeded before token refresh failed).
+    const current = fb.auth.currentUser;
+    if (!current) return { needsVerification: false };
+    return { needsVerification: !current.emailVerified };
   }
 }
 
+/** Client abort must exceed server `fetchJson` (12s) so slow engines can still return live. */
+const LIVE_PROXY_ABORT_MS = 16_000;
+
 /**
- * Live vote via server proxy only. Proxy must hold OpenAI/Anthropic/etc. keys
- * and authenticate callers (Firebase ID token when available).
+ * Live vote via server proxy only. Proxy holds OpenAI/Anthropic/etc. keys and
+ * requires a Firebase ID token. Without auth / on 401·403·429·503 → null (heuristic).
+ * App Check header is not attached here: JS `firebase/app-check` has no getAppCheck,
+ * and initializing a provider would break Expo Go. Server App Check stays opt-in
+ * (`MULTI_IA_REQUIRE_APP_CHECK=1`) until a custom/dev client wires it.
  */
 async function liveProxyVote(
   engine: IaEngineId,
   prompt: string,
   context: string,
+  bearer: string | undefined,
 ): Promise<IaEngineVote | null> {
   const base = proxyUrl();
-  if (!base) return null;
+  if (!base || !bearer) return null;
   const t0 = Date.now();
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
-    const auth = await authBearerForProxy();
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (auth) headers.Authorization = auth;
+    const timer = setTimeout(() => ctrl.abort(), LIVE_PROXY_ABORT_MS);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: bearer,
+    };
     const res = await fetch(base, {
       method: 'POST',
       headers,
@@ -139,6 +171,15 @@ async function liveProxyVote(
     });
     clearTimeout(timer);
     if (!res.ok) {
+      // Auth / rate / missing key → fall back to heuristic (null), not a hard error vote.
+      if (
+        res.status === 401 ||
+        res.status === 403 ||
+        res.status === 429 ||
+        res.status === 503
+      ) {
+        return null;
+      }
       return {
         engine,
         ok: false,
@@ -180,8 +221,9 @@ async function engineVote(
   engine: IaEngineId,
   prompt: string,
   context: string,
+  bearer: string | undefined,
 ): Promise<IaEngineVote> {
-  const viaProxy = await liveProxyVote(engine, prompt, context);
+  const viaProxy = await liveProxyVote(engine, prompt, context, bearer);
   if (viaProxy) return viaProxy;
   return heuristicVote(engine, prompt, context);
 }
@@ -267,8 +309,13 @@ export async function runMultiIaDiagnostic(opts: {
     };
   }
 
+  // One reload + force token refresh for the whole diagnostic (not per engine).
+  const authState = proxyUrl()
+    ? await refreshAuthUserForProxy()
+    : { needsVerification: false as boolean, bearer: undefined as string | undefined };
+
   const settled = await Promise.allSettled(
-    enabled.map((engine) => engineVote(engine, prompt, context)),
+    enabled.map((engine) => engineVote(engine, prompt, context, authState.bearer)),
   );
 
   const engines: IaEngineVote[] = settled.map((s, i) => {
@@ -288,6 +335,19 @@ export async function runMultiIaDiagnostic(opts: {
   const liveCount = engines.filter((e) => e.source === 'live' && e.ok).length;
   const heuristicCount = engines.filter((e) => e.source === 'heuristic' && e.ok).length;
   const hasProxy = Boolean(proxyUrl());
+  const emailVerificationRequired = authState.needsVerification;
+  const ms = Date.now() - t0;
+
+  let label: string;
+  if (liveCount > 0) {
+    label = `Multi-IA LIVE proxy (${liveCount}) + heuristique (${heuristicCount}) · ${ms} ms`;
+  } else if (emailVerificationRequired && hasProxy) {
+    label = `Multi-IA — vérifie ton email pour le LIVE · heuristique ${heuristicCount} · ${ms} ms`;
+  } else if (hasProxy) {
+    label = `Multi-IA — proxy KO · heuristique ${heuristicCount}`;
+  } else {
+    label = `Multi-IA heuristique croisée (${heuristicCount} moteurs) · proxy serveur optionnel · ${ms} ms`;
+  }
 
   return {
     ok: engines.some((e) => e.ok),
@@ -299,13 +359,9 @@ export async function runMultiIaDiagnostic(opts: {
     severity,
     liveCount,
     heuristicCount,
-    totalMs: Date.now() - t0,
-    label:
-      liveCount > 0
-        ? `Multi-IA LIVE proxy (${liveCount}) + heuristique (${heuristicCount}) · ${Date.now() - t0} ms`
-        : hasProxy
-          ? `Multi-IA — proxy KO · heuristique ${heuristicCount}`
-          : `Multi-IA heuristique croisée (${heuristicCount} moteurs) · proxy serveur optionnel · ${Date.now() - t0} ms`,
+    totalMs: ms,
+    label,
+    emailVerificationRequired,
   };
 }
 
