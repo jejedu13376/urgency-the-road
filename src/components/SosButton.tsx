@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { colors } from '../theme/colors';
 
-/** Module 13 — bouton SOS toujours accessible → écran Urgence (112 sur l’écran). */
+/** Module 13 — bouton SOS toujours accessible → écran Urgence (numéros régionaux + alerte). */
 export function SosButton() {
   const pathname = usePathname();
 
