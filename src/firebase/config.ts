@@ -6,7 +6,12 @@ import {
   getReactNativePersistence,
   initializeAuth,
 } from 'firebase/auth';
-import { Firestore, getFirestore } from 'firebase/firestore';
+import {
+  Firestore,
+  getFirestore,
+  initializeFirestore,
+  memoryLocalCache,
+} from 'firebase/firestore';
 
 export type FirebaseClients = {
   app: FirebaseApp;
@@ -55,7 +60,14 @@ export function getFirebase(): FirebaseClients | null {
   if (cached) return cached;
   const config = readConfig();
   const app = getApps().length ? getApp() : initializeApp(config);
-  cached = { app, auth: initAuth(app), db: getFirestore(app) };
+  let db: Firestore;
+  try {
+    // Memory cache cuts repeat read latency without native persistence deps
+    db = initializeFirestore(app, { localCache: memoryLocalCache() });
+  } catch {
+    db = getFirestore(app);
+  }
+  cached = { app, auth: initAuth(app), db };
   return cached;
 }
 

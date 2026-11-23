@@ -52,11 +52,14 @@ Fill **only** these (leave empty in git; never commit real values):
 
 ### 6. Deploy rules (once CLI is installed)
 
+**Full guide:** `docs/FIREBASE-DEPLOY.md` (exact `firebase deploy --only firestore:rules` steps).
+
 ```bash
 cd /home/ubuntu/Axarel/urgency-road-one
 npm i -g firebase-tools
 firebase login
-firebase use <your-project-id>
+firebase use   # reads firebase/.firebaserc (default: urgency-road) or:
+# firebase use "$(grep '^EXPO_PUBLIC_FIREBASE_PROJECT_ID=' .env | cut -d= -f2)"
 firebase deploy --config firebase/firebase.json --only firestore:rules,firestore:indexes
 ```
 

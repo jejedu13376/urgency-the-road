@@ -1,20 +1,34 @@
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { fr } from '../i18n/fr';
-import { stubWeather } from '../services/stubs';
+import { fetchWeather, type WeatherSnapshot } from '../services/weather/openMeteo';
 import { colors } from '../theme/colors';
 
 export function WeatherBanner() {
-  const w = stubWeather().data;
+  const [w, setW] = useState<WeatherSnapshot | null>(null);
   const now = new Date();
   const date = now.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' });
   const time = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const snap = await fetchWeather();
+      if (!cancelled) setW(snap);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const temp = w?.tempC ?? '…';
+  const road = w?.road ?? 'ouvertes';
+
   return (
     <View style={styles.wrap} accessibilityLabel="Bandeau météo et état des routes">
       <Text style={styles.main}>
-        {date} · {time} · {w.tempC}°C · routes {w.road}
+        {date} · {time} · {temp}°C · routes {road}
       </Text>
-      <Text style={styles.stub}>{fr.stubWeather}</Text>
+      <Text style={styles.stub}>{w?.label ?? 'Météo…'}</Text>
     </View>
   );
 }

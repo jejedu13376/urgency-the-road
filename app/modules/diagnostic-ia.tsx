@@ -7,6 +7,7 @@ import { StubBanner } from '../../src/components/StubBanner';
 import { YoutubeSuggestions } from '../../src/components/YoutubeSuggestions';
 import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
+import { runMultiIaDiagnostic } from '../../src/services/ai/multiIaRouter';
 import { stubAcoustic, stubAiDiagnose } from '../../src/services/stubs';
 import { searchYoutubeVideos, type YoutubeVideoHit } from '../../src/services/youtube/youtubeSearch';
 import { colors } from '../../src/theme/colors';
@@ -51,7 +52,9 @@ export default function DiagnosticIaScreen() {
   const [acousticGuess, setAcousticGuess] = useState<string | null>(null);
   const [acousticBars] = useState(() => [4, 10, 6, 14, 8, 12, 5, 11, 7, 13]);
   const [qResult, setQResult] = useState<string | null>(null);
+  const [qBusy, setQBusy] = useState(false);
   const [freeResult, setFreeResult] = useState<string | null>(null);
+  const [freeBusy, setFreeBusy] = useState(false);
   const [yt, setYt] = useState<YoutubeVideoHit[]>([]);
   const [ytLabel, setYtLabel] = useState<string | undefined>();
 
@@ -103,16 +106,29 @@ export default function DiagnosticIaScreen() {
   };
 
   const answer = (yes: boolean) => {
+    if (qBusy) return;
     const next = [...answers, yes ? 'oui' : 'non'];
     setAnswers(next);
     if (step + 1 >= QUESTIONS.length) {
-      const r = stubAiDiagnose(`Q:${next.join(',')}`);
-      setQResult(`${r.label}\n${r.data.summary}`);
-      void loadYoutube('bruit moteur voyant diagnostic automobile');
+      const prompt = `Questionnaire diagnostic: ${QUESTIONS.map((q, i) => `${q.q}=${next[i]}`).join(' ; ')}`;
+      const ctx = active
+        ? `${active.make} ${active.model} ${active.year}`
+        : '';
+      setQBusy(true);
+      void (async () => {
+        try {
+          const r = await runMultiIaDiagnostic({ prompt, context: ctx });
+          setQResult(`${r.label}\n${r.consensus}\nPièces: ${r.likelyParts.join(', ') || '—'}`);
+          void loadYoutube('bruit moteur voyant diagnostic automobile');
+        } finally {
+          setQBusy(false);
+        }
+      })();
     } else setStep(step + 1);
   };
 
   const resetQuestions = () => {
+    if (qBusy) return;
     setStep(0);
     setAnswers([]);
     setQResult(null);
@@ -207,11 +223,19 @@ export default function DiagnosticIaScreen() {
               <Text style={styles.q}>{QUESTIONS[Math.min(step, QUESTIONS.length - 1)].q}</Text>
               <Text style={styles.hint}>{QUESTIONS[Math.min(step, QUESTIONS.length - 1)].hint}</Text>
               <View style={styles.row}>
-                <Pressable style={styles.yes} onPress={() => answer(true)}>
-                  <Text style={styles.btnTxt}>Oui</Text>
+                <Pressable
+                  style={[styles.yes, qBusy && styles.btnDisabled]}
+                  disabled={qBusy}
+                  onPress={() => answer(true)}
+                >
+                  <Text style={styles.btnTxt}>{qBusy ? 'Analyse…' : 'Oui'}</Text>
                 </Pressable>
-                <Pressable style={styles.no} onPress={() => answer(false)}>
-                  <Text style={styles.btnTxt}>Non</Text>
+                <Pressable
+                  style={[styles.no, qBusy && styles.btnDisabled]}
+                  disabled={qBusy}
+                  onPress={() => answer(false)}
+                >
+                  <Text style={styles.btnTxt}>{qBusy ? 'Analyse…' : 'Non'}</Text>
                 </Pressable>
               </View>
               {answers.length ? (
@@ -285,17 +309,31 @@ export default function DiagnosticIaScreen() {
             multiline
           />
           <Pressable
-            style={styles.btn}
+            style={[styles.btn, freeBusy && styles.btnDisabled]}
+            disabled={freeBusy}
             onPress={() => {
-              const problem = note || 'panne inconnue';
-              const r = stubAiDiagnose(problem);
-              setFreeResult(
-                `${r.label}\n${r.data.summary}\nOutils mock · budget estimé 120–380 ${active?.currency ?? 'EUR'}`,
-              );
-              void loadYoutube(problem);
+              if (freeBusy) return;
+              const problem = note.trim() || 'panne inconnue';
+              setFreeBusy(true);
+              void (async () => {
+                try {
+                  const ctx = active
+                    ? `${active.make} ${active.model} ${active.year}`
+                    : '';
+                  const r = await runMultiIaDiagnostic({ prompt: problem, context: ctx });
+                  setFreeResult(
+                    `${r.label}\n${r.consensus}\nPièces: ${r.likelyParts.join(', ') || '—'}\nBudget indicatif 120–380 ${active?.currency ?? 'EUR'}`,
+                  );
+                  void loadYoutube(problem);
+                } finally {
+                  setFreeBusy(false);
+                }
+              })();
             }}
           >
-            <Text style={styles.btnTxt}>Lancer diagnostic</Text>
+            <Text style={styles.btnTxt}>
+              {freeBusy ? 'Analyse en cours…' : 'Lancer diagnostic'}
+            </Text>
           </Pressable>
           {freeResult ? <Text style={styles.result}>{freeResult}</Text> : null}
         </Card>

@@ -1,0 +1,314 @@
+/**
+ * Module 6 — multi-IA diagnostic router.
+ * - Parallel heuristic engine votes (always available, no secrets)
+ * - Optional LIVE votes ONLY via EXPO_PUBLIC_MULTI_IA_PROXY_URL (server holds LLM keys)
+ * - Never reads provider API keys from EXPO_PUBLIC_* — those would ship in the JS bundle
+ */
+
+import { getFirebase } from '../../firebase/config';
+
+export type IaEngineId = 'Claude' | 'Gemini' | 'GPT-4o' | 'Grok' | 'Mistral' | 'DeepSeek';
+
+export type IaEngineVote = {
+  engine: IaEngineId;
+  ok: boolean;
+  source: 'live' | 'heuristic' | 'skipped' | 'error';
+  latencyMs: number;
+  summary: string;
+  likelyParts: string[];
+  severity: 'info' | 'warn' | 'critique';
+};
+
+export type MultiIaResult = {
+  ok: boolean;
+  prompt: string;
+  context: string;
+  engines: IaEngineVote[];
+  consensus: string;
+  likelyParts: string[];
+  severity: 'info' | 'warn' | 'critique';
+  liveCount: number;
+  heuristicCount: number;
+  totalMs: number;
+  label: string;
+};
+
+const ALL: IaEngineId[] = ['Claude', 'Gemini', 'GPT-4o', 'Grok', 'Mistral', 'DeepSeek'];
+
+function proxyUrl(): string {
+  return (process.env.EXPO_PUBLIC_MULTI_IA_PROXY_URL ?? '').trim();
+}
+
+/** Keyword → parts / severity heuristics (deterministic per engine bias). */
+function heuristicVote(engine: IaEngineId, prompt: string, context: string): IaEngineVote {
+  const t0 = Date.now();
+  const text = `${prompt} ${context}`.toLowerCase();
+  const parts: string[] = [];
+  let severity: IaEngineVote['severity'] = 'info';
+  let focus = 'diagnostic général';
+
+  if (/frein|plaquette|étrier|braking|brake/.test(text)) {
+    parts.push('Plaquettes de frein', 'Disques', 'Étrier');
+    severity = 'warn';
+    focus = 'freinage';
+  }
+  if (/bruit|cliquetis|cognement|roulement|squeal|noise/.test(text)) {
+    parts.push('Roulement moyeu', 'Courroie accessoire', 'Silentbloc');
+    severity = severity === 'info' ? 'warn' : severity;
+    focus = focus === 'diagnostic général' ? 'acoustique' : focus;
+  }
+  if (/fumée|smoke|huile|huileuse|bleu|noir/.test(text)) {
+    parts.push('Joint de queue de soupape', 'Turbo', 'Guide soupape');
+    severity = 'critique';
+    focus = 'étanchéité / combustion';
+  }
+  if (/adblue|nox|scr|def/.test(text)) {
+    parts.push('Capteur NOx', 'Pompe AdBlue', 'Catalyseur SCR');
+    severity = 'warn';
+    focus = 'antipollution PL';
+  }
+  if (/batterie|démarrage|voltage|start/.test(text)) {
+    parts.push('Batterie 12V', 'Alternateur', 'Démarreur');
+    severity = 'warn';
+    focus = 'électrique démarrage';
+  }
+  if (/surchauffe|température|radiateur|overheat/.test(text)) {
+    parts.push('Thermostat', 'Pompe à eau', 'Radiateur');
+    severity = 'critique';
+    focus = 'refroidissement';
+  }
+  if (!parts.length) {
+    parts.push('Filtre à air', 'Bougies / injecteurs', 'Capteur O2');
+  }
+
+  const bias: Record<IaEngineId, string> = {
+    Claude: 'analyse causale structurée',
+    Gemini: 'corrélation capteurs / historique',
+    'GPT-4o': 'plan de réparation étape par étape',
+    Grok: 'signaux faibles / cas terrain',
+    Mistral: 'synthèse FR concise',
+    DeepSeek: 'checklist pièces + outils',
+  };
+
+  return {
+    engine,
+    ok: true,
+    source: 'heuristic',
+    latencyMs: Date.now() - t0,
+    summary: `[${engine}/${bias[engine]}] Focus ${focus} — pistes: ${parts.slice(0, 3).join(', ')}.`,
+    likelyParts: parts.slice(0, 4),
+    severity,
+  };
+}
+
+async function authBearerForProxy(): Promise<string | undefined> {
+  try {
+    const fb = getFirebase();
+    const user = fb?.auth.currentUser;
+    if (!user) return undefined;
+    const token = await user.getIdToken();
+    return token ? `Bearer ${token}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Live vote via server proxy only. Proxy must hold OpenAI/Anthropic/etc. keys
+ * and authenticate callers (Firebase ID token when available).
+ */
+async function liveProxyVote(
+  engine: IaEngineId,
+  prompt: string,
+  context: string,
+): Promise<IaEngineVote | null> {
+  const base = proxyUrl();
+  if (!base) return null;
+  const t0 = Date.now();
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const auth = await authBearerForProxy();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (auth) headers.Authorization = auth;
+    const res = await fetch(base, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ engine, prompt, context }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      return {
+        engine,
+        ok: false,
+        source: 'error',
+        latencyMs: Date.now() - t0,
+        summary: `Proxy ${engine} HTTP ${res.status}`,
+        likelyParts: [],
+        severity: 'info',
+      };
+    }
+    const body = (await res.json()) as {
+      summary?: string;
+      likelyParts?: string[];
+      severity?: IaEngineVote['severity'];
+    };
+    return {
+      engine,
+      ok: true,
+      source: 'live',
+      latencyMs: Date.now() - t0,
+      summary: body.summary ?? `(${engine}) réponse proxy`,
+      likelyParts: body.likelyParts ?? [],
+      severity: body.severity ?? 'info',
+    };
+  } catch (e) {
+    return {
+      engine,
+      ok: false,
+      source: 'error',
+      latencyMs: Date.now() - t0,
+      summary: e instanceof Error ? e.message : String(e),
+      likelyParts: [],
+      severity: 'info',
+    };
+  }
+}
+
+async function engineVote(
+  engine: IaEngineId,
+  prompt: string,
+  context: string,
+): Promise<IaEngineVote> {
+  const viaProxy = await liveProxyVote(engine, prompt, context);
+  if (viaProxy) return viaProxy;
+  return heuristicVote(engine, prompt, context);
+}
+
+function synthesize(votes: IaEngineVote[], prompt: string): Pick<
+  MultiIaResult,
+  'consensus' | 'likelyParts' | 'severity'
+> {
+  const okVotes = votes.filter((v) => v.ok);
+  const partScores = new Map<string, number>();
+  for (const v of okVotes) {
+    for (const p of v.likelyParts) {
+      partScores.set(p, (partScores.get(p) ?? 0) + 1);
+    }
+  }
+  const likelyParts = [...partScores.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([p]) => p);
+
+  let severity: MultiIaResult['severity'] = 'info';
+  if (okVotes.some((v) => v.severity === 'critique')) severity = 'critique';
+  else if (okVotes.some((v) => v.severity === 'warn')) severity = 'warn';
+
+  const live = okVotes.filter((v) => v.source === 'live').length;
+  const lines = [
+    `Consensus sur « ${prompt.slice(0, 100)} » — ${okVotes.length} moteur(s), dont ${live} live.`,
+    likelyParts.length
+      ? `Pièces les plus citées : ${likelyParts.join(', ')}.`
+      : 'Pas de pièce dominante — précisez bruit / voyant / fumée.',
+    `Gravité agrégée : ${severity}.`,
+    'Suite : catalogue M3 · OBD M5 · tutoriels YouTube M11.',
+  ];
+  return { consensus: lines.join(' '), likelyParts, severity };
+}
+
+/**
+ * Run enabled engines in parallel (Promise.allSettled).
+ */
+export async function runMultiIaDiagnostic(opts: {
+  prompt: string;
+  context?: string;
+  enabled?: IaEngineId[];
+}): Promise<MultiIaResult> {
+  const t0 = Date.now();
+  const prompt = opts.prompt.trim();
+  const context = (opts.context ?? '').trim();
+  // undefined/omitted → all engines; explicit [] → none (no silent fallback to ALL)
+  const enabled =
+    opts.enabled === undefined
+      ? [...ALL]
+      : opts.enabled.filter((e) => ALL.includes(e));
+
+  if (!prompt) {
+    return {
+      ok: false,
+      prompt,
+      context,
+      engines: [],
+      consensus: 'Prompt vide',
+      likelyParts: [],
+      severity: 'info',
+      liveCount: 0,
+      heuristicCount: 0,
+      totalMs: 0,
+      label: 'Multi-IA — prompt requis',
+    };
+  }
+
+  if (enabled.length === 0) {
+    return {
+      ok: false,
+      prompt,
+      context,
+      engines: [],
+      consensus: 'Aucun moteur activé — réactivez au moins un modèle.',
+      likelyParts: [],
+      severity: 'info',
+      liveCount: 0,
+      heuristicCount: 0,
+      totalMs: Date.now() - t0,
+      label: 'Multi-IA — 0 moteur sélectionné',
+    };
+  }
+
+  const settled = await Promise.allSettled(
+    enabled.map((engine) => engineVote(engine, prompt, context)),
+  );
+
+  const engines: IaEngineVote[] = settled.map((s, i) => {
+    if (s.status === 'fulfilled') return s.value;
+    return {
+      engine: enabled[i],
+      ok: false,
+      source: 'error' as const,
+      latencyMs: 0,
+      summary: s.reason instanceof Error ? s.reason.message : 'échec',
+      likelyParts: [],
+      severity: 'info' as const,
+    };
+  });
+
+  const { consensus, likelyParts, severity } = synthesize(engines, prompt);
+  const liveCount = engines.filter((e) => e.source === 'live' && e.ok).length;
+  const heuristicCount = engines.filter((e) => e.source === 'heuristic' && e.ok).length;
+  const hasProxy = Boolean(proxyUrl());
+
+  return {
+    ok: engines.some((e) => e.ok),
+    prompt,
+    context,
+    engines,
+    consensus,
+    likelyParts,
+    severity,
+    liveCount,
+    heuristicCount,
+    totalMs: Date.now() - t0,
+    label:
+      liveCount > 0
+        ? `Multi-IA LIVE proxy (${liveCount}) + heuristique (${heuristicCount}) · ${Date.now() - t0} ms`
+        : hasProxy
+          ? `Multi-IA — proxy KO · heuristique ${heuristicCount}`
+          : `Multi-IA heuristique croisée (${heuristicCount} moteurs) · proxy serveur optionnel · ${Date.now() - t0} ms`,
+  };
+}
+
+export function listIaEngines(): IaEngineId[] {
+  return [...ALL];
+}

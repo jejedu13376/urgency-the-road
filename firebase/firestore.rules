@@ -256,9 +256,24 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    /**
+     * Module 14 — owner-only. Never world-readable (no public VIN/fleet dump).
+     * Create forbids `vin` field; list requires authorUid == uid() query.
+     */
     match /learnedFailures/{id} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow get: if signedIn()
+        && (resource == null || resource.data.authorUid == uid() || isAdmin());
+      allow list: if signedIn() && resource.data.authorUid == uid();
+      allow create: if signedIn()
+        && request.resource.data.authorUid == uid()
+        && request.resource.data.summary is string
+        && request.resource.data.summary.size() > 0
+        && request.resource.data.summary.size() < 2000
+        && !('vin' in request.resource.data);
+      allow update: if isAdmin()
+        && !('vin' in request.resource.data);
+      allow delete: if signedIn()
+        && (resource.data.authorUid == uid() || isAdmin());
     }
 
     match /feedPosts/{id} {

@@ -2,6 +2,7 @@
  * YouTube Data API v3 — search.list utility.
  * Key from EXPO_PUBLIC_YOUTUBE_API_KEY only (never hardcode).
  * Opens watch URLs only — no embedded video files.
+ * In-memory TTL cache + slim fields to cut latency / quota.
  */
 
 export type YoutubeVideoHit = {
@@ -17,7 +18,8 @@ export type YoutubeSearchResult = {
   httpStatus: number;
   items: YoutubeVideoHit[];
   error?: string;
-  source: 'youtube_api' | 'fallback_search_url';
+  source: 'youtube_api' | 'fallback_search_url' | 'cache';
+  cached?: boolean;
 };
 
 function getApiKey(): string {
@@ -32,6 +34,10 @@ export function watchUrlFor(videoId: string): string {
   return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
 }
 
+type CacheEntry = { at: number; result: YoutubeSearchResult };
+const searchCache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 15 * 60 * 1000;
+
 /**
  * Search top relevant videos for a mechanic problem keyword.
  * @example searchYoutubeVideos('remplacement plaquettes de frein')
@@ -41,6 +47,13 @@ export async function searchYoutubeVideos(
   maxResults = 5,
 ): Promise<YoutubeSearchResult> {
   const q = keyword.trim() || 'réparation automobile';
+  const capped = Math.min(Math.max(maxResults, 1), 8);
+  const cacheKey = `${q.toLowerCase()}|${capped}`;
+  const cached = searchCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+    return { ...cached.result, source: 'cache', cached: true };
+  }
+
   const key = getApiKey();
 
   if (!key) {
@@ -56,9 +69,16 @@ export async function searchYoutubeVideos(
   const url = new URL('https://www.googleapis.com/youtube/v3/search');
   url.searchParams.set('part', 'snippet');
   url.searchParams.set('type', 'video');
-  url.searchParams.set('maxResults', String(Math.min(Math.max(maxResults, 1), 10)));
+  url.searchParams.set('maxResults', String(capped));
   url.searchParams.set('q', q);
   url.searchParams.set('key', key);
+  url.searchParams.set('relevanceLanguage', 'fr');
+  url.searchParams.set('safeSearch', 'moderate');
+  // Slim payload — only fields we map (lower latency / parse cost)
+  url.searchParams.set(
+    'fields',
+    'items(id/videoId,snippet(title,channelTitle,thumbnails/default/url))',
+  );
 
   try {
     const res = await fetch(url.toString());
@@ -94,7 +114,9 @@ export async function searchYoutubeVideos(
       });
     }
 
-    return { ok: true, httpStatus, items, source: 'youtube_api' };
+    const result: YoutubeSearchResult = { ok: true, httpStatus, items, source: 'youtube_api' };
+    searchCache.set(cacheKey, { at: Date.now(), result });
+    return result;
   } catch (e) {
     return {
       ok: false,
