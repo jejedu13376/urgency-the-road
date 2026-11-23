@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
@@ -13,6 +13,7 @@ import { fetchNearbyBridgeClearances } from '../../services/osm/overpassPlaces';
 import {
   loadGpsNavPrefs,
   saveGpsNavPrefs,
+  type GpsNavPrefs,
   type GpsVehicleMode,
 } from '../../services/prefs/gpsNavPrefs';
 import { colors } from '../../theme/colors';
@@ -49,9 +50,27 @@ const ALLOWED_MSG_TYPES = new Set([
   'recenter',
 ]);
 
+/** Clearance under map HUD for SOS FAB (~bottom 92 + 58) + tab bar. */
+const SOS_FAB_CLEARANCE = 110;
+
 function isFiniteCoord(n: unknown): n is number {
   return typeof n === 'number' && Number.isFinite(n);
 }
+
+type MapMsg =
+  | { type: 'ready'; mode: GpsVehicleMode }
+  | { type: 'mode'; mode: GpsVehicleMode }
+  | {
+      type: 'route';
+      mode: GpsVehicleMode;
+      from: { lat: number; lon: number };
+      to: { lat: number; lon: number };
+      truck: { heightM: number; widthM: number; weightT: number };
+    }
+  | { type: 'routed'; mode: GpsVehicleMode; distanceKm?: number; durationMin?: number; label?: string }
+  | { type: 'navigating'; mode: GpsVehicleMode; to: { lat: number; lon: number } }
+  | { type: 'arrived'; mode: GpsVehicleMode; to: { lat: number; lon: number } }
+  | { type: 'recenter' };
 
 /** Parse + schema-check map postMessage payloads (reject forged / garbage). */
 function parseMapMsg(raw: string): MapMsg | null {
@@ -89,30 +108,24 @@ function parseMapMsg(raw: string): MapMsg | null {
 function allowMapDocumentLoad(url: string): boolean {
   if (!url || url === 'about:blank' || url === 'about:srcdoc') return true;
   if (url.startsWith('data:text/html')) return true;
-  // baseUrl https://localhost/ — initial document only, not external sites
   if (url === 'https://localhost/' || url === 'https://localhost') return true;
   return false;
 }
 
 type MapWindow = Window & {
   __gpsApplyRoute?: (payload: VehicleRouteResult) => void;
-  __gpsSetOrigin?: (lat: number, lon: number) => void;
+  __gpsSetOrigin?: (lat: number, lon: number, ok?: boolean) => void;
+  __gpsApplyMode?: (
+    mode: GpsVehicleMode,
+    truck?: { heightM?: number; widthM?: number; weightT?: number },
+  ) => void;
+  __gpsSetChrome?: (p: {
+    padTop?: number;
+    padRight?: number;
+    padBottom?: number;
+    padLeft?: number;
+  }) => void;
 };
-
-type MapMsg =
-  | { type: 'ready'; mode: GpsVehicleMode }
-  | { type: 'mode'; mode: GpsVehicleMode }
-  | {
-      type: 'route';
-      mode: GpsVehicleMode;
-      from: { lat: number; lon: number };
-      to: { lat: number; lon: number };
-      truck: { heightM: number; widthM: number; weightT: number };
-    }
-  | { type: 'routed'; mode: GpsVehicleMode; distanceKm?: number; durationMin?: number; label?: string }
-  | { type: 'navigating'; mode: GpsVehicleMode; to: { lat: number; lon: number } }
-  | { type: 'arrived'; mode: GpsVehicleMode; to: { lat: number; lon: number } }
-  | { type: 'recenter' };
 
 /**
  * Full-bleed GPS map (OSM/Leaflet). Only HUD overlays — no hub cards.
@@ -123,45 +136,26 @@ export function GpsFullMap() {
   const { active } = useFleet();
   const webRef = useRef<WebViewHandle | null>(null);
   const iframeWinRef = useRef<MapWindow | null>(null);
-  /** Monotonic id so a slower older Valhalla response cannot overwrite a newer route. */
   const routeReqId = useRef(0);
+  const prefsRef = useRef<GpsNavPrefs | null>(null);
+  const bootedRef = useRef(false);
   const [bootHtml, setBootHtml] = useState<string | null>(null);
   const [hudNote, setHudNote] = useState<string | null>(null);
   const [lastRoute, setLastRoute] = useState<VehicleRouteResult | null>(null);
   const [dest, setDest] = useState<{ lat: number; lon: number } | null>(null);
   const [modeLabel, setModeLabel] = useState<GpsVehicleMode>('voiture');
+  const [gpsOk, setGpsOk] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const stored = await loadGpsNavPrefs();
-      const isPl =
-        active?.vehicleClass === 'poids_lourd' || active?.powertrain === 'poids_lourd_diesel';
-      const initial =
-        stored.updatedAt === new Date(0).toISOString() && isPl
-          ? await saveGpsNavPrefs({ mode: 'camion' })
-          : stored;
-      const loc = await getDeviceCoords({ allowFallback: true });
-      if (cancelled) return;
-      const origin = loc.data
-        ? { lat: loc.data.lat, lon: loc.data.lon }
-        : { lat: 50.6292, lon: 3.0573 };
-      setModeLabel(initial.mode);
-      setBootHtml(
-        buildGpsMapHtml({
-          lat: origin.lat,
-          lon: origin.lon,
-          mode: initial.mode,
-          truckHeightM: initial.truckHeightM,
-          truckWidthM: initial.truckWidthM,
-          truckPtacT: initial.truckPtacT,
-        }),
-      );
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [active?.vehicleClass, active?.powertrain]);
+  const chromePads = useMemo(
+    () => ({
+      padTop: Math.max(insets.top, 8) + 4,
+      padRight: Math.max(insets.right, 8),
+      // Status bar / safe area + SOS FAB clearance (right FAB at bottom ~92)
+      padBottom: Math.max(insets.bottom, 8) + SOS_FAB_CLEARANCE,
+      padLeft: Math.max(insets.left, 8),
+    }),
+    [insets.top, insets.right, insets.bottom, insets.left],
+  );
 
   const injectRoute = useCallback((result: VehicleRouteResult) => {
     if (Platform.OS === 'web') {
@@ -177,19 +171,130 @@ export function GpsFullMap() {
     );
   }, []);
 
-  const setMapOrigin = useCallback((lat: number, lon: number) => {
+  const setMapOrigin = useCallback((lat: number, lon: number, ok: boolean) => {
     if (Platform.OS === 'web') {
       try {
-        iframeWinRef.current?.__gpsSetOrigin?.(lat, lon);
+        iframeWinRef.current?.__gpsSetOrigin?.(lat, lon, ok);
       } catch {
         /* ignore */
       }
       return;
     }
     webRef.current?.injectJavaScript(
-      `window.__gpsSetOrigin && window.__gpsSetOrigin(${lat},${lon}); true;`,
+      `window.__gpsSetOrigin && window.__gpsSetOrigin(${lat},${lon},${ok ? 'true' : 'false'}); true;`,
     );
   }, []);
+
+  const applyModeInMap = useCallback((mode: GpsVehicleMode, prefs: GpsNavPrefs) => {
+    const truck = {
+      heightM: prefs.truckHeightM,
+      widthM: prefs.truckWidthM,
+      weightT: prefs.truckPtacT,
+    };
+    if (Platform.OS === 'web') {
+      try {
+        iframeWinRef.current?.__gpsApplyMode?.(mode, truck);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    webRef.current?.injectJavaScript(
+      `window.__gpsApplyMode && window.__gpsApplyMode(${JSON.stringify(mode)}, ${JSON.stringify(truck)}); true;`,
+    );
+  }, []);
+
+  /** Boot map once — never remount on vehicle class change. */
+  useEffect(() => {
+    if (bootedRef.current) return;
+    let cancelled = false;
+    void (async () => {
+      const stored = await loadGpsNavPrefs();
+      const isPl =
+        active?.vehicleClass === 'poids_lourd' || active?.powertrain === 'poids_lourd_diesel';
+      const initial =
+        stored.updatedAt === new Date(0).toISOString() && isPl
+          ? await saveGpsNavPrefs({ mode: 'camion' })
+          : stored;
+
+      // Never treat Lille fallback as silent device origin.
+      const loc = await getDeviceCoords({ allowFallback: false });
+      if (cancelled) return;
+
+      const deviceOk = loc.ok === true && loc.data?.source === 'device';
+      const origin = deviceOk
+        ? { lat: loc.data.lat, lon: loc.data.lon }
+        : { lat: 46.5, lon: 2.5 }; // neutral FR overview — not claimed as GPS
+
+      prefsRef.current = initial;
+      setModeLabel(initial.mode);
+      setGpsOk(deviceOk);
+      if (!deviceOk) {
+        setHudNote(
+          loc.ok === false
+            ? `GPS appareil refusé — ${loc.error}. Activez la localisation.`
+            : 'GPS appareil requis — autorisez la localisation.',
+        );
+      }
+      bootedRef.current = true;
+      setBootHtml(
+        buildGpsMapHtml({
+          lat: origin.lat,
+          lon: origin.lon,
+          mode: initial.mode,
+          truckHeightM: initial.truckHeightM,
+          truckWidthM: initial.truckWidthM,
+          truckPtacT: initial.truckPtacT,
+          gpsOk: deviceOk,
+          ...chromePads,
+        }),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Boot once on mount only (vehicle updates use inject, not remount).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Vehicle class / powertrain change → update mode/icon without wiping the map. */
+  useEffect(() => {
+    if (!bootedRef.current || !bootHtml) return;
+    const isPl =
+      active?.vehicleClass === 'poids_lourd' || active?.powertrain === 'poids_lourd_diesel';
+    void (async () => {
+      const prefs = prefsRef.current ?? (await loadGpsNavPrefs());
+      const nextMode: GpsVehicleMode = isPl ? 'camion' : prefs.mode;
+      const saved = await saveGpsNavPrefs({
+        ...prefs,
+        mode: isPl ? 'camion' : prefs.mode,
+      });
+      prefsRef.current = saved;
+      setModeLabel(nextMode);
+      applyModeInMap(nextMode, saved);
+      setHudNote(
+        isPl
+          ? 'Véhicule PL actif — profil camion (carte conservée)'
+          : 'Profil véhicule mis à jour — carte conservée',
+      );
+    })();
+  }, [active?.vehicleClass, active?.powertrain, bootHtml, applyModeInMap]);
+
+  /** Push safe-area / SOS clearance into map HUD without remount. */
+  useEffect(() => {
+    if (!bootHtml) return;
+    if (Platform.OS === 'web') {
+      try {
+        iframeWinRef.current?.__gpsSetChrome?.(chromePads);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    webRef.current?.injectJavaScript(
+      `window.__gpsSetChrome && window.__gpsSetChrome(${JSON.stringify(chromePads)}); true;`,
+    );
+  }, [bootHtml, chromePads]);
 
   const handleMapMsg = useCallback(
     (raw: string) => {
@@ -198,21 +303,38 @@ export function GpsFullMap() {
 
       if (msg.type === 'mode') {
         setModeLabel(msg.mode);
-        void saveGpsNavPrefs({ mode: msg.mode });
+        void saveGpsNavPrefs({ mode: msg.mode }).then((p) => {
+          prefsRef.current = p;
+        });
         setHudNote(msg.mode === 'camion' ? 'Mode camion enregistré' : 'Mode voiture enregistré');
         return;
       }
 
       if (msg.type === 'recenter') {
         void (async () => {
-          const loc = await getDeviceCoords({ allowFallback: true });
-          if (!loc.data) return;
-          setMapOrigin(loc.data.lat, loc.data.lon);
+          const loc = await getDeviceCoords({ allowFallback: false });
+          const deviceOk = loc.ok === true && loc.data?.source === 'device';
+          setGpsOk(deviceOk);
+          if (!deviceOk) {
+            setHudNote(
+              loc.ok === false
+                ? `GPS appareil refusé — ${loc.error}`
+                : 'GPS appareil requis — autorisez la localisation',
+            );
+            setMapOrigin(46.5, 2.5, false);
+            return;
+          }
+          setHudNote('GPS appareil OK');
+          setMapOrigin(loc.data.lat, loc.data.lon, true);
         })();
         return;
       }
 
       if (msg.type === 'route') {
+        if (!gpsOk) {
+          setHudNote('Itinéraire bloqué — GPS appareil requis (pas de fallback Lille)');
+          return;
+        }
         setDest(msg.to);
         setModeLabel(msg.mode);
         const reqId = ++routeReqId.current;
@@ -222,6 +344,8 @@ export function GpsFullMap() {
             truckHeightM: msg.truck.heightM,
             truckWidthM: msg.truck.widthM,
             truckPtacT: msg.truck.weightT,
+          }).then((p) => {
+            prefsRef.current = p;
           });
           if (reqId !== routeReqId.current) return;
 
@@ -272,11 +396,10 @@ export function GpsFullMap() {
 
       if (msg.type === 'arrived' && msg.to) {
         setDest(msg.to);
-        // Preview only — do not auto-open Maps; user taps Maps/Waze HUD.
         setHudNote('Arrivée animée — tapez Maps / Waze pour le guidage live');
       }
     },
-    [injectRoute, setMapOrigin],
+    [gpsOk, injectRoute, setMapOrigin],
   );
 
   const onMessage = useCallback(
@@ -289,7 +412,6 @@ export function GpsFullMap() {
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const onWinMsg = (ev: MessageEvent) => {
-      // Only accept messages from our map iframe (srcDoc → opaque/null origin).
       const mapWin = iframeWinRef.current;
       if (!mapWin || ev.source !== mapWin) return;
       if (ev.origin !== '' && ev.origin !== 'null' && ev.origin !== window.location.origin) return;
@@ -322,7 +444,6 @@ export function GpsFullMap() {
           originWhitelist={['about:blank', 'about:srcdoc']}
           source={{
             html: bootHtml,
-            // HTTPS base so Leaflet/OSM tile + CDN subresources stay mixed-content clean
             baseUrl: 'https://localhost/',
           }}
           style={styles.fill}
@@ -339,7 +460,17 @@ export function GpsFullMap() {
         />
       )}
       {hudNote ? (
-        <View pointerEvents="none" style={[styles.note, { top: Math.max(insets.top, 8) + 72 }]}>
+        <View
+          pointerEvents="none"
+          style={[
+            styles.note,
+            {
+              top: chromePads.padTop + 64,
+              left: chromePads.padLeft + 4,
+              right: chromePads.padRight + 4,
+            },
+          ]}
+        >
           <Text style={styles.noteTxt} numberOfLines={3}>
             {hudNote}
           </Text>
@@ -347,7 +478,13 @@ export function GpsFullMap() {
       ) : null}
       {lastRoute?.ok && dest ? (
         <View
-          style={[styles.handrow, { bottom: Math.max(insets.bottom, 8) + 70 }]}
+          style={[
+            styles.handrow,
+            {
+              bottom: chromePads.padBottom + 8,
+              right: chromePads.padRight + 4,
+            },
+          ]}
           pointerEvents="box-none"
         >
           <Text
@@ -368,7 +505,6 @@ export function GpsFullMap() {
   );
 }
 
-/** Web-only iframe host — keeps ref write out of parent render props object. */
 function WebIframe({
   html,
   onReady,
@@ -377,7 +513,6 @@ function WebIframe({
   onReady: (win: MapWindow | null) => void;
 }) {
   return (
-    // DOM iframe — web target only
     <iframe
       title="Carte GPS"
       srcDoc={html}
@@ -395,8 +530,6 @@ const styles = StyleSheet.create({
   bootTxt: { color: colors.white, fontWeight: '700' },
   note: {
     position: 'absolute',
-    left: 12,
-    right: 12,
     backgroundColor: 'rgba(27,36,48,0.88)',
     borderRadius: 10,
     paddingHorizontal: 10,
@@ -405,7 +538,6 @@ const styles = StyleSheet.create({
   noteTxt: { color: colors.white, fontSize: 11, fontWeight: '600', lineHeight: 15 },
   handrow: {
     position: 'absolute',
-    right: 12,
     flexDirection: 'row',
     gap: 8,
   },
