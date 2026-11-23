@@ -59,28 +59,18 @@ export async function scanBleDevices(): Promise<BleScanResult> {
     const manager: any = await getSharedBleManager();
     const found: { id: string; name: string }[] = [];
     await new Promise<void>((resolve) => {
-      const sub = manager.startDeviceScan(
-        null,
-        { allowDuplicates: false },
-        (error: Error | null, device: { id: string; name?: string | null; localName?: string | null } | null) => {
-          if (error) {
-            try {
-              sub?.remove?.();
-            } catch {
-              /* ignore */
-            }
-            resolve();
-            return;
-          }
-          const name = device?.name || device?.localName || '';
-          if (device && name && /obd|elm|vgate|obdlink|veepaa|nexion|j1939|plx|carista/i.test(name)) {
-            if (!found.some((d) => d.id === device.id)) {
-              found.push({ id: device.id, name });
-            }
-          }
-        },
-      );
-      setTimeout(() => {
+      let settled = false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let sub: { remove?: () => void } | null = null;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (timer !== null) {
+          clearTimeout(timer);
+          timer = null;
+        }
         try {
           manager.stopDeviceScan();
         } catch {
@@ -92,7 +82,25 @@ export async function scanBleDevices(): Promise<BleScanResult> {
           /* ignore */
         }
         resolve();
-      }, 5000);
+      };
+
+      sub = manager.startDeviceScan(
+        null,
+        { allowDuplicates: false },
+        (error: Error | null, device: { id: string; name?: string | null; localName?: string | null } | null) => {
+          if (error) {
+            finish();
+            return;
+          }
+          const name = device?.name || device?.localName || '';
+          if (device && name && /obd|elm|vgate|obdlink|veepaa|nexion|j1939|plx|carista/i.test(name)) {
+            if (!found.some((d) => d.id === device.id)) {
+              found.push({ id: device.id, name });
+            }
+          }
+        },
+      );
+      timer = setTimeout(finish, 5000);
     });
     // Do NOT destroy shared BleManager here — native client is singleton.
     return {
