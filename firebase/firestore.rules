@@ -22,11 +22,6 @@ service cloud.firestore {
         && userDoc().subscription == 'rescuer'
         && userDoc().subscriptionActive == true;
     }
-    function garageOwnedBy(garageOwnerUid) {
-      return exists(/databases/$(database)/documents/garages/$(garageOwnerUid))
-        && get(/databases/$(database)/documents/garages/$(garageOwnerUid)).data.ownerUid == garageOwnerUid;
-    }
-
     match /users/{userId} {
       allow read: if signedIn() && (uid() == userId || isAdmin());
       allow create: if signedIn() && uid() == userId
@@ -147,9 +142,10 @@ service cloud.firestore {
     }
 
     /**
-     * Appointments: garage owner may create into own inbox.
-     * Clients may only create status=requested into a real garage (doc id = ownerUid).
-     * Blocks forging garageOwnerUid == arbitrary victim without a garages/{uid} doc.
+     * Appointments: only the garage owner may create into their own inbox.
+     * Blocks any authenticated user from forging bookings into another Pro list
+     * (clientUid alone is not enough — no cross-user spam / integrity attack).
+     * Client self-serve booking requires a Cloud Function later.
      */
     match /appointments/{id} {
       allow read: if signedIn() && (
@@ -157,16 +153,8 @@ service cloud.firestore {
         || resource.data.clientUid == uid()
         || isAdmin()
       );
-      allow create: if signedIn() && (
-        request.resource.data.garageOwnerUid == uid()
-        || (
-          request.resource.data.clientUid == uid()
-          && request.resource.data.status == 'requested'
-          && request.resource.data.garageOwnerUid is string
-          && request.resource.data.garageOwnerUid != uid()
-          && garageOwnedBy(request.resource.data.garageOwnerUid)
-        )
-      );
+      allow create: if signedIn()
+        && request.resource.data.garageOwnerUid == uid();
       allow update, delete: if signedIn() && (
         resource.data.garageOwnerUid == uid() || isAdmin()
       );
