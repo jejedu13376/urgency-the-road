@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Urgence M\u00e9canique",
+    "name": "Urgence Mécanique",
     "slug": "urgency-road-one",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,6 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.axarel.urgencyroadone",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "Connexion à la valise diagnostic OBD (ELM327 / J1939).",
         "NSBluetoothPeripheralUsageDescription": "Connexion à la valise diagnostic OBD (ELM327 / J1939)."
@@ -38,7 +39,15 @@
     "plugins": [
       "expo-router",
       "expo-status-bar",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-dev-client",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "neverForLocation": true
+        }
+      ]
     ],
     "scheme": "urgencyroadone",
     "experiments": {
