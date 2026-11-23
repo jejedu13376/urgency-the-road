@@ -46,11 +46,12 @@ export default function GaragesScreen() {
   const [sortBy, setSortBy] = useState<'distance' | 'rating'>('distance');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [radiusKm, setRadiusKm] = useState(10);
 
-  const reload = async () => {
+  const reload = async (km = radiusKm) => {
     setLoading(true);
     try {
-      const res = await listGaragesNearby();
+      const res = await listGaragesNearby({ radiusKm: km });
       setPlaces(res.data);
       setLabel(res.stubLabel);
       setMeta(res.meta ?? null);
@@ -64,8 +65,9 @@ export default function GaragesScreen() {
   };
 
   useEffect(() => {
-    void reload();
-  }, []);
+    void reload(radiusKm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial + radius chip drives reload
+  }, [radiusKm]);
 
   const distanceById = useMemo(() => meta?.distanceById ?? {}, [meta]);
 
@@ -120,8 +122,22 @@ export default function GaragesScreen() {
               ? `Centre ${meta.lat.toFixed(4)}, ${meta.lon.toFixed(4)} · ${meta.gpsLabel}`
               : 'Localisation en cours…'}
           </Text>
-          <Pressable style={styles.refresh} onPress={() => void reload()} disabled={loading}>
-            <Text style={styles.refreshTxt}>{loading ? 'Chargement OSM…' : 'Rafraîchir autour de moi'}</Text>
+          <Text style={styles.hint}>Rayon Overpass / Photon</Text>
+          <View style={styles.row}>
+            {([5, 10, 15, 25] as const).map((km) => (
+              <Pressable
+                key={km}
+                style={[styles.chip, radiusKm === km && styles.chipOn]}
+                onPress={() => setRadiusKm(km)}
+              >
+                <Text style={[styles.chipTxt, radiusKm === km && styles.chipTxtOn]}>{km} km</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable style={styles.refresh} onPress={() => void reload(radiusKm)} disabled={loading}>
+            <Text style={styles.refreshTxt}>
+              {loading ? 'Chargement OSM…' : `Rafraîchir · rayon ${radiusKm} km`}
+            </Text>
           </Pressable>
           <View style={styles.row}>
             {KIND_FILTERS.map((k) => (

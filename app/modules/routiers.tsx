@@ -58,11 +58,12 @@ export default function RoutiersScreen() {
   const [regionFilter, setRegionFilter] = useState<WeighStationDoc['region'] | 'all'>('all');
   const [lawRegion, setLawRegion] = useState<WeighStationDoc['region']>('EU');
   const [loading, setLoading] = useState(false);
+  const [radiusKm, setRadiusKm] = useState(100);
 
-  const reload = async () => {
+  const reload = async (km = radiusKm) => {
     setLoading(true);
     try {
-      const res = await listWeighStations();
+      const res = await listWeighStations({ radiusKm: km });
       setStations(res.data);
       setLabel(res.stubLabel);
       setMeta(res.meta ?? null);
@@ -72,8 +73,9 @@ export default function RoutiersScreen() {
   };
 
   useEffect(() => {
-    void reload();
-  }, []);
+    void reload(radiusKm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [radiusKm]);
 
   const visible = useMemo(() => {
     let list = stations;
@@ -113,8 +115,22 @@ export default function RoutiersScreen() {
               ? `Centre ${meta.lat.toFixed(4)}, ${meta.lon.toFixed(4)} · ${meta.gpsLabel}`
               : 'GPS…'}
           </Text>
-          <Pressable style={styles.refresh} onPress={() => void reload()} disabled={loading}>
-            <Text style={styles.refreshTxt}>{loading ? 'Chargement OSM…' : 'Rafraîchir balances / dépôts'}</Text>
+          <Text style={styles.hint}>Rayon recherche balances</Text>
+          <View style={styles.row}>
+            {([40, 80, 100, 150] as const).map((km) => (
+              <Pressable
+                key={km}
+                style={[styles.chip, radiusKm === km && styles.chipOn]}
+                onPress={() => setRadiusKm(km)}
+              >
+                <Text style={[styles.chipTxt, radiusKm === km && styles.chipTxtOn]}>{km} km</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable style={styles.refresh} onPress={() => void reload(radiusKm)} disabled={loading}>
+            <Text style={styles.refreshTxt}>
+              {loading ? 'Chargement OSM…' : `Rafraîchir balances / dépôts · ${radiusKm} km`}
+            </Text>
           </Pressable>
           <View style={styles.row}>
             <Pressable style={[styles.chip, filter === 'all' && styles.chipOn]} onPress={() => setFilter('all')}>

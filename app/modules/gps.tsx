@@ -10,7 +10,16 @@ import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { getGpsPrefs, listRoadHazards, reportHazard, saveGpsPrefs } from '../../src/services/firebase';
 import { getDeviceCoords, haversineKm, type DeviceCoords } from '../../src/services/geo/deviceLocation';
-import { geocodePlace, type GeocodeHit } from '../../src/services/geo/openMeteoGeocode';
+import {
+  geocodePlace,
+  reverseGeocode,
+  type GeocodeHit,
+} from '../../src/services/geo/openMeteoGeocode';
+import {
+  fetchNearbyBridgeClearances,
+  type BridgeClearance,
+} from '../../src/services/osm/overpassPlaces';
+import { fetchWeather, type WeatherSnapshot } from '../../src/services/weather/openMeteo';
 import type { RoadHazardDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
 
@@ -51,14 +60,31 @@ export default function GpsScreen() {
   const [hazardFilter, setHazardFilter] = useState<RoadHazardDoc['kind'] | 'all'>('all');
   const [reportMsg, setReportMsg] = useState<string | null>(null);
   const [coords, setCoords] = useState<DeviceCoords | null>(null);
+  const [placeLabel, setPlaceLabel] = useState<string | null>(null);
   const [geoHits, setGeoHits] = useState<GeocodeHit[]>([]);
   const [geoLabel, setGeoLabel] = useState<string | null>(null);
   const [picked, setPicked] = useState<GeocodeHit | null>(null);
+  const [bridges, setBridges] = useState<BridgeClearance[]>([]);
+  const [bridgeLabel, setBridgeLabel] = useState<string | null>(null);
+  const [destWeather, setDestWeather] = useState<WeatherSnapshot | null>(null);
+
+  const refreshPosition = async () => {
+    const loc = await getDeviceCoords({ allowFallback: true });
+    if (loc.data) {
+      setCoords(loc.data);
+      const rev = await reverseGeocode(loc.data.lat, loc.data.lon);
+      setPlaceLabel(rev.hits[0]?.label ?? null);
+    }
+  };
 
   useEffect(() => {
     void (async () => {
       const loc = await getDeviceCoords({ allowFallback: true });
-      if (loc.data) setCoords(loc.data);
+      if (loc.data) {
+        setCoords(loc.data);
+        const rev = await reverseGeocode(loc.data.lat, loc.data.lon);
+        setPlaceLabel(rev.hits[0]?.label ?? null);
+      }
 
       const uid = profile?.uid ?? 'mock-local-user';
       const prefs = await getGpsPrefs(uid);
@@ -87,10 +113,21 @@ export default function GpsScreen() {
     setGeoHits(res.hits);
     setGeoLabel(
       res.ok
-        ? `Open-Meteo géocode LIVE · ${res.hits.length} résultat(s)`
+        ? `${res.source === 'photon' ? 'Photon' : 'Open-Meteo'} géocode LIVE · ${res.hits.length} résultat(s)`
         : res.error ?? 'Géocode échoué',
     );
-    if (res.hits[0]) setPicked(res.hits[0]);
+    if (res.hits[0]) {
+      setPicked(res.hits[0]);
+      const w = await fetchWeather(res.hits[0].lat, res.hits[0].lon);
+      setDestWeather(w);
+    }
+  };
+
+  const loadBridges = async () => {
+    if (!coords) return;
+    const res = await fetchNearbyBridgeClearances(coords.lat, coords.lon, 15000);
+    setBridges(res.bridges);
+    setBridgeLabel(res.label);
   };
 
   const open = (app: 'google' | 'waze' | 'apple') => {
@@ -151,20 +188,14 @@ export default function GpsScreen() {
         <Card title="Position appareil">
           <Text style={styles.hint}>
             {coords
-              ? `${coords.label} · ${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}${
+              ? `${placeLabel ?? coords.label} · ${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}${
                   coords.accuracyM != null ? ` · ±${Math.round(coords.accuracyM)} m` : ''
                 }`
               : 'Localisation…'}
           </Text>
-          <Pressable
-            style={styles.send}
-            onPress={() =>
-              void getDeviceCoords({ allowFallback: true }).then((r) => {
-                if (r.data) setCoords(r.data);
-              })
-            }
-          >
-            <Text style={styles.sendTxt}>Rafraîchir GPS</Text>
+          {placeLabel ? <Text style={styles.hint}>Reverse géocode : {placeLabel}</Text> : null}
+          <Pressable style={styles.send} onPress={() => void refreshPosition()}>
+            <Text style={styles.sendTxt}>Rafraîchir GPS + adresse</Text>
           </Pressable>
         </Card>
 
@@ -214,6 +245,21 @@ export default function GpsScreen() {
               <Pressable style={styles.send} onPress={saveTruck}>
                 <Text style={styles.sendTxt}>Enregistrer préférences PL</Text>
               </Pressable>
+              <Pressable style={styles.send} onPress={() => void loadBridges()}>
+                <Text style={styles.sendTxt}>Ponts / maxheight OSM (advisory)</Text>
+              </Pressable>
+              {bridgeLabel ? <Text style={styles.hint}>{bridgeLabel}</Text> : null}
+              {bridges.map((b) => {
+                const truckH = Number(heightM) || 0;
+                const risk =
+                  b.maxheightM != null && truckH > 0 && b.maxheightM < truckH ? 'RISQUE' : 'ok';
+                return (
+                  <Text key={b.id} style={risk === 'RISQUE' ? styles.warn : styles.hint}>
+                    · {b.name} · {b.distanceKm} km · H max {b.maxheightM ?? '—'} m
+                    {risk === 'RISQUE' ? ` · < gabarit ${heightM} m` : ''}
+                  </Text>
+                );
+              })}
               <Link href="/modules/routiers" asChild>
                 <Pressable style={styles.linkSoft}>
                   <Text style={styles.linkSoftTxt}>Balances & dépôts PL (M8) →</Text>
@@ -240,9 +286,14 @@ export default function GpsScreen() {
             placeholderTextColor={colors.muted}
           />
           <Pressable style={styles.send} onPress={() => void resolveDest()}>
-            <Text style={styles.sendTxt}>Géocoder (Open-Meteo)</Text>
+            <Text style={styles.sendTxt}>Géocoder (Open-Meteo → Photon)</Text>
           </Pressable>
           {geoLabel ? <Text style={styles.hint}>{geoLabel}</Text> : null}
+          {destWeather ? (
+            <Text style={styles.hint}>
+              Météo destination : {destWeather.tempC}°C · routes {destWeather.road} · {destWeather.label}
+            </Text>
+          ) : null}
           {geoHits.map((h) => (
             <Pressable
               key={`${h.lat}-${h.lon}-${h.label}`}
