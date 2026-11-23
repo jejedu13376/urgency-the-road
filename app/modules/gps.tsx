@@ -104,6 +104,10 @@ export default function GpsScreen() {
           .join(' · '),
       );
       const hz = await listRoadHazards();
+      if (hz.ok === false) {
+        setHazards([]);
+        return;
+      }
       setHazards(hz.data);
     })();
   }, [profile?.uid]);

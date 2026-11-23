@@ -213,6 +213,15 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
         const cloudVins = new Set(
           cloud.map((v) => (v.vin ?? '').trim().toUpperCase()).filter((vin) => vin.length >= 8),
         );
+        const cloudFingerprints = new Set(
+          cloud.map((v) =>
+            [v.make, v.model, String(v.year), v.label]
+              .map((s) => String(s ?? '')
+                .trim()
+                .toLowerCase())
+              .join('|'),
+          ),
+        );
         const pendingLocal = vehiclesRef.current.filter((v) => {
           if (!isMigratable(v)) return false;
           const localTemp =
@@ -223,6 +232,13 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
           if (cloudIds.has(v.id)) return false;
           const vin = (v.vin ?? '').trim().toUpperCase();
           if (vin.length >= 8 && cloudVins.has(vin)) return false;
+          // Cascade without VIN: drop if make+model+year+label already on cloud.
+          const fp = [v.make, v.model, String(v.year), v.label]
+            .map((s) => String(s ?? '')
+              .trim()
+              .toLowerCase())
+            .join('|');
+          if (fp.replace(/\|/g, '').length > 0 && cloudFingerprints.has(fp)) return false;
           return true;
         });
         const merged = [...cloud, ...pendingLocal];

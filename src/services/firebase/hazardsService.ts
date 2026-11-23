@@ -30,10 +30,8 @@ export async function listRoadHazards(): Promise<ServiceResult<RoadHazardDoc[]>>
       snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<RoadHazardDoc, 'id'>) })),
     );
   } catch (e) {
-    return failResult(
-      MOCK_HAZARDS,
-      e instanceof Error ? e.message : 'Lecture signalements refusée',
-    );
+    // Empty + ok:false — never ship MOCK pins as a firebase-looking failure (GPS checks ok).
+    return failResult([], e instanceof Error ? e.message : 'Lecture signalements refusée');
   }
 }
 

@@ -29,6 +29,18 @@ function normalizeVin(vin: string | undefined): string {
   return (vin ?? '').trim().toUpperCase();
 }
 
+/** Stable fingerprint for cascade rows without VIN (make+model+year+label). */
+function vehicleFingerprint(v: {
+  make?: string;
+  model?: string;
+  year?: number;
+  label?: string;
+}): string {
+  return [v.make ?? '', v.model ?? '', String(v.year ?? ''), v.label ?? '']
+    .map((s) => s.trim().toLowerCase())
+    .join('|');
+}
+
 /** Strip undefined (Firestore rejects them; no ignoreUndefinedProperties). */
 function omitUndefined<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -38,7 +50,23 @@ function omitUndefined<T extends Record<string, unknown>>(obj: T): T {
   return out as T;
 }
 
-function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { id?: string; techNotes?: string[]; fluidsSource?: string } {
+type VehiclePayload = Omit<VehicleDoc, 'id'> & {
+  id?: string;
+  techNotes?: string[];
+  fluidsSource?: string;
+  clientLocalId?: string;
+};
+
+/**
+ * Build Firestore payload. Never persist a local temp id as `id` — that would make
+ * listVehicles (spread data over doc id) revert remaps to cascade-* after a pull.
+ * Temp ids go in `clientLocalId` for retry dedupe.
+ */
+function toDoc(
+  v: VehicleProfile,
+  ownerUid: string,
+  firestoreId?: string,
+): VehiclePayload {
   const vin = normalizeVin(v.vin);
   const fluids = omitUndefined({
     engineOilL: v.fluids.engineOilL,
@@ -46,8 +74,10 @@ function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { 
     washerL: v.fluids.washerL,
     fuelL: v.fluids.fuelL,
   });
+  const temp = isLocalTempId(v.id);
+  const id = firestoreId ?? (temp ? undefined : v.id);
   return omitUndefined({
-    id: v.id,
+    id,
     ownerUid,
     vin: vin || v.vin,
     label: v.label,
@@ -65,6 +95,7 @@ function toDoc(v: VehicleProfile, ownerUid: string): Omit<VehicleDoc, 'id'> & { 
     currency: v.currency,
     techNotes: v.techNotes,
     fluidsSource: v.fluidsSource,
+    clientLocalId: temp ? v.id : undefined,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
@@ -101,12 +132,45 @@ export async function listVehicles(ownerUid: string): Promise<ServiceResult<Vehi
   try {
     const q = query(collection(fb.db, COLLECTIONS.vehicles), where('ownerUid', '==', uid));
     const snap = await getDocs(q);
-    const list = snap.docs.map((d) => fromDoc({ id: d.id, ...(d.data() as Omit<VehicleDoc, 'id'>) }));
+    // Prefer Firestore document id — never let a stale body `id` (cascade-*) win.
+    const list = snap.docs.map((d) =>
+      fromDoc({ ...(d.data() as Omit<VehicleDoc, 'id'>), id: d.id }),
+    );
     return liveResult(list);
   } catch (e) {
     // Empty payload + ok:false — never ship MOCK_FLEET as a firebase-looking failure.
     return failResult([], e instanceof Error ? e.message : 'Lecture flotte refusée');
   }
+}
+
+type OwnedSnap = Awaited<ReturnType<typeof getDocs>>;
+
+/** Find existing cloud row for a local-temp vehicle (VIN → clientLocalId → fingerprint). */
+function findExistingForTemp(
+  owned: OwnedSnap,
+  vehicle: VehicleProfile,
+): { id: string } | null {
+  const vin = normalizeVin(vehicle.vin);
+  if (vin.length >= 8) {
+    const byVin = owned.docs.find(
+      (d) => normalizeVin((d.data() as { vin?: string }).vin) === vin,
+    );
+    if (byVin) return { id: byVin.id };
+  }
+
+  // Match prior migrate that stored clientLocalId, or orphan body id still cascade-*.
+  const byLocal = owned.docs.find((d) => {
+    const data = d.data() as { clientLocalId?: string; id?: string };
+    return data.clientLocalId === vehicle.id || data.id === vehicle.id;
+  });
+  if (byLocal) return { id: byLocal.id };
+
+  const fp = vehicleFingerprint(vehicle);
+  if (fp.replace(/\|/g, '').length === 0) return null;
+  const byFp = owned.docs.find((d) => vehicleFingerprint(d.data() as VehicleProfile) === fp);
+  if (byFp) return { id: byFp.id };
+
+  return null;
 }
 
 export async function upsertVehicle(
@@ -117,30 +181,30 @@ export async function upsertVehicle(
   const uid = getSignedInUid();
   if (!fb || !uid) return mockResult(vehicle, 'MOCK vehicles — upsert local (non connecté)');
 
-  const payload = toDoc(vehicle, uid);
   try {
     // Stable Firestore id already → merge update (never addDoc again).
     if (vehicle.id && !isLocalTempId(vehicle.id)) {
+      const payload = toDoc(vehicle, uid, vehicle.id);
       await setDoc(doc(fb.db, COLLECTIONS.vehicles, vehicle.id), payload, { merge: true });
       return liveResult(vehicle);
     }
 
-    // Local temp id: reuse existing cloud row by VIN when present (heals partial-migrate orphans).
-    // Filter client-side on ownerUid query — no composite index required.
-    const vin = normalizeVin(vehicle.vin);
-    if (vin.length >= 8) {
-      const owned = await getDocs(
-        query(collection(fb.db, COLLECTIONS.vehicles), where('ownerUid', '==', uid)),
-      );
-      const hit = owned.docs.find((d) => normalizeVin((d.data() as { vin?: string }).vin) === vin);
-      if (hit) {
-        const id = hit.id;
-        await setDoc(doc(fb.db, COLLECTIONS.vehicles, id), { ...payload, id }, { merge: true });
-        return liveResult({ ...vehicle, id });
-      }
+    // Local temp id: reuse existing cloud row (VIN / clientLocalId / fingerprint) — no orphan addDoc.
+    const owned = await getDocs(
+      query(collection(fb.db, COLLECTIONS.vehicles), where('ownerUid', '==', uid)),
+    );
+    const hit = findExistingForTemp(owned, vehicle);
+    if (hit) {
+      const payload = toDoc(vehicle, uid, hit.id);
+      await setDoc(doc(fb.db, COLLECTIONS.vehicles, hit.id), payload, { merge: true });
+      return liveResult({ ...vehicle, id: hit.id });
     }
 
-    const ref = await addDoc(collection(fb.db, COLLECTIONS.vehicles), payload);
+    // First migrate: addDoc, then write body id = doc id (never the cascade-* temp).
+    const draft = toDoc(vehicle, uid);
+    const ref = await addDoc(collection(fb.db, COLLECTIONS.vehicles), draft);
+    const payload = toDoc(vehicle, uid, ref.id);
+    await setDoc(ref, payload, { merge: true });
     return liveResult({ ...vehicle, id: ref.id });
   } catch (e) {
     return failResult(vehicle, e instanceof Error ? e.message : 'Upsert véhicule refusé');
