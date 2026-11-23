@@ -15,8 +15,8 @@ export function SosButton() {
         onPress={() => {
           // Already on Urgence → no-op (avoid stacking a duplicate).
           if (pathname?.includes('/modules/urgence')) return;
-          // replace keeps a single Urgence on the stack when navigating from elsewhere.
-          router.replace('/modules/urgence');
+          // push (not replace) so tab/module history keeps a back path.
+          router.push('/modules/urgence');
         }}
       >
         <Text style={styles.txt}>SOS</Text>
