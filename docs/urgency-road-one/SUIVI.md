@@ -1,6 +1,6 @@
 # Urgency Road — suivi
 
-Dernière mise à jour : 2026-11-23 (UTC)
+Dernière mise à jour : 2026-11-23 ~06:18 UTC
 
 ## Fait
 
@@ -17,7 +17,15 @@ Dernière mise à jour : 2026-11-23 (UTC)
   - Fil texte Firestore ; learnedFailures owner-only (pas de VIN)
   - Perf : YouTube cache, Firestore memory cache, icon compressée
 - Formations en **standby** (site inchangé) ; 100 formations + optimisation **prévues** mais en pause
-- BLE OBD + gate/spinner + hosting docs + perf : PR #4 (ouverte)
+- PR #4 mergée dans `main` — merge `1129ea4e3f082fd2e467c8002b68db1721045870` — https://github.com/jejedu13376/urgency-the-road/pull/4
+  - BLE OBD live path (ELM327/J1939) + shared BleManager / PoweredOn / Android perms
+  - Startup gate + permanent red spinner (UR-27)
+  - Hosting restore docs (UR-28)
+  - Perf: icon compress, YouTube cache/timeout, Screen safe-area (UR-29)
+  - Tip merged: `808fb73ccd08e42791992ec7137acda90f5e6624`
+- **Multi-IA server proxy (code)** : PR [#8](https://github.com/jejedu13376/urgency-the-road/pull/8) — Firebase HTTPS `multiIa` + `docs/MULTI-IA-PROXY.md` (UR-35). Host live + secrets = Lorenzo.
+- **Hosting Expo/EAS restore (UR-38)** : PR [#9](https://github.com/jejedu13376/urgency-the-road/pull/9) (`cursor/hosting-eas-restore-f6f5`) — `eas.json` (preview APK + Dev Client), `expo-dev-client` + `react-native-ble-plx`, BLE permissions iOS/Android, docs `HOSTING-RESTORE` / `EAS-RUNBOOK` / `BLE-DEV-CLIENT` / `OPTIM-PERF`. Formations untouched.
+- **Provisional download URL** : https://github.com/jejedu13376/urgency-the-road/releases (stand-in until first EAS APK)
 
 ## Reste (Urgency Road)
 
@@ -29,10 +37,10 @@ firebase deploy --config firebase/firebase.json --only firestore:rules,firestore
 ```
 
   Pour que l’agent puisse déployer plus tard : `firebase login:ci` → injecter `FIREBASE_TOKEN`, ou `GOOGLE_APPLICATION_CREDENTIALS` (voir `docs/FIREBASE-DEPLOY.md`).
-- Proxy Multi-IA côté serveur (clés LLM jamais en `EXPO_PUBLIC_*`)
-- Merge / finaliser PR #4 (BLE/gate/hosting/perf)
-- Stubs restants : vidéo CDN, OBD BLE hardware, paiements (scaffolds sans faux succès)
-- Build Dev Client pour BLE réel + dongle physique
+- **BLOCKER Lorenzo** : déployer proxy Multi-IA + secrets — `firebase deploy --config firebase/firebase.json --only functions:multiIa` puis coller l’URL dans `EXPO_PUBLIC_MULTI_IA_PROXY_URL` (voir `docs/MULTI-IA-PROXY.md`). Secrets exacts (ceux utilisés seulement) : `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`.
+- Stubs restants : vidéo CDN, OBD BLE hardware (dongle + Dev Client), paiements (scaffolds sans faux succès)
+- Build Dev Client pour BLE réel + dongle physique (code BLE déjà sur main via #4)
+- **BLOCKER Lorenzo (EAS)** : `eas-cli whoami` → Not logged in sur cloud agent ; pas de `EXPO_TOKEN`. Pour APK réel : Path A `eas login` + `eas build -p android --profile preview` **ou** Path B token Expo → secret Cursor `EXPO_TOKEN` puis re-run agent (voir `docs/EAS-RUNBOOK.md` dans le repo).
 
 ## Décisions
 
@@ -42,6 +50,7 @@ firebase deploy --config firebase/firebase.json --only firestore:rules,firestore
 - Bugbot : corriger automatiquement sur branche dédiée + push, sans attendre le feu vert
 - Qualité d’abord (zéro régression) avant livraison
 - Multi-IA live = `EXPO_PUBLIC_MULTI_IA_PROXY_URL` seulement (pas de clés provider dans le bundle)
+- Proxy Multi-IA = Firebase Functions dans le repo ; agent ship code+docs, Lorenzo login/secrets/deploy
 
 ## Journal
 
@@ -65,3 +74,8 @@ firebase deploy --config firebase/firebase.json --only firestore:rules,firestore
 | 2026-11-23 ~05:41 UTC | Fin stream PR #5 ; blocker restant = deploy Firebase par Lorenzo (`FIREBASE-DEPLOY.md`) |
 | 2026-11-23 ~05:48 UTC | Agent : `firebase deploy --only firestore:rules,firestore:indexes` → auth fail ; CDN wiring OK ; docs alternatives CI token / SA |
 | 2026-11-23 ~05:49 UTC | Lorenzo login OK (local) ; agent re-try deploy → même auth fail (session non partagée) ; commande à lancer en local documentée |
+| 2026-11-23 ~05:50 UTC | PR #7 mergée dans `main` — merge `6d9c4ab0b7b7ee423560990676bb2ffa1c19914b` — https://github.com/jejedu13376/urgency-the-road/pull/7 ; deploy Firestore toujours = Lorenzo local |
+| 2026-11-23 ~05:55 UTC | UR-35 Multi-IA proxy code : PR #8 `cursor/multi-ia-server-proxy-da7d` — Firebase `multiIa` + docs secrets ; host live = Lorenzo |
+| 2026-11-23 ~05:56 UTC | PR #8 Bugbot auto-fix : sanitize upstream errors ; heuristic si pas de token / 401·403·503 |
+| 2026-11-23 ~06:00 UTC | UR-38 hosting restore : PR #9 ouverte ; EAS/Dev Client/BLE config + runbook ; `eas build` bloqué (pas Expo login) ; provisional download = GitHub Releases |
+| 2026-11-23 ~06:17 UTC | Approval Agent OK tip `808fb73` ; PR #4 mergée (`1129ea4e3f082fd2e467c8002b68db1721045870`) — UR-27/28/29 livrés via #4 |
