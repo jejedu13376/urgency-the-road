@@ -95,15 +95,18 @@ export async function removeVehicle(id: string): Promise<ServiceResult<null>> {
   return liveResult(null);
 }
 
-/** VIN decode: NHTSA vPIC (free, no key) first; mock fallback if network fails. */
+/** VIN decode: NHTSA vPIC (free, no key) first; WMI mock fallback if network fails. */
 export async function decodeVinRemote(vin: string): Promise<ServiceResult<VehicleProfile | null>> {
   const nhtsa = await decodeVinNhtsa(vin);
   if (nhtsa.ok && nhtsa.profile) {
-    return { data: nhtsa.profile, source: 'firebase', stubLabel: 'NHTSA vPIC live' };
+    return liveResult(nhtsa.profile, 'NHTSA vPIC live — décodage constructeur public');
   }
   const decoded = mockDecodeVin(vin);
   if (!decoded) {
     return mockResult(null, nhtsa.message ?? 'VIN invalide / non décodé');
   }
-  return mockResult(decoded, `Fallback mock — NHTSA: ${nhtsa.message ?? 'indisponible'}`);
+  return mockResult(
+    decoded,
+    `Fallback WMI local — NHTSA: ${nhtsa.message ?? 'indisponible'} (pas d’API OEM privée)`,
+  );
 }

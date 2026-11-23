@@ -7,12 +7,13 @@ export const fr = {
   tabFil: 'Fil méca',
   tabMenu: 'Menu',
   stub: 'STUB — service non connecté',
-  stubVin: 'STUB VIN — décodage local mock, pas d’API constructeur live',
-  stubObd: 'STUB OBD — pas de liaison Bluetooth/USB réelle',
+  stubVin: 'VIN — NHTSA vPIC live ; fallback WMI local si réseau KO',
+  stubObd: 'STUB OBD — pas de liaison Bluetooth/USB réelle (valise / Dev Client)',
   stubAi: 'STUB IA — réponses mock, pas de Claude/GPT/Gemini live',
-  stubPay: 'STUB paiement — Lydia/Stripe/Apple Pay/Google Pay non branchés',
-  stubGps: 'STUB GPS — carte mock, pas de trafic live poids lourd',
+  stubPay: 'Paiement — Stripe / PayPal / Apple Pay / Google Pay (pas de Lydia)',
+  stubGps: 'STUB GPS — transfert apps réel ; pas de graphe ponts/PTAC live',
   stubWeather: 'STUB météo — valeurs locales mock',
+  stubQuote: 'STUB OCR devis — heuristique marché local (pas d’OCR ML Kit encore)',
 } as const;
 
 export type FrKey = keyof typeof fr;

@@ -254,13 +254,27 @@ export default function PiecesScreen() {
           <Pressable
             style={styles.scan}
             onPress={() =>
-              void scanQuoteStub(profile?.uid ?? 'mock-local-user').then((r) => {
+              void scanQuoteStub({
+                ownerUid: profile?.uid,
+                vin: active?.vin,
+                make: active?.make,
+                model: active?.model,
+                mode: scanMode,
+                anchorOemSku: selected?.oemSku,
+              }).then((r) => {
                 setScanQuote(r.data.quote);
-                setScanLabel(`${r.data.scanLabel ?? 'Scan'} · mode ${scanMode}`);
+                setScanLabel(
+                  `${r.data.scanLabel ?? 'Scan'} · ${scanMode}${
+                    !profile ? ' · local (connectez-vous pour sync)' : ''
+                  }`,
+                );
               })
             }
           >
-            <Text style={styles.scanTxt}>Scanner un devis ({scanMode} — service stub)</Text>
+            <Text style={styles.scanTxt}>
+              Analyser un devis ({scanMode}
+              {active?.make ? ` · ${active.make}` : ''} — heuristique marché)
+            </Text>
           </Pressable>
           {scanLabel ? <StubBanner text={scanLabel} /> : null}
           {scanQuote ? (

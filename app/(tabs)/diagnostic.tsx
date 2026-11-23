@@ -38,7 +38,7 @@ export default function DiagnosticHub() {
             <Text style={styles.id}>M4</Text>
             <View style={styles.body}>
               <Text style={styles.title}>Diagnostic IA photo / vidéo / questions</Text>
-              <Text style={styles.sub}>Identification pièce, politesse, acoustique (stubs)</Text>
+              <Text style={styles.sub}>Photo / questions / acoustique — stubs IA ; YouTube live si clé</Text>
             </View>
           </Pressable>
         </Link>
