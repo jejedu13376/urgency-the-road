@@ -154,19 +154,18 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
     void AsyncStorage.setItem(key, JSON.stringify({ vehicles, activeId }));
   }, [vehicles, activeId, ready, bucketReady, authReady, uid]);
 
+  /**
+   * Upload every vehicle. Any upsert failure aborts with an error — never returns a
+   * partial success list (caller must not replace local fleet with a subset).
+   */
   const pushLocalToCloud = useCallback(async (list: VehicleProfile[], ownerUid: string) => {
     const mapped: VehicleProfile[] = [];
-    let lastFail: string | undefined;
     for (const v of list) {
       const res = await upsertVehicleRemote(ownerUid, v);
-      if (res.ok === false) {
-        lastFail = res.stubLabel;
-        continue;
+      if (res.ok === false || !res.data) {
+        throw new Error(res.stubLabel ?? 'Migration cloud refusée');
       }
-      if (res.data) mapped.push(res.data);
-    }
-    if (!mapped.length) {
-      throw new Error(lastFail ?? 'Migration cloud refusée');
+      mapped.push(res.data);
     }
     return mapped;
   }, []);
@@ -227,14 +226,23 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
     setSyncSource('pending');
     try {
       const uploaded = await pushLocalToCloud(custom, uid);
-      setVehicles(uploaded);
+      // Full success only — merge remapped ids into the full local fleet (keep non-migratable).
+      const byOldId = new Map(custom.map((v, i) => [v.id, uploaded[i]!]));
+      setVehicles((prev) =>
+        prev.map((v) => {
+          const next = byOldId.get(v.id);
+          return next ?? v;
+        }),
+      );
       setActiveId((cur) => {
+        if (cur && byOldId.has(cur)) return byOldId.get(cur)!.id;
         if (cur && uploaded.some((v) => v.id === cur)) return cur;
-        return uploaded[0]?.id ?? null;
+        return cur;
       });
       setSyncSource('firestore');
       setSyncLabel(`Migration explicite OK — ${uploaded.length} véhicule(s) → Firestore (uid courant)`);
     } catch (e) {
+      // Keep full local fleet / AsyncStorage untouched on any failure.
       setSyncSource('local');
       setSyncLabel(e instanceof Error ? `Migration KO — ${e.message}` : 'Migration KO');
     }
