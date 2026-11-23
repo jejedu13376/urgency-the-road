@@ -7,9 +7,9 @@ import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
 import { useFleet } from '../../src/context/FleetContext';
-import { MOCK_PLACES } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { listGaragesNearby, submitGarageRating } from '../../src/services/firebase';
+import type { NearbyGaragesMeta } from '../../src/services/firebase/garagesService';
 import type { GarageDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
 
@@ -32,7 +32,7 @@ const KIND_FILTERS: Array<GarageDoc['kind'] | 'all'> = [
   'depot_pl',
 ];
 
-/** Module 9 — carte pins, appel 1 clic, contexte PL → M7/M8. */
+/** Module 9 — OSM Overpass + GPS device ; tel: / maps ; contexte PL → M7/M8. */
 export default function GaragesScreen() {
   useModuleVisit(9);
   const { profile } = useAuth();
@@ -40,77 +40,50 @@ export default function GaragesScreen() {
   const isPl = active?.vehicleClass === 'poids_lourd';
   const [places, setPlaces] = useState<GarageDoc[]>([]);
   const [label, setLabel] = useState<string | undefined>();
+  const [meta, setMeta] = useState<NearbyGaragesMeta | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState<GarageDoc['kind'] | 'all'>('all');
   const [sortBy, setSortBy] = useState<'distance' | 'rating'>('distance');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const res = await listGaragesNearby();
+      setPlaces(res.data);
+      setLabel(res.stubLabel);
+      setMeta(res.meta ?? null);
+      setSelectedId((prev) => {
+        if (prev && res.data.some((p) => p.id === prev)) return prev;
+        return res.data[0]?.id ?? null;
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    void (async () => {
-      const res = await listGaragesNearby();
-      const base = res.data;
-      const extras: GarageDoc[] = [
-        {
-          id: 'c-mock-1',
-          name: 'Concession Nord Auto',
-          kind: 'concession',
-          address: 'Av. de la République, Lille',
-          phone: '+33320000011',
-          hours: 'Lun–Sam 9h–19h',
-          lat: 50.632,
-          lon: 3.07,
-          ratingAvg: 4.2,
-          ratingCount: 86,
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: 'm-mock-1',
-          name: 'Mécano Mobile Express',
-          kind: 'mobile',
-          address: 'Intervention sur site',
-          phone: '+33600000012',
-          hours: '7j/7 8h–20h',
-          lat: 50.625,
-          lon: 3.055,
-          ratingAvg: 4.7,
-          ratingCount: 41,
-          updatedAt: new Date().toISOString(),
-        },
-      ];
-      const merged = [...base];
-      for (const e of extras) {
-        if (!merged.some((x) => x.id === e.id || x.name === e.name)) merged.push(e);
-      }
-      setPlaces(merged);
-      setLabel(res.stubLabel);
-      setSelectedId(merged[0]?.id ?? null);
-    })();
+    void reload();
   }, []);
 
-  const distanceById = useMemo(() => {
-    const map = new Map<string, { distanceKm: number; etaMin: number }>();
-    for (const p of MOCK_PLACES) {
-      map.set(p.id, { distanceKm: p.distanceKm, etaMin: p.etaMin });
-    }
-    map.set('c-mock-1', { distanceKm: 3.1, etaMin: 11 });
-    map.set('m-mock-1', { distanceKm: 1.8, etaMin: 7 });
-    return map;
-  }, []);
+  const distanceById = useMemo(() => meta?.distanceById ?? {}, [meta]);
 
   const visible = useMemo(() => {
     const list = kindFilter === 'all' ? [...places] : places.filter((p) => p.kind === kindFilter);
     list.sort((a, b) => {
       if (sortBy === 'rating') return (b.ratingAvg ?? 0) - (a.ratingAvg ?? 0);
-      const da = distanceById.get(a.id)?.distanceKm ?? 99;
-      const db = distanceById.get(b.id)?.distanceKm ?? 99;
+      const da = distanceById[a.id]?.distanceKm ?? 99;
+      const db = distanceById[b.id]?.distanceKm ?? 99;
       return da - db;
     });
     return list;
   }, [places, kindFilter, sortBy, distanceById]);
 
   const openMaps = (p: GarageDoc) => {
-    const q = encodeURIComponent(`${p.name} ${p.address}`);
-    void Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${q}`);
+    void Linking.openURL(
+      `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}`,
+    );
   };
 
   return (
@@ -126,7 +99,7 @@ export default function GaragesScreen() {
         {isPl ? (
           <Card title="Contexte poids lourd">
             <Text style={styles.hint}>
-              Véhicule actif PL — accès rapide hauteur / poids / balances allumées (sans dupliquer M8).
+              Véhicule actif PL — accès rapide hauteur / poids / balances (sans dupliquer M8).
             </Text>
             <Link href="/modules/gps" asChild>
               <Pressable style={styles.plBtn}>
@@ -135,13 +108,21 @@ export default function GaragesScreen() {
             </Link>
             <Link href="/modules/routiers" asChild>
               <Pressable style={styles.plBtnAlt}>
-                <Text style={styles.plBtnTxt}>Balances ON/OFF & loi pesage (M8) →</Text>
+                <Text style={styles.plBtnTxt}>Balances & loi pesage (M8) →</Text>
               </Pressable>
             </Link>
           </Card>
         ) : null}
 
         <Card title="Filtres">
+          <Text style={styles.hint}>
+            {meta
+              ? `Centre ${meta.lat.toFixed(4)}, ${meta.lon.toFixed(4)} · ${meta.gpsLabel}`
+              : 'Localisation en cours…'}
+          </Text>
+          <Pressable style={styles.refresh} onPress={() => void reload()} disabled={loading}>
+            <Text style={styles.refreshTxt}>{loading ? 'Chargement OSM…' : 'Rafraîchir autour de moi'}</Text>
+          </Pressable>
           <View style={styles.row}>
             {KIND_FILTERS.map((k) => (
               <Pressable
@@ -166,7 +147,7 @@ export default function GaragesScreen() {
         </Card>
 
         {visible.map((p) => {
-          const dist = distanceById.get(p.id);
+          const dist = distanceById[p.id];
           const selected = selectedId === p.id;
           return (
             <Card key={p.id} title={p.name}>
@@ -181,10 +162,14 @@ export default function GaragesScreen() {
                       <Text style={styles.metaChip}>ETA ~{dist.etaMin} min</Text>
                     </>
                   ) : null}
-                  <Text style={styles.metaChip}>
-                    ★ {p.ratingAvg ?? '—'}
-                    {p.ratingCount != null ? ` (${p.ratingCount})` : ''}
-                  </Text>
+                  {p.ratingAvg != null ? (
+                    <Text style={styles.metaChip}>
+                      ★ {p.ratingAvg}
+                      {p.ratingCount != null ? ` (${p.ratingCount})` : ''}
+                    </Text>
+                  ) : (
+                    <Text style={styles.metaChip}>★ — (OSM)</Text>
+                  )}
                 </View>
                 <Text style={styles.coords}>
                   Pin {p.lat.toFixed(4)}, {p.lon.toFixed(4)}
@@ -192,9 +177,11 @@ export default function GaragesScreen() {
                 </Text>
               </Pressable>
               <View style={styles.actions}>
-                <Pressable style={styles.call} onPress={() => void Linking.openURL(`tel:${p.phone}`)}>
-                  <Text style={styles.callTxt}>Appeler {p.phone}</Text>
-                </Pressable>
+                {p.phone !== 'N/A' ? (
+                  <Pressable style={styles.call} onPress={() => void Linking.openURL(`tel:${p.phone}`)}>
+                    <Text style={styles.callTxt}>Appeler {p.phone}</Text>
+                  </Pressable>
+                ) : null}
                 <Pressable style={styles.maps} onPress={() => openMaps(p)}>
                   <Text style={styles.callTxt}>Maps</Text>
                 </Pressable>
@@ -206,14 +193,39 @@ export default function GaragesScreen() {
                 </Pressable>
                 <Pressable
                   style={styles.rate}
-                  onPress={() =>
+                  onPress={() => {
+                    if (!profile?.uid) {
+                      setMsg('Note non syncée — connectez-vous (M15) pour écrire dans Firestore.');
+                      return;
+                    }
                     void submitGarageRating({
                       garageId: p.id,
-                      authorUid: profile?.uid ?? 'mock-local-user',
+                      authorUid: profile.uid,
                       stars: 5,
-                      comment: 'Bon accueil (demo)',
-                    }).then((r) => setMsg(r.stubLabel ?? 'Note envoyée'))
-                  }
+                      comment: 'Bon accueil',
+                    }).then((r) => {
+                      setMsg(
+                        r.ok === false
+                          ? r.stubLabel ?? 'Échec note'
+                          : r.stubLabel ?? 'Note envoyée Firestore',
+                      );
+                      if (r.ok !== false) {
+                        // Optimistic only — no Overpass reload (avoids Photon/mock swap + selection jump)
+                        setPlaces((prev) =>
+                          prev.map((g) => {
+                            if (g.id !== p.id) return g;
+                            const count = (g.ratingCount ?? 0) + 1;
+                            const avg =
+                              g.ratingAvg != null
+                                ? Math.round(((g.ratingAvg * (count - 1) + 5) / count) * 10) / 10
+                                : 5;
+                            return { ...g, ratingAvg: avg, ratingCount: count };
+                          }),
+                        );
+                        setSelectedId(p.id);
+                      }
+                    });
+                  }}
                 >
                   <Text style={styles.callTxt}>Noter 5★</Text>
                 </Pressable>
@@ -222,7 +234,7 @@ export default function GaragesScreen() {
                 <View style={styles.plLinks}>
                   <Link href="/modules/routiers" asChild>
                     <Pressable style={styles.linkSoft}>
-                      <Text style={styles.linkSoftTxt}>Infos PL / balances ON (M8) →</Text>
+                      <Text style={styles.linkSoftTxt}>Infos PL / balances (M8) →</Text>
                     </Pressable>
                   </Link>
                   <Link href="/modules/gps" asChild>
@@ -264,6 +276,14 @@ const styles = StyleSheet.create({
   line: { color: colors.slate },
   msg: { color: colors.garage, fontWeight: '700' },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  refresh: {
+    backgroundColor: colors.asphalt,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  refreshTxt: { color: colors.white, fontWeight: '800', fontSize: 13 },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 7,

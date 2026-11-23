@@ -9,6 +9,8 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { getGpsPrefs, listRoadHazards, reportHazard, saveGpsPrefs } from '../../src/services/firebase';
+import { getDeviceCoords, haversineKm, type DeviceCoords } from '../../src/services/geo/deviceLocation';
+import { geocodePlace, type GeocodeHit } from '../../src/services/geo/openMeteoGeocode';
 import type { RoadHazardDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
 
@@ -29,7 +31,7 @@ const LAW_BLURBS = {
   AU: 'Australie — heavy vehicle permits, height/weight corridors, rest areas.',
 } as const;
 
-/** Module 7 — double GPS PL/voiture + Maps/Waze/Apple + signalements. */
+/** Module 7 — GPS device + Open-Meteo geocode + Maps handoff. No fake PTAC graph. */
 export default function GpsScreen() {
   useModuleVisit(7);
   const { profile } = useAuth();
@@ -44,14 +46,20 @@ export default function GpsScreen() {
   const [regionLaw, setRegionLaw] = useState<'EU' | 'NA' | 'AU'>('EU');
   const [hazards, setHazards] = useState<RoadHazardDoc[]>([]);
   const [hazardKind, setHazardKind] = useState<RoadHazardDoc['kind']>('danger');
-  const [hazardNote, setHazardNote] = useState('Signalement démo');
+  const [hazardNote, setHazardNote] = useState('');
   const [label, setLabel] = useState<string | undefined>();
   const [hazardFilter, setHazardFilter] = useState<RoadHazardDoc['kind'] | 'all'>('all');
   const [reportMsg, setReportMsg] = useState<string | null>(null);
+  const [coords, setCoords] = useState<DeviceCoords | null>(null);
+  const [geoHits, setGeoHits] = useState<GeocodeHit[]>([]);
+  const [geoLabel, setGeoLabel] = useState<string | null>(null);
+  const [picked, setPicked] = useState<GeocodeHit | null>(null);
 
   useEffect(() => {
     void (async () => {
-      // Signed-out → services mock; never force mock-local-user into live Firestore
+      const loc = await getDeviceCoords({ allowFallback: true });
+      if (loc.data) setCoords(loc.data);
+
       const uid = profile?.uid ?? 'mock-local-user';
       const prefs = await getGpsPrefs(uid);
       setMode(prefs.data.mode);
@@ -60,20 +68,43 @@ export default function GpsScreen() {
       if (prefs.data.truckPtacT != null) setPtacT(String(prefs.data.truckPtacT));
       setHazmat(prefs.data.hazmat);
       setLabel(
-        prefs.stubLabel ??
-          (!profile ? 'GPS local — connectez-vous pour sync Firestore' : undefined),
+        [
+          prefs.stubLabel,
+          !profile ? 'GPS local — connectez-vous pour sync Firestore' : undefined,
+          'Pas de graphe ponts/PTAC commercial — contraintes PL affichées + handoff apps',
+          loc.data?.label,
+        ]
+          .filter(Boolean)
+          .join(' · '),
       );
       const hz = await listRoadHazards();
       setHazards(hz.data);
     })();
   }, [profile?.uid]);
 
+  const resolveDest = async () => {
+    const res = await geocodePlace(dest, 5);
+    setGeoHits(res.hits);
+    setGeoLabel(
+      res.ok
+        ? `Open-Meteo géocode LIVE · ${res.hits.length} résultat(s)`
+        : res.error ?? 'Géocode échoué',
+    );
+    if (res.hits[0]) setPicked(res.hits[0]);
+  };
+
   const open = (app: 'google' | 'waze' | 'apple') => {
-    const q = encodeURIComponent(dest);
+    const useCoords = picked != null;
     const urls = {
-      google: `https://www.google.com/maps/dir/?api=1&destination=${q}`,
-      waze: `https://waze.com/ul?q=${q}&navigate=yes`,
-      apple: `http://maps.apple.com/?daddr=${q}`,
+      google: useCoords
+        ? `https://www.google.com/maps/dir/?api=1&destination=${picked!.lat},${picked!.lon}`
+        : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}`,
+      waze: useCoords
+        ? `https://waze.com/ul?ll=${picked!.lat}%2C${picked!.lon}&navigate=yes`
+        : `https://waze.com/ul?q=${encodeURIComponent(dest)}&navigate=yes`,
+      apple: useCoords
+        ? `http://maps.apple.com/?daddr=${picked!.lat},${picked!.lon}`
+        : `http://maps.apple.com/?daddr=${encodeURIComponent(dest)}`,
     };
     void Linking.openURL(urls[app]);
   };
@@ -103,12 +134,39 @@ export default function GpsScreen() {
   const visibleHazards =
     hazardFilter === 'all' ? hazards : hazards.filter((h) => h.kind === hazardFilter);
 
+  const roughEtaMin = (() => {
+    if (!coords || !picked) return null;
+    const km = haversineKm(coords.lat, coords.lon, picked.lat, picked.lon);
+    const speed = mode === 'camion' ? 70 : 90;
+    return Math.max(5, Math.round((km / speed) * 60) + (hazmat ? 8 : 0));
+  })();
+
   return (
     <>
       <Stack.Screen options={{ title: 'Double GPS' }} />
       <Screen title="Navigation" subtitle="Module 7 — PL & voiture · transfert Maps / Waze / Apple">
         <BackendStatusBanner />
-        <StubBanner text={label ?? 'STUB GPS — pas de graphe ponts/PTAC live ; transfert apps réel'} />
+        <StubBanner text={label ?? 'GPS — geocode Open-Meteo + handoff apps'} />
+
+        <Card title="Position appareil">
+          <Text style={styles.hint}>
+            {coords
+              ? `${coords.label} · ${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}${
+                  coords.accuracyM != null ? ` · ±${Math.round(coords.accuracyM)} m` : ''
+                }`
+              : 'Localisation…'}
+          </Text>
+          <Pressable
+            style={styles.send}
+            onPress={() =>
+              void getDeviceCoords({ allowFallback: true }).then((r) => {
+                if (r.data) setCoords(r.data);
+              })
+            }
+          >
+            <Text style={styles.sendTxt}>Rafraîchir GPS</Text>
+          </Pressable>
+        </Card>
 
         <Card title="Mode de navigation">
           <View style={styles.row}>
@@ -122,9 +180,11 @@ export default function GpsScreen() {
             </Pressable>
           </View>
           <Text style={styles.eta}>
-            {mode === 'camion'
-              ? `ETA PL mock ${22 + (hazmat ? 8 : 0)} min · gabarit ${heightM} m · PTAC ${ptacT} t${hazmat ? ' · ADR' : ''}`
-              : 'ETA voiture mock 18 min · 12,4 km — pas de filtre gabarit'}
+            {roughEtaMin != null
+              ? `ETA estimée (vol d’oiseau) ~${roughEtaMin} min — pas de graphe routier PTAC live`
+              : mode === 'camion'
+                ? `Contraintes PL : gabarit ${heightM} m · PTAC ${ptacT} t${hazmat ? ' · ADR' : ''} — géocodez une destination pour ETA`
+                : 'Géocodez une destination pour ETA approximative'}
           </Text>
           {isPl && mode === 'voiture' ? (
             <Text style={styles.warn}>Véhicule actif = PL — basculez en mode camion pour les contraintes légales.</Text>
@@ -161,18 +221,40 @@ export default function GpsScreen() {
               </Link>
             </View>
           ) : (
-            <Text style={styles.hint}>Itinéraire rapide standard (mock ETA 18 min) — pas de filtre gabarit.</Text>
+            <Text style={styles.hint}>Mode voiture — handoff apps sans filtre gabarit.</Text>
           )}
         </Card>
 
         <Card title="Destination & transfert">
           <TextInput
             value={dest}
-            onChangeText={setDest}
+            onChangeText={(t) => {
+              setDest(t);
+              // Invalidate stale geocode pick when the user edits the destination text
+              setPicked(null);
+              setGeoHits([]);
+              setGeoLabel(null);
+            }}
             style={styles.input}
             placeholder="Adresse ou lieu"
             placeholderTextColor={colors.muted}
           />
+          <Pressable style={styles.send} onPress={() => void resolveDest()}>
+            <Text style={styles.sendTxt}>Géocoder (Open-Meteo)</Text>
+          </Pressable>
+          {geoLabel ? <Text style={styles.hint}>{geoLabel}</Text> : null}
+          {geoHits.map((h) => (
+            <Pressable
+              key={`${h.lat}-${h.lon}-${h.label}`}
+              style={[styles.geoRow, picked?.label === h.label && styles.geoOn]}
+              onPress={() => setPicked(h)}
+            >
+              <Text style={styles.hazardKind}>{h.label}</Text>
+              <Text style={styles.hint}>
+                {h.lat.toFixed(4)}, {h.lon.toFixed(4)}
+              </Text>
+            </Pressable>
+          ))}
           <Text style={styles.section}>Envoyer la trajectoire</Text>
           <View style={styles.row}>
             <Pressable style={[styles.send, { backgroundColor: colors.signal }]} onPress={() => open('google')}>
@@ -187,8 +269,10 @@ export default function GpsScreen() {
           </View>
         </Card>
 
-        <Card title="Signalements routiers (temps réel mock)">
-          <Text style={styles.hint}>Dangers, accidents, obstacles, travaux, radars — visibles par les autres conducteurs.</Text>
+        <Card title="Signalements routiers">
+          <Text style={styles.hint}>
+            Dangers, accidents, obstacles, travaux, radars — GPS réel si permission ; Firestore si Auth.
+          </Text>
           <View style={styles.row}>
             <Pressable style={[styles.chip, hazardFilter === 'all' && styles.chipOn]} onPress={() => setHazardFilter('all')}>
               <Text style={[styles.chipTxt, hazardFilter === 'all' && styles.chipTxtOn]}>Tous ({hazards.length})</Text>
@@ -225,16 +309,30 @@ export default function GpsScreen() {
           <Pressable
             style={styles.send}
             onPress={() =>
-              void reportHazard({
-                reporterUid: profile?.uid ?? 'mock-local-user',
-                kind: hazardKind,
-                lat: 50.63,
-                lon: 3.06,
-                note: hazardNote || HAZARD_LABEL[hazardKind],
-              }).then((r) => {
+              void (async () => {
+                // Never publish Lille fallback as a live hazard pin
+                const fresh = await getDeviceCoords({ allowFallback: false });
+                if (!fresh.ok || fresh.data?.source !== 'device') {
+                  const err = !fresh.ok ? fresh.error : 'fallback interdit';
+                  setReportMsg(`Signalement refusé — GPS appareil requis (${err}).`);
+                  return;
+                }
+                const device = fresh.data;
+                setCoords(device);
+                const r = await reportHazard({
+                  reporterUid: profile?.uid ?? 'mock-local-user',
+                  kind: hazardKind,
+                  lat: device.lat,
+                  lon: device.lon,
+                  note: hazardNote || HAZARD_LABEL[hazardKind],
+                });
                 setHazards((prev) => [r.data, ...prev]);
-                setReportMsg(r.stubLabel ?? 'Signalement enregistré (mock)');
-              })
+                setReportMsg(
+                  r.source === 'firebase'
+                    ? 'Signalement Firestore LIVE (GPS appareil)'
+                    : r.stubLabel ?? 'Signalement local (mock — Auth pour sync)',
+                );
+              })()
             }
           >
             <Text style={styles.sendTxt}>Publier le signalement</Text>
@@ -294,6 +392,15 @@ const styles = StyleSheet.create({
   chipTxtOn: { color: colors.white },
   hazardRow: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.line },
   hazardKind: { fontWeight: '800', color: colors.signal, fontSize: 12 },
+  geoRow: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: colors.mist,
+    borderWidth: 1,
+    borderColor: colors.line,
+    marginTop: 4,
+  },
+  geoOn: { borderColor: colors.signal, backgroundColor: colors.signalSoft },
   linkSoft: {
     backgroundColor: colors.mist,
     borderRadius: 10,

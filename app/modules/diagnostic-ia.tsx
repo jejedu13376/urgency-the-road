@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Link, Stack } from 'expo-router';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
@@ -8,12 +9,12 @@ import { YoutubeSuggestions } from '../../src/components/YoutubeSuggestions';
 import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { runMultiIaDiagnostic } from '../../src/services/ai/multiIaRouter';
-import { stubAcoustic, stubAiDiagnose } from '../../src/services/stubs';
+import { stubAcoustic } from '../../src/services/stubs';
 import { searchYoutubeVideos, type YoutubeVideoHit } from '../../src/services/youtube/youtubeSearch';
 import { colors } from '../../src/theme/colors';
 
 type PhotoOutcome = {
-  kind: 'ok' | 'polite_refuse';
+  kind: 'ok' | 'polite_refuse' | 'captured_pending';
   media: 'photo' | 'video';
   problem: string;
   partName: string;
@@ -23,6 +24,7 @@ type PhotoOutcome = {
   causes: string[];
   tools: string[];
   summary: string;
+  visionLive: boolean;
 };
 
 const QUESTIONS = [
@@ -39,14 +41,18 @@ const HAZARD_KINDS_ACOUSTIC = [
   { id: 'roulement', label: 'Roulement' },
 ] as const;
 
-/** Module 4 — diagnostic IA photo → pièce+prix+devis, questions, politesse, acoustique. */
+/** Module 4 — diagnostic IA : caméra réelle + Multi-IA texte ; pas de vision fake-success. */
 export default function DiagnosticIaScreen() {
   useModuleVisit(4);
   const { active } = useFleet();
+  const [permission, requestPermission] = useCameraPermissions();
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
   const [note, setNote] = useState('');
   const [photoOutcome, setPhotoOutcome] = useState<PhotoOutcome | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const [mediaNote, setMediaNote] = useState('');
+  const [mediaBusy, setMediaBusy] = useState(false);
   const [acousticPhase, setAcousticPhase] = useState<'idle' | 'listening' | 'done'>('idle');
   const [acousticFocus, setAcousticFocus] = useState<string | null>(null);
   const [acousticGuess, setAcousticGuess] = useState<string | null>(null);
@@ -69,40 +75,115 @@ export default function DiagnosticIaScreen() {
     );
   };
 
-  const simulateMedia = (offTopic: boolean, media: 'photo' | 'video' = 'photo') => {
-    if (offTopic) {
+  const politeRefuse = (media: 'photo' | 'video') => {
+    setPhotoOutcome({
+      kind: 'polite_refuse',
+      media,
+      problem: '',
+      partName: '',
+      partPrice: 0,
+      laborPrice: 0,
+      currency: 'EUR',
+      causes: [],
+      tools: [],
+      visionLive: false,
+      summary:
+        'Merci pour l’envoi. Cette description ne semble pas liée à un véhicule ou une pièce mécanique. Photographiez / décrivez une fuite, un composant rouillé/cassé, un voyant ou le compartiment moteur.',
+    });
+  };
+
+  const analyzeMediaDescription = async (media: 'photo' | 'video') => {
+    const desc = mediaNote.trim();
+    if (!desc) {
       setPhotoOutcome({
-        kind: 'polite_refuse',
+        kind: 'captured_pending',
         media,
         problem: '',
         partName: '',
         partPrice: 0,
         laborPrice: 0,
-        currency: 'EUR',
+        currency: active?.currency ?? 'EUR',
         causes: [],
         tools: [],
+        visionLive: false,
         summary:
-          'Merci pour l’envoi. Cette image ne semble pas liée à un véhicule ou une pièce mécanique. Pour vous aider, photographiez une fuite, un composant rouillé/cassé, un voyant ou le compartiment moteur — je recentre volontiers le diagnostic.',
+          media === 'video'
+            ? 'Flux caméra ouvert — aucune IA vision live. Décrivez ce que vous filmez (pièce, fuite, voyant) pour lancer le diagnostic Multi-IA texte.'
+            : 'Caméra prête — aucune IA vision live. Décrivez la pièce / panne visible pour lancer le diagnostic Multi-IA texte (proxy si configuré).',
       });
       return;
     }
-    const partName = active?.vehicleClass === 'poids_lourd' ? 'Capteur NOx amont' : 'Plaquettes avant';
-    const partPrice = active?.vehicleClass === 'poids_lourd' ? 310 : 55;
-    const laborPrice = active?.vehicleClass === 'poids_lourd' ? 198 : 102;
-    const outcome: PhotoOutcome = {
-      kind: 'ok',
+    const offTopic =
+      /chat|selfie|repas|vacances|meme|hors.?sujet/i.test(desc) &&
+      !/moteur|fuite|frein|pneu|voyant|huile|batterie|courroie|injecteur/i.test(desc);
+    if (offTopic) {
+      politeRefuse(media);
+      return;
+    }
+    setMediaBusy(true);
+    try {
+      const ctx = active ? `${active.make} ${active.model} ${active.year}` : '';
+      const r = await runMultiIaDiagnostic({
+        prompt: `Diagnostic ${media} (description utilisateur, pas de vision pixels) : ${desc}`,
+        context: ctx,
+      });
+      const partName = r.likelyParts[0] ?? (active?.vehicleClass === 'poids_lourd' ? 'Capteur NOx' : 'Pièce à confirmer');
+      const partPrice = active?.vehicleClass === 'poids_lourd' ? 310 : 55;
+      const laborPrice = active?.vehicleClass === 'poids_lourd' ? 198 : 102;
+      setPhotoOutcome({
+        kind: 'ok',
+        media,
+        problem: desc.slice(0, 160),
+        partName,
+        partPrice,
+        laborPrice,
+        currency: active?.currency ?? 'EUR',
+        causes: ['Hypothèse Multi-IA texte', 'À confirmer OBD / garage'],
+        tools: ['Cric / chandelles', 'Clé dynamométrique', 'Douilles standard'],
+        visionLive: false,
+        summary: `${r.label}\n${r.consensus}`,
+      });
+      void loadYoutube(`${partName} remplacement`);
+    } finally {
+      setMediaBusy(false);
+    }
+  };
+
+  const openCameraPath = async (media: 'photo' | 'video') => {
+    if (!permission?.granted) {
+      const res = await requestPermission();
+      if (!res.granted) {
+        setPhotoOutcome({
+          kind: 'captured_pending',
+          media,
+          problem: '',
+          partName: '',
+          partPrice: 0,
+          laborPrice: 0,
+          currency: active?.currency ?? 'EUR',
+          causes: [],
+          tools: [],
+          visionLive: false,
+          summary: 'Permission caméra refusée — décrivez la panne ci-dessous (Multi-IA texte).',
+        });
+        return;
+      }
+    }
+    setShowCamera(true);
+    setPhotoOutcome({
+      kind: 'captured_pending',
       media,
-      problem: media === 'video' ? 'Fuite / usure visible en mouvement (mock vidéo)' : 'Usure / composant à remplacer (mock photo)',
-      partName,
-      partPrice,
-      laborPrice,
+      problem: '',
+      partName: '',
+      partPrice: 0,
+      laborPrice: 0,
       currency: active?.currency ?? 'EUR',
-      causes: ['Usure normale', 'Surcharge thermique', 'Entretien différé'],
-      tools: ['Cric / chandelles', 'Clé dynamométrique', 'Douilles standard'],
-      summary: stubAiDiagnose(`photo:${partName}`).data.summary,
-    };
-    setPhotoOutcome(outcome);
-    void loadYoutube(`${partName} remplacement`);
+      causes: [],
+      tools: [],
+      visionLive: false,
+      summary:
+        'Caméra LIVE ouverte. Vision IA pixels non branchée (proxy vision à venir) — décrivez ce que vous voyez puis lancez l’analyse texte.',
+    });
   };
 
   const answer = (yes: boolean) => {
@@ -139,10 +220,13 @@ export default function DiagnosticIaScreen() {
     setAcousticGuess(null);
     setTimeout(() => {
       const a = stubAcoustic();
-      setAcousticGuess(`${a.label}\n${a.data.guess}`);
+      const focusBit = acousticFocus
+        ? `Piste sélectionnée : ${HAZARD_KINDS_ACOUSTIC.find((k) => k.id === acousticFocus)?.label ?? acousticFocus}.`
+        : 'Aucune piste sélectionnée.';
+      setAcousticGuess(`${a.label}\n${a.data.guess}\n${focusBit}`);
       setAcousticPhase('done');
-      void loadYoutube('bruit moteur courroie roulement');
-    }, 900);
+      if (acousticFocus) void loadYoutube(`bruit moteur ${acousticFocus}`);
+    }, 600);
   };
 
   return (
@@ -152,34 +236,68 @@ export default function DiagnosticIaScreen() {
         title="Diagnostic intelligent"
         subtitle={`Module 4 · ${active?.make ?? '—'} ${active?.model ?? ''}`.trim()}
       >
-        <StubBanner text="STUB IA — photo/vidéo/micro non branchés ; YouTube via Data API si clé .env" />
+        <StubBanner text="Caméra LIVE possible · vision pixels non branchée · Multi-IA texte / YouTube si clés .env" />
 
-        <Card title="Photo → pièce + prix + devis">
+        <Card title="Photo / vidéo → description → pièce + devis">
           <Text style={styles.hint}>
-            Photographiez une pièce cassée, rouillée ou une fuite. L’IA mock identifie le problème, la pièce, le prix et
-            un petit devis (pièce + pose).
+            Ouvrez la caméra (média réel), décrivez la panne, puis lancez le diagnostic Multi-IA texte. Aucune
+            « identification visuelle réussie » inventée sans backend vision.
           </Text>
           <View style={styles.row}>
-            <Pressable style={styles.btn} onPress={() => simulateMedia(false, 'photo')}>
-              <Text style={styles.btnTxt}>Simuler photo</Text>
+            <Pressable style={styles.btn} onPress={() => void openCameraPath('photo')}>
+              <Text style={styles.btnTxt}>Ouvrir caméra photo</Text>
             </Pressable>
-            <Pressable style={styles.btnDark} onPress={() => simulateMedia(false, 'video')}>
-              <Text style={styles.btnTxt}>Simuler vidéo live</Text>
+            <Pressable style={styles.btnDark} onPress={() => void openCameraPath('video')}>
+              <Text style={styles.btnTxt}>Ouvrir caméra vidéo</Text>
             </Pressable>
           </View>
-          <Pressable style={styles.btnWarn} onPress={() => simulateMedia(true, 'photo')}>
-            <Text style={styles.btnTxt}>Photo hors sujet (filtre politesse)</Text>
-          </Pressable>
+          {showCamera && permission?.granted ? (
+            <View style={styles.cameraWrap}>
+              <CameraView style={styles.camera} facing="back" />
+              <Pressable style={styles.btnWarn} onPress={() => setShowCamera(false)}>
+                <Text style={styles.btnTxt}>Fermer la caméra</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          <TextInput
+            value={mediaNote}
+            onChangeText={setMediaNote}
+            placeholder="Décrivez ce que vous voyez (fuite, pièce, voyant…)"
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+            multiline
+          />
+          <View style={styles.row}>
+            <Pressable
+              style={[styles.btn, mediaBusy && styles.btnDisabled]}
+              disabled={mediaBusy}
+              onPress={() => void analyzeMediaDescription(photoOutcome?.media ?? 'photo')}
+            >
+              <Text style={styles.btnTxt}>{mediaBusy ? 'Analyse…' : 'Analyser (Multi-IA texte)'}</Text>
+            </Pressable>
+            <Pressable style={styles.btnWarn} onPress={() => politeRefuse('photo')}>
+              <Text style={styles.btnTxt}>Filtre politesse</Text>
+            </Pressable>
+          </View>
           {photoOutcome?.kind === 'polite_refuse' ? (
             <View style={styles.politeBox}>
               <Text style={styles.politeTitle}>Filtre de politesse</Text>
               <Text style={styles.polite}>{photoOutcome.summary}</Text>
             </View>
           ) : null}
+          {photoOutcome?.kind === 'captured_pending' ? (
+            <View style={styles.politeBox}>
+              <Text style={styles.politeTitle}>Média · en attente d’analyse</Text>
+              <Text style={styles.polite}>{photoOutcome.summary}</Text>
+            </View>
+          ) : null}
           {photoOutcome?.kind === 'ok' ? (
             <View style={styles.resultStack}>
               <View style={styles.resultBox}>
-                <Text style={styles.resultTitle}>Problème ({photoOutcome.media})</Text>
+                <Text style={styles.resultTitle}>
+                  Problème ({photoOutcome.media}
+                  {photoOutcome.visionLive ? '' : ' · texte, pas vision'})
+                </Text>
                 <Text style={styles.meta}>{photoOutcome.problem}</Text>
                 <Text style={styles.polite}>{photoOutcome.summary}</Text>
               </View>
@@ -259,7 +377,8 @@ export default function DiagnosticIaScreen() {
 
         <Card title="Analyseur acoustique moteur">
           <Text style={styles.hint}>
-            Écoute mock du bruit moteur (micro non utilisé) — courroie, injecteur, bielle, roulement.
+            Micro non capturé dans cette build — sélectionnez une piste et lancez : message honnête, pas de faux
+            diagnostic audio.
           </Text>
           <View style={styles.waveRow}>
             {acousticBars.map((h, i) => (
@@ -286,14 +405,14 @@ export default function DiagnosticIaScreen() {
             disabled={acousticPhase === 'listening'}
           >
             <Text style={styles.btnTxt}>
-              {acousticPhase === 'listening' ? 'Écoute en cours…' : 'Écouter (stub micro)'}
+              {acousticPhase === 'listening' ? 'Vérification…' : 'Lancer (honnête — pas de micro)'}
             </Text>
           </Pressable>
           {acousticGuess ? <Text style={styles.result}>{acousticGuess}</Text> : null}
-          {acousticPhase === 'done' ? (
+          {acousticPhase === 'done' && acousticFocus ? (
             <Link href="/modules/pieces" asChild>
               <Pressable style={styles.linkCta}>
-                <Text style={styles.btnTxt}>Pièce suspecte → catalogue →</Text>
+                <Text style={styles.btnTxt}>Piste {acousticFocus} → catalogue →</Text>
               </Pressable>
             </Link>
           ) : null}
@@ -405,6 +524,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.mist,
   },
   result: { color: colors.slate, lineHeight: 20 },
+  cameraWrap: { gap: 8, marginTop: 8 },
+  camera: { height: 180, borderRadius: 12, overflow: 'hidden' },
   waveRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',

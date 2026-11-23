@@ -5,10 +5,11 @@ import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
-import { MOCK_PLACES } from '../../src/data/mocks';
 import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { listWeighStations } from '../../src/services/firebase';
+import type { WeighListMeta } from '../../src/services/firebase/weighService';
+import { haversineKm } from '../../src/services/geo/deviceLocation';
 import type { WeighStationDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
 
@@ -39,96 +40,57 @@ const LAW_BY_REGION: Record<WeighStationDoc['region'], { title: string; lines: s
   },
 };
 
-/** Module 8 — balances ON/OFF, loi camionnage, dépôts PL. */
+function statusBadge(w: WeighStationDoc): { lit: boolean; text: string } {
+  if (w.status === 'open' && w.litUp) return { lit: true, text: 'ON / OUVERTE' };
+  if (w.status === 'closed') return { lit: false, text: 'OFF / FERMÉE' };
+  // unknown / untagged OSM — never label as OFF (no live feed)
+  return { lit: false, text: 'UNKNOWN (pas de feed ON/OFF live)' };
+}
+
+/** Module 8 — balances OSM + dépôts PL ; pas de faux ON/OFF sans tag. */
 export default function RoutiersScreen() {
   useModuleVisit(8);
   const { active } = useFleet();
   const [stations, setStations] = useState<WeighStationDoc[]>([]);
   const [label, setLabel] = useState<string | undefined>();
-  const [filter, setFilter] = useState<'all' | 'on' | 'off'>('all');
+  const [meta, setMeta] = useState<WeighListMeta | null>(null);
+  const [filter, setFilter] = useState<'all' | 'on' | 'off' | 'unknown'>('all');
   const [regionFilter, setRegionFilter] = useState<WeighStationDoc['region'] | 'all'>('all');
   const [lawRegion, setLawRegion] = useState<WeighStationDoc['region']>('EU');
-  const depots = MOCK_PLACES.filter((p) => p.kind === 'depot_pl' || p.kind === 'pieces');
-  const relays = MOCK_PLACES.filter((p) => p.kind === 'depannage');
+  const [loading, setLoading] = useState(false);
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const res = await listWeighStations();
+      setStations(res.data);
+      setLabel(res.stubLabel);
+      setMeta(res.meta ?? null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    void (async () => {
-      const res = await listWeighStations();
-      // Enrich mock list with a closed station so ON/OFF is demonstrable
-      const base = res.data;
-      const withClosed: WeighStationDoc[] =
-        base.some((s) => !s.litUp || s.status === 'closed')
-          ? base
-          : [
-              ...base,
-              {
-                id: 'w-closed-demo',
-                name: 'Poste de pesage A1 (nuit)',
-                address: 'Aire de Seclin',
-                lat: 50.55,
-                lon: 3.05,
-                region: 'EU',
-                status: 'closed',
-                litUp: false,
-                heightLimitM: 4.0,
-                weightLimitT: 40,
-                updatedAt: new Date().toISOString(),
-              },
-              {
-                id: 'w-na-demo',
-                name: 'Weigh Station I-95 (mock NA)',
-                address: 'Mile 42',
-                lat: 40.1,
-                lon: -74.5,
-                region: 'NA',
-                status: 'open',
-                litUp: true,
-                heightLimitM: 4.1,
-                weightLimitT: 36,
-                updatedAt: new Date().toISOString(),
-              },
-              {
-                id: 'w-au-demo',
-                name: 'HV Inspection Bay (mock AU)',
-                address: 'Pacific Hwy',
-                lat: -33.8,
-                lon: 151.1,
-                region: 'AU',
-                status: 'open',
-                litUp: true,
-                heightLimitM: 4.3,
-                weightLimitT: 42.5,
-                updatedAt: new Date().toISOString(),
-              },
-              {
-                id: 'w-na-off',
-                name: 'Weigh Station Hwy 401 (éteint)',
-                address: 'Ontario mock',
-                lat: 43.7,
-                lon: -79.4,
-                region: 'NA',
-                status: 'closed',
-                litUp: false,
-                heightLimitM: 4.15,
-                weightLimitT: 40,
-                updatedAt: new Date().toISOString(),
-              },
-            ];
-      setStations(withClosed);
-      setLabel(res.stubLabel);
-    })();
+    void reload();
   }, []);
 
   const visible = useMemo(() => {
     let list = stations;
     if (regionFilter !== 'all') list = list.filter((w) => w.region === regionFilter);
-    if (filter === 'on') return list.filter((w) => w.litUp && w.status === 'open');
-    if (filter === 'off') return list.filter((w) => !w.litUp || w.status === 'closed');
+    if (filter === 'on') return list.filter((w) => w.status === 'open' && w.litUp);
+    if (filter === 'off') return list.filter((w) => w.status === 'closed');
+    if (filter === 'unknown') return list.filter((w) => w.status !== 'open' && w.status !== 'closed');
     return list;
   }, [stations, filter, regionFilter]);
 
-  const onCount = stations.filter((w) => w.litUp && w.status === 'open').length;
-  const offCount = stations.length - onCount;
+  const onCount = stations.filter((w) => w.status === 'open' && w.litUp).length;
+  const offCount = stations.filter((w) => w.status === 'closed').length;
+  // Must match UNKNOWN chip: status neither open nor closed (ignore litUp)
+  const unknownCount = stations.filter((w) => w.status !== 'open' && w.status !== 'closed').length;
+  const originLat = meta?.lat ?? 50.63;
+  const originLon = meta?.lon ?? 3.06;
+  const depots = meta?.depots ?? [];
 
   return (
     <>
@@ -139,11 +101,21 @@ export default function RoutiersScreen() {
       >
         <BackendStatusBanner />
         {label ? <StubBanner text={label} /> : null}
+        {meta?.depotLabel ? <StubBanner text={meta.depotLabel} /> : null}
 
-        <Card title="Balances de pesage — statut ON / OFF">
+        <Card title="Balances de pesage — statut ON / OFF / UNKNOWN">
           <Text style={styles.hint}>
-            Afficher clairement les postes allumés / ouverts vs fermés / éteints (EU · NA · AU).
+            Sources OSM (weighbridge). Aucun feed mondial gratuit ON/OFF temps réel — unknown = honnête, pas de faux
+            « allumé ».
           </Text>
+          <Text style={styles.hint}>
+            {meta
+              ? `Centre ${meta.lat.toFixed(4)}, ${meta.lon.toFixed(4)} · ${meta.gpsLabel}`
+              : 'GPS…'}
+          </Text>
+          <Pressable style={styles.refresh} onPress={() => void reload()} disabled={loading}>
+            <Text style={styles.refreshTxt}>{loading ? 'Chargement OSM…' : 'Rafraîchir balances / dépôts'}</Text>
+          </Pressable>
           <View style={styles.row}>
             <Pressable style={[styles.chip, filter === 'all' && styles.chipOn]} onPress={() => setFilter('all')}>
               <Text style={[styles.chipTxt, filter === 'all' && styles.chipTxtOn]}>Toutes ({stations.length})</Text>
@@ -154,6 +126,9 @@ export default function RoutiersScreen() {
             <Pressable style={[styles.chip, filter === 'off' && styles.chipOnDark]} onPress={() => setFilter('off')}>
               <Text style={[styles.chipTxt, filter === 'off' && styles.chipTxtOn]}>ÉTEINTES ({offCount})</Text>
             </Pressable>
+            <Pressable style={[styles.chip, filter === 'unknown' && styles.chipOn]} onPress={() => setFilter('unknown')}>
+              <Text style={[styles.chipTxt, filter === 'unknown' && styles.chipTxtOn]}>UNKNOWN ({unknownCount})</Text>
+            </Pressable>
           </View>
           <View style={styles.row}>
             {(['all', 'EU', 'NA', 'AU'] as const).map((r) => (
@@ -163,14 +138,14 @@ export default function RoutiersScreen() {
             ))}
           </View>
           {visible.map((w) => {
-            const lit = w.litUp && w.status === 'open';
-            const distKm = Math.round((Math.abs(w.lat - 50.63) + Math.abs(w.lon - 3.06)) * 40 + 4);
+            const badge = statusBadge(w);
+            const distKm = Math.round(haversineKm(originLat, originLon, w.lat, w.lon) * 10) / 10;
             return (
-              <View key={w.id} style={[styles.rowCard, lit ? styles.rowLit : styles.rowOff]}>
+              <View key={w.id} style={[styles.rowCard, badge.lit ? styles.rowLit : styles.rowOff]}>
                 <View style={styles.rowHead}>
                   <Text style={styles.name}>{w.name}</Text>
-                  <Text style={[styles.statusBadge, lit ? styles.statusOn : styles.statusOff]}>
-                    {lit ? 'ON / OUVERTE' : 'OFF / FERMÉE'}
+                  <Text style={[styles.statusBadge, badge.lit ? styles.statusOn : styles.statusOff]}>
+                    {badge.text}
                   </Text>
                 </View>
                 <Text style={styles.meta}>
@@ -179,9 +154,20 @@ export default function RoutiersScreen() {
                 <Text style={styles.meta}>
                   H max {w.heightLimitM ?? '—'} m · Poids max {w.weightLimitT ?? '—'} t · statut {w.status}
                 </Text>
+                <Pressable
+                  style={styles.maps}
+                  onPress={() =>
+                    void Linking.openURL(
+                      `https://www.google.com/maps/dir/?api=1&destination=${w.lat},${w.lon}`,
+                    )
+                  }
+                >
+                  <Text style={styles.callTxt}>Itinéraire balance</Text>
+                </Pressable>
               </View>
             );
           })}
+          {visible.length === 0 ? <Text style={styles.meta}>Aucune balance pour ce filtre.</Text> : null}
         </Card>
 
         <Card title="Infos loi camionnage (pesage)">
@@ -206,7 +192,7 @@ export default function RoutiersScreen() {
         </Card>
 
         <Card title="Dépôts pièces PL & relais">
-          <Text style={styles.section}>Dépôts / magasins</Text>
+          <Text style={styles.section}>Dépôts / magasins / truck stops</Text>
           {depots.map((d) => (
             <View key={d.id} style={styles.rowCard}>
               <Text style={styles.name}>{d.name}</Text>
@@ -222,7 +208,7 @@ export default function RoutiersScreen() {
                 style={styles.maps}
                 onPress={() =>
                   void Linking.openURL(
-                    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.name + ' ' + d.address)}`,
+                    `https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lon}`,
                   )
                 }
               >
@@ -230,15 +216,7 @@ export default function RoutiersScreen() {
               </Pressable>
             </View>
           ))}
-          <Text style={styles.section}>Relais / dépannage</Text>
-          {relays.map((d) => (
-            <View key={d.id} style={styles.rowCard}>
-              <Text style={styles.name}>{d.name}</Text>
-              <Text style={styles.meta}>
-                {d.hours} · {d.distanceKm} km · {d.phone}
-              </Text>
-            </View>
-          ))}
+          {depots.length === 0 ? <Text style={styles.meta}>Aucun dépôt proche.</Text> : null}
           <Link href="/modules/garages" asChild>
             <Pressable style={styles.linkSoft}>
               <Text style={styles.linkSoftTxt}>Carte garages & dépanneurs (M9) →</Text>
@@ -253,6 +231,14 @@ export default function RoutiersScreen() {
 const styles = StyleSheet.create({
   hint: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  refresh: {
+    backgroundColor: colors.asphalt,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+    marginVertical: 6,
+  },
+  refreshTxt: { color: colors.white, fontWeight: '800', fontSize: 13 },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 7,
@@ -273,7 +259,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   rowLit: { backgroundColor: colors.garageSoft, marginHorizontal: -6, paddingHorizontal: 6, borderRadius: 8 },
-  rowOff: { opacity: 0.85 },
+  rowOff: { opacity: 0.9 },
   rowHead: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   name: { fontWeight: '800', color: colors.ink },
   meta: { color: colors.muted, fontSize: 12, lineHeight: 17 },

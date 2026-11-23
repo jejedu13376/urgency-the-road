@@ -15,7 +15,7 @@ export const MODULES: ModuleMeta[] = [
   { id: 12, title: 'Fil mécanique', short: 'Réseau social vidéo', href: '/(tabs)/fil' },
   { id: 13, title: 'Urgence & sécurité', short: 'SOS + pause 4h', href: '/modules/urgence' },
   { id: 14, title: 'Bases auto-évolutives', short: 'OTA & apprentissage', href: '/modules/bases' },
-  { id: 15, title: 'Compte & abonnements', short: 'Bio + Lydia stub', href: '/modules/compte' },
+  { id: 15, title: 'Compte & abonnements', short: 'Bio + paiements', href: '/modules/compte' },
   { id: 16, title: 'Partage viral', short: 'SMS / WhatsApp / mail', href: '/modules/partage' },
   { id: 17, title: 'Pro & Super-admin', short: 'Atelier + admin', href: '/modules/pro' },
 ];

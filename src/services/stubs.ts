@@ -82,17 +82,20 @@ export function stubQuoteScan(): StubResult<{ overchargeRisk: 'faible' | 'moyen'
 export function stubAcoustic(): StubResult<{ guess: string }> {
   return {
     ok: true,
-    data: { guess: 'Bruit simulé : possible roulement / courroie (micro non utilisé).' },
+    data: {
+      guess:
+        'Micro non capturé — aucune classification audio. Décrivez le bruit (courroie / injecteur / bielle / roulement) dans le diagnostic libre.',
+    },
     stub: true,
-    label: 'STUB IA — analyseur acoustique moteur non branché',
+    label: 'STUB acoustique — pas d’enregistrement micro ; aucun diagnostic son inventé',
   };
 }
 
 export function stubOtaSync(): StubResult<{ lastSync: string; learnedFailures: number }> {
   return {
     ok: true,
-    data: { lastSync: new Date().toISOString(), learnedFailures: 3 },
+    data: { lastSync: new Date().toISOString(), learnedFailures: 0 },
     stub: true,
-    label: 'STUB — bases OTA / auto-apprentissage non branchés au cloud',
+    label: 'OTA EAS Update non configuré — aucune sync cloud simulée',
   };
 }

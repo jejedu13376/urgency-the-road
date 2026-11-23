@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Link, Stack } from 'expo-router';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
@@ -44,13 +44,15 @@ export default function PiecesScreen() {
 
   useEffect(() => {
     void (async () => {
-      const res = await listPartsForVin(active?.vin);
+      const res = await listPartsForVin(active?.vin, {
+        isHeavyTruck: active?.vehicleClass === 'poids_lourd',
+      });
       setParts(res.data);
       setLabel(res.stubLabel);
       setSelectedId(res.data[0]?.id ?? null);
       setFunnelStep(res.data.length ? 1 : 0);
     })();
-  }, [active?.vin]);
+  }, [active?.vin, active?.vehicleClass]);
 
   const filtered = useMemo(
     () => (catFilter === 'all' ? parts : parts.filter((p) => p.category === catFilter)),
@@ -137,7 +139,7 @@ export default function PiecesScreen() {
               </Pressable>
             ))}
           </View>
-          {filtered.length === 0 ? <Text style={styles.hint}>Aucune pièce mock pour ce filtre / VIN.</Text> : null}
+          {filtered.length === 0 ? <Text style={styles.hint}>Aucune pièce pour ce filtre / VIN.</Text> : null}
           {filtered.map((p) => {
             const pose = Math.round(p.laborHours * p.laborRate);
             const on = selectedId === p.id;
@@ -196,15 +198,18 @@ export default function PiecesScreen() {
             </View>
 
             <Text style={styles.hint}>
-              Meilleur prix mock : {bestBuy} {selected.currency} (comparateur neuf / OEM / adaptable).
+              Meilleur prix catalogue local : {bestBuy} {selected.currency} (neuf / OEM / adaptable — pas d’API OEM mondiale).
             </Text>
             <Pressable
               style={styles.cta}
-              onPress={() => setFunnelStep(1)}
+              onPress={() => {
+                setFunnelStep(1);
+                if (selected.buyUrlStub) void Linking.openURL(selected.buyUrlStub);
+              }}
             >
               <Text style={styles.ctaTxt}>
-                1. Où acheter au meilleur prix
-                {selected.buyUrlStub ? ` · ${selected.buyUrlStub}` : ' · catalogue mock'}
+                1. Où acheter — ouvrir recherche web
+                {selected.oemSku ? ` · ${selected.oemSku}` : ''}
               </Text>
             </Pressable>
             <Link href="/modules/tutoriels" asChild>
@@ -235,14 +240,17 @@ export default function PiecesScreen() {
                   {Math.round(selected.priceAftermarket + selected.laborHours * selected.laborRate)}{' '}
                   {selected.currency}
                 </Text>
-                <Text style={styles.hint}>Pas de paiement simulé — stub catalogue uniquement.</Text>
+                <Text style={styles.hint}>Devis indicatif local — pas de paiement / checkout simulé.</Text>
               </View>
             ) : null}
           </Card>
         ) : null}
 
         <Card title="Scanner devis garage (anti-arnaque)">
-          <Text style={styles.hint}>Photo / PDF d’un devis → comparaison mock vs marché local.</Text>
+          <Text style={styles.hint}>
+            Pas d’OCR image encore — heuristique marché vs pièce sélectionnée (photo/PDF = mode saisie). Aucun
+            « devis scanné avec succès » inventé.
+          </Text>
           <View style={styles.funnelRow}>
             <Pressable style={[styles.funnelChip, scanMode === 'photo' && styles.funnelChipOn]} onPress={() => setScanMode('photo')}>
               <Text style={[styles.funnelTxt, scanMode === 'photo' && styles.funnelTxtOn]}>Photo papier</Text>

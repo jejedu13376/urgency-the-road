@@ -7,13 +7,19 @@ import { StubBanner } from '../../src/components/StubBanner';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { colors } from '../../src/theme/colors';
 
-const INSTALL_URL = 'https://urgence-mecanique.app/install';
-const INSTALL_MSG =
-  'Installe Urgence Mécanique — diagnostic VIN, flotte & urgence médicale : ' + INSTALL_URL;
+function resolveInstallUrl(): { url: string; configured: boolean } {
+  const fromEnv = (process.env.EXPO_PUBLIC_INSTALL_URL ?? '').trim();
+  if (fromEnv) return { url: fromEnv, configured: true };
+  return { url: 'https://urgence-mecanique.app/install', configured: false };
+}
 
 /** Module 16 — partage viral SMS / WhatsApp / email / share sheet + install universelle. */
 export default function PartageScreen() {
   useModuleVisit(16);
+  const install = resolveInstallUrl();
+  const INSTALL_URL = install.url;
+  const INSTALL_MSG =
+    'Installe Urgence Mécanique — diagnostic VIN, flotte & urgence médicale : ' + INSTALL_URL;
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [region, setRegion] = useState<'FR' | 'CA' | 'EU' | 'AU'>('FR');
@@ -76,7 +82,13 @@ export default function PartageScreen() {
     <>
       <Stack.Screen options={{ title: 'Partage' }} />
       <Screen title="Partage viral" subtitle="Module 16 — installation universelle">
-        <StubBanner text="Lien install stub — branchez l’URL store / PWA prod quand disponible" />
+        <StubBanner
+          text={
+            install.configured
+              ? `Lien install LIVE (.env) · ${INSTALL_URL}`
+              : 'Lien install stub — définissez EXPO_PUBLIC_INSTALL_URL (store / PWA) ; aucun listing inventé'
+          }
+        />
 
         <Card title="Région destinataire">
           <View style={styles.regionRow}>

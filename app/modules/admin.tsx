@@ -108,29 +108,30 @@ export default function AdminScreen() {
     <>
       <Stack.Screen options={{ title: 'Super-admin' }} />
       <Screen title="Super-admin" subtitle="Module 17 — comptes · contenus · flags · abo">
-        <StubBanner text="STUB — panneau local ; pas de backend admin live" />
+        <StubBanner text="STUB admin — UI locale ; pas de KPI live / pas de faux succès analytics" />
 
-        <Card title="Analytics (mock)">
+        <Card title="Analytics">
           <View style={styles.kpiGrid}>
             <View style={styles.kpi}>
-              <Text style={styles.kpiVal}>12 480</Text>
+              <Text style={styles.kpiVal}>—</Text>
               <Text style={styles.kpiLbl}>MAU</Text>
             </View>
             <View style={styles.kpi}>
-              <Text style={styles.kpiVal}>3.2</Text>
+              <Text style={styles.kpiVal}>—</Text>
               <Text style={styles.kpiLbl}>Sessions / j</Text>
             </View>
             <View style={styles.kpi}>
-              <Text style={styles.kpiVal}>4.1%</Text>
+              <Text style={styles.kpiVal}>—</Text>
               <Text style={styles.kpiLbl}>Conv. Pro</Text>
             </View>
             <View style={styles.kpi}>
               <Text style={styles.kpiVal}>{openMod}</Text>
-              <Text style={styles.kpiLbl}>Modération ouverte</Text>
+              <Text style={styles.kpiLbl}>Modération (locale)</Text>
             </View>
           </View>
           <Text style={styles.meta}>
-            Modules les + ouverts : Mon véhicule · Diagnostic · Garages · Fil. Supervision abo (lien M15).
+            KPI cloud non branchés — seules les files de modération locales sont éditables ici. Backend admin =
+            Lorenzo / rules role admin.
           </Text>
         </Card>
 
