@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 
-/** Spinner permanent TOP-LEFT — toujours visible, rotation continue (jamais masqué). */
+/** Spinner permanent TOP-LEFT rouge — toujours visible (gate + app), rotation continue. */
 export function PermanentLeftSpinner() {
+  const insets = useSafeAreaInsets();
   const spin = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -25,7 +27,12 @@ export function PermanentLeftSpinner() {
   });
 
   return (
-    <View style={styles.wrap} pointerEvents="none" accessibilityLabel="Indicateur permanent">
+    <View
+      style={[styles.wrap, { top: Math.max(insets.top, 8) + 2, left: 10 }]}
+      pointerEvents="none"
+      accessibilityLabel="Indicateur permanent"
+      testID="permanent-left-spinner"
+    >
       <Animated.View style={[styles.ring, { transform: [{ rotate }] }]} />
     </View>
   );
@@ -34,8 +41,6 @@ export function PermanentLeftSpinner() {
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    top: 10,
-    left: 10,
     zIndex: 9999,
     elevation: 9999,
     width: 36,

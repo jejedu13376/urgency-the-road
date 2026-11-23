@@ -11,8 +11,12 @@ import { MOCK_DTC } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import {
   bleStatusLabel,
+  connectAndInitElm,
   connectBleDevice,
+  disconnectBleSession,
+  getActiveBleSession,
   getBleCapability,
+  readLiveObdSnapshot,
   scanBleDevices,
 } from '../../src/services/obd/bleScaffold';
 import { recommendValiseForVehicle } from '../../src/services/obd/recommendValise';
@@ -59,6 +63,8 @@ export default function ObdScreen() {
   const [cleared, setCleared] = useState(false);
   const [selectedDtc, setSelectedDtc] = useState<string | null>(null);
   const [boughtAck, setBoughtAck] = useState(false);
+  const [liveBle, setLiveBle] = useState(false);
+  const [busy, setBusy] = useState(false);
   const cap = getBleCapability();
 
   useEffect(() => {
@@ -67,48 +73,116 @@ export default function ObdScreen() {
     }
   }, [recommendation?.recommendedProtocol, active?.id]);
 
+  useEffect(() => {
+    const activeSession = getActiveBleSession();
+    if (activeSession) {
+      setConnectedId(activeSession.deviceId);
+      setLiveBle(true);
+      setProtocol(activeSession.protocol);
+    }
+  }, []);
+
   const guideFor = useMemo(() => new Map(MOCK_DTC.map((d) => [d.code, d])), []);
 
   const onRead = async () => {
-    const ownerUid = profile?.uid ?? 'mock-local-user';
-    const vehicleId = active?.id ?? 'unknown';
-    const res = await readObdSnapshot(ownerUid, vehicleId, protocol);
-    setReading(res.data);
-    setLabel(
-      res.stubLabel ??
-        (res.source === 'firebase'
-          ? 'Lecture enregistrée Firestore'
-          : !profile
-            ? 'OBD local — connexion requise pour historique live'
-            : undefined),
-    );
-    setCleared(false);
-    setSelectedDtc(res.data.dtcCodes[0]?.code ?? null);
-    const hist = await listObdHistory(vehicleId, profile?.uid);
-    setHistory(hist.data);
+    setBusy(true);
+    try {
+      // Prefer live ELM327/J1939 BLE session when connected to real hardware
+      if (liveBle && connectedId && !connectedId.startsWith('mock-')) {
+        const live = await readLiveObdSnapshot(protocol);
+        if (live) {
+          const mapped: ObdReadingDoc = {
+            id: `ble-${Date.now()}`,
+            ownerUid: profile?.uid ?? 'ble-local',
+            vehicleId: active?.id ?? 'unknown',
+            protocol: live.protocol,
+            connected: true,
+            recordedAt: new Date().toISOString(),
+            source: 'live',
+            dtcCodes: live.dtcCodes.map((d) => ({
+              code: d.code,
+              plainLanguage: d.plainLanguage,
+              severity: d.severity,
+            })),
+            sensors: live.sensors,
+          };
+          setReading(mapped);
+          setLabel(`LIVE BLE ELM327/J1939 · ${live.rawLog.length} trames`);
+          setCleared(false);
+          setSelectedDtc(live.dtcCodes[0]?.code ?? null);
+          return;
+        }
+      }
+
+      const ownerUid = profile?.uid ?? 'mock-local-user';
+      const vehicleId = active?.id ?? 'unknown';
+      const res = await readObdSnapshot(ownerUid, vehicleId, protocol);
+      setReading(res.data);
+      setLabel(
+        res.stubLabel ??
+          (res.source === 'firebase'
+            ? 'Lecture enregistrée Firestore'
+            : !profile
+              ? 'OBD local — connexion requise pour historique live'
+              : undefined),
+      );
+      setCleared(false);
+      setSelectedDtc(res.data.dtcCodes[0]?.code ?? null);
+      const hist = await listObdHistory(vehicleId, profile?.uid);
+      setHistory(hist.data);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const onBleScan = async () => {
-    const r = await scanBleDevices();
-    setDevices(
-      r.devices.length
-        ? r.devices
-        : [
-            { id: 'mock-elm327', name: 'ELM327 BT (mock)' },
-            { id: 'mock-vgate', name: 'Vgate iCar Pro (mock)' },
-            { id: 'mock-j1939', name: 'NEXIQ USB-Link PL (mock)' },
-          ],
-    );
-    setBleMsg(r.devices.length ? r.message : `${r.message} — appareils démo affichés pour UX locale.`);
+    setBusy(true);
+    try {
+      const r = await scanBleDevices();
+      setDevices(
+        r.devices.length
+          ? r.devices
+          : [
+              { id: 'mock-elm327', name: 'ELM327 BT (mock)' },
+              { id: 'mock-vgate', name: 'Vgate iCar Pro (mock)' },
+              { id: 'mock-j1939', name: 'NEXIQ USB-Link PL (mock)' },
+            ],
+      );
+      setBleMsg(r.devices.length ? r.message : `${r.message} — appareils démo affichés pour UX locale.`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const onConnect = async (id: string) => {
-    const r = await connectBleDevice(id);
-    setBleMsg(r.message);
-    if (r.ok || id.startsWith('mock-')) {
-      setConnectedId(id);
-      if (id.startsWith('mock-')) setBleMsg(`Connecté (mock UI) à ${id} — lecture snapshot disponible.`);
+    setBusy(true);
+    try {
+      if (id.startsWith('mock-')) {
+        const r = await connectBleDevice(id);
+        setBleMsg(r.message);
+        setConnectedId(id);
+        setLiveBle(false);
+        return;
+      }
+      // Live path: connect + AT init with selected protocol (OBD2/EOBD/J1939)
+      const r = await connectAndInitElm(id, protocol);
+      setBleMsg(r.message);
+      if (r.ok) {
+        setConnectedId(id);
+        setLiveBle(true);
+      } else {
+        setLiveBle(false);
+      }
+    } finally {
+      setBusy(false);
     }
+  };
+
+  const onDisconnect = async () => {
+    await disconnectBleSession();
+    setConnectedId(null);
+    setLiveBle(false);
+    setBleMsg('Session BLE fermée.');
   };
 
   return (
@@ -186,11 +260,11 @@ export default function ObdScreen() {
           ) : null}
         </Card>
 
-        <Card title="Bluetooth (BLE)">
+        <Card title="Bluetooth (BLE) — ELM327 / J1939">
           <Text style={styles.meta}>{cap.available ? 'BLE natif prêt' : `Expo Go / web : ${cap.reason}`}</Text>
           <Text style={styles.meta}>{cap.pathToLive}</Text>
-          <Pressable style={styles.btn} onPress={() => void onBleScan()}>
-            <Text style={styles.btnTxt}>Scanner appareils OBD</Text>
+          <Pressable style={[styles.btn, busy && styles.btnDisabled]} disabled={busy} onPress={() => void onBleScan()}>
+            <Text style={styles.btnTxt}>{busy ? 'Scan…' : 'Scanner appareils OBD'}</Text>
           </Pressable>
           {devices.map((d) => {
             const on = connectedId === d.id;
@@ -200,14 +274,26 @@ export default function ObdScreen() {
                   <Text style={styles.deviceName}>{d.name}</Text>
                   <Text style={styles.meta}>{d.id}</Text>
                 </View>
-                <Pressable style={styles.connectBtn} onPress={() => void onConnect(d.id)}>
+                <Pressable style={styles.connectBtn} disabled={busy} onPress={() => void onConnect(d.id)}>
                   <Text style={styles.btnTxt}>{on ? 'Connecté' : 'Connecter'}</Text>
                 </Pressable>
               </View>
             );
           })}
-          {connectedId ? <Text style={styles.ok}>Lien actif : {connectedId}</Text> : (
-            <Text style={styles.hint}>Scannez puis connectez une valise (ou mock) avant lecture live.</Text>
+          {connectedId ? (
+            <>
+              <Text style={styles.ok}>
+                Lien actif : {connectedId}
+                {liveBle ? ' · session ELM live' : ' · mock UI'}
+              </Text>
+              <Pressable style={styles.clear} onPress={() => void onDisconnect()}>
+                <Text style={styles.btnTxt}>Déconnecter valise</Text>
+              </Pressable>
+            </>
+          ) : (
+            <Text style={styles.hint}>
+              Scannez puis connectez une valise ELM327/J1939 (Dev Client) — ou mock pour UX locale.
+            </Text>
           )}
         </Card>
 
@@ -340,6 +426,7 @@ const styles = StyleSheet.create({
   chipTxt: { fontWeight: '700', color: colors.slate, fontSize: 12 },
   chipTxtOn: { color: colors.white },
   btn: { backgroundColor: colors.signal, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 8 },
+  btnDisabled: { opacity: 0.55 },
   btnTxt: { color: colors.white, fontWeight: '800', fontSize: 13 },
   dtc: { borderRadius: 10, padding: 10, gap: 4 },
   dtcHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

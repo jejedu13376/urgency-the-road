@@ -49,7 +49,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.paper },
   header: {
     paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingTop: 44, // clear permanent spinner + weather
     paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: colors.line,

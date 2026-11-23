@@ -7,11 +7,22 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "Connexion à la valise diagnostic OBD (ELM327 / J1939).",
+        "NSBluetoothPeripheralUsageDescription": "Connexion à la valise diagnostic OBD (ELM327 / J1939)."
+      }
     },
     "android": {
       "package": "com.axarel.urgencyroadone",
       "versionCode": 1,
+      "permissions": [
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_SCAN",
+        "ACCESS_FINE_LOCATION"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",

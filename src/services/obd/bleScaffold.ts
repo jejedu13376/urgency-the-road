@@ -1,18 +1,17 @@
 /**
- * OBD BLE scaffold.
+ * OBD BLE scaffold + live session entrypoints.
  *
  * Expo Go limitation: react-native-ble-plx requires a custom Dev Client / bare workflow.
  * This module:
  *  - detects whether a native BLE module is present
- *  - exposes a clear connect path + mock snapshot fallback
+ *  - scan / connect
+ *  - delegates ELM327 AT init + PID/DTC to bleSession (live path)
  *  - never pretends a hardware link succeeded without native BLE
  */
+import { getBleCapability } from './bleCapability';
 
-export type BleCapability = {
-  available: boolean;
-  reason: string;
-  pathToLive: string;
-};
+export type { BleCapability } from './bleCapability';
+export { getBleCapability };
 
 export type BleScanResult = {
   ok: boolean;
@@ -25,30 +24,8 @@ export type BleConnectResult = {
   connected: boolean;
   deviceId?: string;
   message: string;
+  liveSession?: boolean;
 };
-
-/** Soft probe — no hard dependency on ble-plx so Expo Go still boots. */
-export function getBleCapability(): BleCapability {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('react-native-ble-plx');
-    if (mod?.BleManager) {
-      return {
-        available: true,
-        reason: 'react-native-ble-plx détecté',
-        pathToLive: 'Utiliser scanBleDevices() / connectBleDevice() sur Dev Client.',
-      };
-    }
-  } catch {
-    /* Expo Go / web */
-  }
-  return {
-    available: false,
-    reason: 'BLE natif absent (Expo Go / web)',
-    pathToLive:
-      '1) eas build --profile development  2) npm i react-native-ble-plx  3) permissions BLUETOOTH_* / NSBluetooth  4) reconnecter valise OBD2/ELM327',
-  };
-}
 
 export async function scanBleDevices(): Promise<BleScanResult> {
   const cap = getBleCapability();
@@ -67,30 +44,35 @@ export async function scanBleDevices(): Promise<BleScanResult> {
     await new Promise<void>((resolve) => {
       const sub = manager.startDeviceScan(
         null,
-        null,
-        (error: Error | null, device: { id: string; name?: string | null } | null) => {
+        { allowDuplicates: false },
+        (error: Error | null, device: { id: string; name?: string | null; localName?: string | null } | null) => {
           if (error) {
             sub?.remove?.();
             resolve();
             return;
           }
-          if (device?.name && /obd|elm|vgate|obdlink/i.test(device.name)) {
+          const name = device?.name || device?.localName || '';
+          if (device && name && /obd|elm|vgate|obdlink|veepaa|nexion|j1939|plx|carista/i.test(name)) {
             if (!found.some((d) => d.id === device.id)) {
-              found.push({ id: device.id, name: device.name });
+              found.push({ id: device.id, name });
             }
           }
         },
       );
       setTimeout(() => {
-        manager.stopDeviceScan();
+        try {
+          manager.stopDeviceScan();
+        } catch {
+          /* ignore */
+        }
         sub?.remove?.();
         resolve();
-      }, 4000);
+      }, 5000);
     });
     return {
       ok: true,
       devices: found,
-      message: found.length ? `${found.length} appareil(s) OBD trouvé(s)` : 'Aucun OBD nommé détecté (4s)',
+      message: found.length ? `${found.length} appareil(s) OBD trouvé(s)` : 'Aucun OBD nommé détecté (5s)',
     };
   } catch (e) {
     return {
@@ -110,29 +92,35 @@ export async function connectBleDevice(deviceId: string): Promise<BleConnectResu
       message: `Connexion BLE impossible — ${cap.reason}. ${cap.pathToLive}`,
     };
   }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { BleManager } = require('react-native-ble-plx');
-    const manager = new BleManager();
-    await manager.connectToDevice(deviceId);
-    await manager.discoverAllServicesAndCharacteristicsForDevice(deviceId);
+  if (deviceId.startsWith('mock-')) {
     return {
       ok: true,
       connected: true,
       deviceId,
-      message: `Connecté à ${deviceId} — lecture DTC ELM327 à brancher (ATZ/0100).`,
-    };
-  } catch (e) {
-    return {
-      ok: false,
-      connected: false,
-      deviceId,
-      message: e instanceof Error ? e.message : 'Échec connexion BLE',
+      message: `Connecté (mock UI) à ${deviceId} — pas de session ELM hardware.`,
+      liveSession: false,
     };
   }
+  // Live path: connect + ELM init (default OBD2; screen may re-init with J1939)
+  const { connectAndInitElm } = await import('./bleSession');
+  const r = await connectAndInitElm(deviceId, 'OBD2');
+  return {
+    ok: r.ok,
+    connected: r.ok,
+    deviceId,
+    message: r.message,
+    liveSession: r.ok,
+  };
 }
 
 export function bleStatusLabel(): string {
   const c = getBleCapability();
-  return c.available ? 'BLE natif prêt' : `OBD BLE stub — ${c.reason}`;
+  return c.available ? 'BLE natif prêt — chemin ELM327/J1939 live' : `OBD BLE stub — ${c.reason}`;
 }
+
+export {
+  connectAndInitElm,
+  disconnectBleSession,
+  getActiveBleSession,
+  readLiveObdSnapshot,
+} from './bleSession';
