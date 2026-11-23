@@ -307,8 +307,9 @@ export function GpsFullMap() {
   );
 
   const refreshLayers = useCallback(async () => {
-    const origin = liveOriginRef.current;
-    if (!origin || !bootHtml) return;
+    // Overpass around a real device fix only — never France overview centroid.
+    const origin = lastWatchRef.current ?? (gpsOk ? liveOriginRef.current : null);
+    if (!origin || !bootHtml || !gpsOk) return;
     const prefs = prefsRef.current ?? (await loadGpsNavPrefs());
     const truck = { heightM: prefs.truckHeightM, weightT: prefs.truckPtacT };
     const [bridges, weigh, localReports, cloudHazards] = await Promise.all([
@@ -345,7 +346,7 @@ export function GpsFullMap() {
     });
     const bits = [bridges.label, weigh.label].filter(Boolean);
     if (bits.length) setHudNote((prev) => prev ?? bits[0]);
-  }, [bootHtml, injectLayers]);
+  }, [bootHtml, gpsOk, injectLayers]);
 
   /** Boot map once — never remount on vehicle class / GPS ticks. */
   useEffect(() => {
@@ -491,10 +492,10 @@ export function GpsFullMap() {
       if (msg.type === 'ready') {
         setMapReady(true);
         if (msg.mode === 'voiture' || msg.mode === 'camion') setModeLabel(msg.mode);
-        // First inject may have raced before Leaflet boot — reinject last + refresh.
+        // Reinject any layers that raced before Leaflet boot — do NOT Overpass
+        // around France overview; refreshLayers waits for real gpsOk.
         const cached = lastLayersRef.current;
         if (cached) injectLayers(cached);
-        void refreshLayers();
         return;
       }
 
@@ -518,19 +519,19 @@ export function GpsFullMap() {
             setMapOrigin(loc.data.lat, loc.data.lon, true);
             return;
           }
-          // One-shot failed: prefer last watch / last known — never France centroid,
-          // never clearRouteGraphics while a live route may still be valid.
-          const fallback = lastWatchRef.current ?? liveOriginRef.current;
+          // One-shot failed: only re-center as live if we already had a REAL watch fix.
+          // Never promote France overview (boot fallback) to ok=true.
           const errTxt =
             loc.ok === false
               ? `GPS one-shot refusé — ${loc.error}`
               : 'GPS one-shot indisponible';
-          if (fallback) {
+          const realWatch = lastWatchRef.current;
+          if (realWatch) {
             setHudNote(`${errTxt} — recentrage sur dernière position live (itinéraire conservé)`);
-            setMapOrigin(fallback.lat, fallback.lon, true);
+            setMapOrigin(realWatch.lat, realWatch.lon, true);
             return;
           }
-          setHudNote(`${errTxt} — itinéraire / origine conservés`);
+          setHudNote(`${errTxt} — pas encore de fix live · itinéraire conservé`);
         })();
         return;
       }
@@ -800,31 +801,15 @@ export function GpsFullMap() {
         ) : null}
       </View>
 
-      {hudNote ? (
-        <View
-          pointerEvents="none"
-          style={[
-            styles.note,
-            {
-              top: chromePads.padTop + 108,
-              left: chromePads.padLeft + 4,
-              right: chromePads.padRight + 4,
-            },
-          ]}
-        >
-          <Text style={styles.noteTxt} numberOfLines={3}>
-            {hudNote}
-          </Text>
-        </View>
-      ) : null}
-
-      {/* Top-right — clear of Leaflet bottom GPS / Suivre GPS controls. */}
+      {/* Below search — left side under chips band; zIndex above searchWrap. */}
       <View
         style={[
           styles.reportRow,
           {
-            top: chromePads.padTop + 58,
-            right: chromePads.padRight + 4,
+            top: chromePads.padTop + 108,
+            left: chromePads.padLeft + 4,
+            zIndex: 30,
+            elevation: 30,
           },
         ]}
         pointerEvents="box-none"
@@ -843,6 +828,24 @@ export function GpsFullMap() {
           </Text>
         ) : null}
       </View>
+
+      {hudNote ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.note,
+            {
+              top: chromePads.padTop + 152,
+              left: chromePads.padLeft + 4,
+              right: chromePads.padRight + 4,
+            },
+          ]}
+        >
+          <Text style={styles.noteTxt} numberOfLines={3}>
+            {hudNote}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
