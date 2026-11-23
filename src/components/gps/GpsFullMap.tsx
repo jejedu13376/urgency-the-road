@@ -65,6 +65,8 @@ export function GpsFullMap() {
   const { active } = useFleet();
   const webRef = useRef<WebViewHandle | null>(null);
   const iframeWinRef = useRef<MapWindow | null>(null);
+  /** Monotonic id so a slower older Valhalla response cannot overwrite a newer route. */
+  const routeReqId = useRef(0);
   const [bootHtml, setBootHtml] = useState<string | null>(null);
   const [hudNote, setHudNote] = useState<string | null>(null);
   const [lastRoute, setLastRoute] = useState<VehicleRouteResult | null>(null);
@@ -159,6 +161,7 @@ export function GpsFullMap() {
       if (msg.type === 'route') {
         setDest(msg.to);
         setModeLabel(msg.mode);
+        const reqId = ++routeReqId.current;
         void (async () => {
           await saveGpsNavPrefs({
             mode: msg.mode,
@@ -166,12 +169,14 @@ export function GpsFullMap() {
             truckWidthM: msg.truck.widthM,
             truckPtacT: msg.truck.weightT,
           });
+          if (reqId !== routeReqId.current) return;
 
           const route = await fetchVehicleRoute(msg.from, msg.to, msg.mode, {
             heightM: msg.truck.heightM,
             widthM: msg.truck.widthM,
             weightT: msg.truck.weightT,
           });
+          if (reqId !== routeReqId.current) return;
 
           let label = route.label;
           if (msg.mode === 'camion' && route.ok) {
@@ -180,6 +185,7 @@ export function GpsFullMap() {
               msg.from.lon,
             ];
             const bridges = await fetchNearbyBridgeClearances(mid[0], mid[1], 12000);
+            if (reqId !== routeReqId.current) return;
             const risky = bridges.bridges.filter(
               (b) => b.maxheightM != null && b.maxheightM < (msg.truck.heightM || 4),
             );
@@ -190,6 +196,7 @@ export function GpsFullMap() {
             }
           }
 
+          if (reqId !== routeReqId.current) return;
           const enriched = { ...route, label };
           setLastRoute(enriched);
           setHudNote(label);
@@ -210,9 +217,9 @@ export function GpsFullMap() {
       }
 
       if (msg.type === 'arrived' && msg.to) {
-        const urls = mapsHandoffUrls(msg.to, msg.mode);
-        setHudNote('Arrivée animée — ouverture Maps…');
-        void Linking.openURL(urls.google);
+        setDest(msg.to);
+        // Preview only — do not auto-open Maps; user taps Maps/Waze HUD.
+        setHudNote('Arrivée animée — tapez Maps / Waze pour le guidage live');
       }
     },
     [injectRoute, setMapOrigin],
@@ -228,6 +235,10 @@ export function GpsFullMap() {
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const onWinMsg = (ev: MessageEvent) => {
+      // Only accept messages from our map iframe (srcDoc → opaque/null origin).
+      const mapWin = iframeWinRef.current;
+      if (!mapWin || ev.source !== mapWin) return;
+      if (ev.origin !== '' && ev.origin !== 'null' && ev.origin !== window.location.origin) return;
       if (typeof ev.data === 'string') handleMapMsg(ev.data);
     };
     window.addEventListener('message', onWinMsg);
