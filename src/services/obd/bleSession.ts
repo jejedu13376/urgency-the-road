@@ -151,9 +151,87 @@ export async function disconnectBleSession(): Promise<void> {
 }
 
 /**
+ * After a failed device switch, try to bring the prior GATT/ELM session back.
+ * Best-effort: if restore fails, leave `session` null (never leave an untracked live link).
+ */
+async function restorePriorSession(prior: SessionState): Promise<boolean> {
+  let manager: any = null;
+  let monitorSub: { remove?: () => void } | null = null;
+  let disconnectSub: { remove?: () => void } | null = null;
+  const id = ++sessionSeq;
+  const { deviceId, protocol, serviceUuid, writeUuid } = prior;
+
+  try {
+    manager = await getSharedBleManager();
+    await manager.connectToDevice(deviceId, { timeout: 10000 });
+    await manager.discoverAllServicesAndCharacteristicsForDevice(deviceId);
+
+    const pending: SessionState = {
+      id,
+      deviceId,
+      protocol,
+      manager,
+      writeUuid,
+      serviceUuid,
+      notifyBuf: '',
+      monitorSub: null,
+      disconnectSub: null,
+    };
+
+    try {
+      disconnectSub = manager.onDeviceDisconnected(deviceId, () => {
+        clearSessionIfId(id);
+      });
+      pending.disconnectSub = disconnectSub;
+    } catch {
+      /* optional */
+    }
+
+    try {
+      monitorSub = manager.monitorCharacteristicForDevice(
+        deviceId,
+        serviceUuid,
+        writeUuid,
+        (err: Error | null, characteristic: { value?: string | null } | null) => {
+          if (err) {
+            clearSessionIfId(id);
+            return;
+          }
+          if (!characteristic?.value) return;
+          if (session && session.id !== id) return;
+          pending.notifyBuf += base64ToAscii(characteristic.value);
+        },
+      );
+      pending.monitorSub = monitorSub;
+    } catch {
+      /* write+read only */
+    }
+
+    const init = protocol === 'J1939' || protocol === 'J1708' ? J1939_INIT_AT : ELM327_INIT_AT;
+    for (const at of init) {
+      const resp = await writeAndAwait(at, atInitWaitMs(at), pending);
+      if (isElmInitFailure(resp, at)) {
+        await releaseAttempt(manager, deviceId, monitorSub, disconnectSub);
+        return false;
+      }
+    }
+
+    session = pending;
+    return true;
+  } catch {
+    await releaseAttempt(manager, deviceId, monitorSub, disconnectSub);
+    session = null;
+    return false;
+  }
+}
+
+/**
  * Connect + discover UART char + run AT init for OBD2 or J1939-style adapters.
  * Holds the IO lock for the whole connect+init so live PID reads cannot interleave AT traffic.
  * Session is published only after AT init succeeds.
+ *
+ * Device switch: cancel prior radio only after snapshotting it; keep tracking until the new
+ * connect+discovery+AT init succeed. On failure, cancel the half-open target and restore prior.
  */
 export async function connectAndInitElm(
   deviceId: string,
@@ -173,21 +251,52 @@ export async function connectAndInitElm(
   }
 
   return withIoLock(async () => {
-    // Tear down any prior session before opening a new one (prevents leak / already-connected).
     const prior = session;
-    session = null;
-    await teardownUnlocked(prior);
+    let cancelledPrior = false;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let manager: any = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let monitorSub: { remove?: () => void } | null = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let disconnectSub: { remove?: () => void } | null = null;
     const id = ++sessionSeq;
 
+    const fail = async (message: string): Promise<{ ok: false; message: string }> => {
+      // Never leave an untracked live link after a failed connect/discovery/init.
+      await releaseAttempt(manager, deviceId, monitorSub, disconnectSub);
+      if (cancelledPrior && prior) {
+        const restored = await restorePriorSession(prior);
+        if (!restored) session = null;
+      } else if (prior && prior.deviceId === deviceId) {
+        // Failed same-device reconnect — session is gone.
+        session = null;
+      }
+      // else: prior untouched (we never cancelled a different device)
+      return { ok: false, message };
+    };
+
     try {
       manager = await getSharedBleManager();
+
+      if (prior && prior.deviceId !== deviceId) {
+        // Free the radio to switch — keep session null only after we cancel prior.
+        // Do not drop tracking permanently until the new link publishes (or restore fails).
+        session = null;
+        await teardownUnlocked(prior);
+        cancelledPrior = true;
+      } else if (prior && prior.deviceId === deviceId) {
+        // Same-device reconnect: must clear half-open / stale GATT before connectToDevice.
+        session = null;
+        await teardownUnlocked(prior);
+      } else {
+        // First connect: only clear a half-open target on the shared manager.
+        try {
+          if (await manager.isDeviceConnected(deviceId)) {
+            await manager.cancelDeviceConnection(deviceId);
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
       await manager.connectToDevice(deviceId, { timeout: 10000 });
       await manager.discoverAllServicesAndCharacteristicsForDevice(deviceId);
 
@@ -224,12 +333,9 @@ export async function connectAndInitElm(
       }
 
       if (!writeUuid) {
-        await releaseAttempt(manager, deviceId, null, null);
-        return {
-          ok: false,
-          message:
-            'Connecté mais aucune caractéristique UART ELM (FFE0/FFE1) trouvée — adapter non supporté ou pairing requis.',
-        };
+        return fail(
+          'Connecté mais aucune caractéristique UART ELM (FFE0/FFE1) trouvée — adapter non supporté ou pairing requis.',
+        );
       }
 
       // Pending session: not published until AT init succeeds (avoids live I/O racing half-ready UART).
@@ -282,11 +388,7 @@ export async function connectAndInitElm(
         const resp = await writeAndAwait(at, atInitWaitMs(at), pending);
         log.push(`${at} → ${resp.slice(0, 80)}`);
         if (isElmInitFailure(resp, at)) {
-          await releaseAttempt(manager, deviceId, monitorSub, disconnectSub);
-          return {
-            ok: false,
-            message: `Init AT échouée (${at} → ${resp.slice(0, 40)}) — valise non prête.`,
-          };
+          return fail(`Init AT échouée (${at} → ${resp.slice(0, 40)}) — valise non prête.`);
         }
       }
 
@@ -298,9 +400,7 @@ export async function connectAndInitElm(
         message: `Valise BLE connectée (${deviceId.slice(0, 8)}…) · init ${protocol} OK · ${log.length} AT`,
       };
     } catch (e) {
-      await releaseAttempt(manager, deviceId, monitorSub, disconnectSub);
-      // Under this IO lock, global session stays null until successful publish.
-      return { ok: false, message: e instanceof Error ? e.message : 'Échec connectAndInitElm' };
+      return fail(e instanceof Error ? e.message : 'Échec connectAndInitElm');
     }
   });
 }
