@@ -90,7 +90,11 @@ export default function ObdScreen() {
       // Prefer live ELM327/J1939 BLE session when connected to real hardware
       if (liveBle && connectedId && !connectedId.startsWith('mock-')) {
         const live = await readLiveObdSnapshot(protocol);
-        if (live) {
+          if (live) {
+          const sensors: Record<string, number | string> = {};
+          for (const [k, v] of Object.entries(live.sensors)) {
+            sensors[k] = v === null ? '—' : v;
+          }
           const mapped: ObdReadingDoc = {
             id: `ble-${Date.now()}`,
             ownerUid: profile?.uid ?? 'ble-local',
@@ -104,10 +108,12 @@ export default function ObdScreen() {
               plainLanguage: d.plainLanguage,
               severity: d.severity,
             })),
-            sensors: live.sensors,
+            sensors,
           };
           setReading(mapped);
-          setLabel(`LIVE BLE ELM327/J1939 · ${live.rawLog.length} trames`);
+          const warn =
+            live.parseWarnings.length > 0 ? ` · ${live.parseWarnings.length} PID manquant(s)` : '';
+          setLabel(`LIVE BLE ELM327/J1939 · ${live.rawLog.length} trames${warn}`);
           setCleared(false);
           setSelectedDtc(live.dtcCodes[0]?.code ?? null);
           return;
@@ -171,6 +177,7 @@ export default function ObdScreen() {
         setConnectedId(id);
         setLiveBle(true);
       } else {
+        setConnectedId(null);
         setLiveBle(false);
       }
     } finally {
@@ -179,10 +186,16 @@ export default function ObdScreen() {
   };
 
   const onDisconnect = async () => {
-    await disconnectBleSession();
-    setConnectedId(null);
-    setLiveBle(false);
-    setBleMsg('Session BLE fermée.');
+    if (busy) return;
+    setBusy(true);
+    try {
+      await disconnectBleSession();
+      setConnectedId(null);
+      setLiveBle(false);
+      setBleMsg('Session BLE fermée.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -286,7 +299,11 @@ export default function ObdScreen() {
                 Lien actif : {connectedId}
                 {liveBle ? ' · session ELM live' : ' · mock UI'}
               </Text>
-              <Pressable style={styles.clear} onPress={() => void onDisconnect()}>
+              <Pressable
+                style={[styles.clear, busy && styles.btnDisabled]}
+                disabled={busy}
+                onPress={() => void onDisconnect()}
+              >
                 <Text style={styles.btnTxt}>Déconnecter valise</Text>
               </Pressable>
             </>
@@ -372,14 +389,16 @@ export default function ObdScreen() {
               <View style={styles.sensorGrid}>
                 {Object.entries(reading.sensors).map(([k, v]) => {
                   const meta = SENSOR_META[k] ?? { label: k, unit: '', max: 100 };
-                  const num = typeof v === 'number' ? v : Number(v) || 0;
-                  const pct = Math.min(100, Math.round((num / meta.max) * 100));
+                  const missing = v === '—' || v === null || v === undefined || v === '';
+                  const num = typeof v === 'number' ? v : missing ? NaN : Number(v);
+                  const pct = Number.isFinite(num) ? Math.min(100, Math.round((num / meta.max) * 100)) : 0;
                   return (
                     <View key={k} style={styles.sensorCard}>
                       <Text style={styles.sensorLabel}>{meta.label}</Text>
                       <Text style={styles.sensorVal}>
-                        {v}
-                        {meta.unit ? ` ${meta.unit}` : ''}
+                        {missing || !Number.isFinite(num)
+                          ? '—'
+                          : `${num}${meta.unit ? ` ${meta.unit}` : ''}`}
                       </Text>
                       <View style={styles.barTrack}>
                         <View style={[styles.barFill, { width: `${pct}%` }]} />

@@ -4,10 +4,10 @@
  */
 
 export type PidSnapshot = {
-  rpm: number;
-  ectC: number;
-  batV: number;
-  mapKpa: number;
+  rpm: number | null;
+  ectC: number | null;
+  batV: number | null;
+  mapKpa: number | null;
 };
 
 export type ParsedDtc = {
@@ -54,16 +54,31 @@ export function parseVoltage(hexLine: string): number | null {
   return Math.round(((bytes[0] * 256 + bytes[1]) * 0.001) * 100) / 100;
 }
 
-/** Mode 03 DTC list → P0xxx style codes. */
+/**
+ * Mode 03 DTC list → P0xxx style codes.
+ * ISO 15765-4 / SAE J1979: after `43`, first data byte is DTC count, then N×2-byte codes.
+ */
 export function parseMode03Dtcs(hexLine: string): ParsedDtc[] {
   const cleaned = hexLine.replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
   const idx = cleaned.indexOf('43');
   if (idx < 0) return [];
-  const payload = cleaned.slice(idx + 2);
+  const afterMode = cleaned.slice(idx + 2);
+  if (afterMode.length < 2) return [];
+
+  const countByte = parseInt(afterMode.slice(0, 2), 16);
+  if (Number.isNaN(countByte)) return [];
+
+  // Skip DTC-count byte (CAN / ISO 15765-4). Clamp to remaining pairs.
+  const pairsAvailable = Math.floor((afterMode.length - 2) / 4);
+  const count = Math.min(Math.max(countByte, 0), pairsAvailable, 16);
+  const payload = afterMode.slice(2);
+
   const out: ParsedDtc[] = [];
-  for (let i = 0; i + 4 <= payload.length; i += 4) {
-    const a = parseInt(payload.slice(i, i + 2), 16);
-    const b = parseInt(payload.slice(i + 2, i + 4), 16);
+  for (let i = 0; i < count; i++) {
+    const off = i * 4;
+    if (off + 4 > payload.length) break;
+    const a = parseInt(payload.slice(off, off + 2), 16);
+    const b = parseInt(payload.slice(off + 2, off + 4), 16);
     if (a === 0 && b === 0) continue;
     const code = toDtcCode(a, b);
     out.push({
@@ -98,5 +113,5 @@ function extractDataBytes(hexLine: string, modeEcho: string, pid: string): numbe
 }
 
 export function emptyPidSnapshot(): PidSnapshot {
-  return { rpm: 0, ectC: 0, batV: 0, mapKpa: 0 };
+  return { rpm: null, ectC: null, batV: null, mapKpa: null };
 }
