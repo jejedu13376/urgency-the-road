@@ -84,16 +84,21 @@ export default function CarnetVocalScreen() {
     return () => clearTimeout(timer);
   }, [reload]);
 
-  // Stop mic + restore audio mode if the user leaves mid-recording.
+  // Stop mic, discard unsaved file, restore audio mode if the user leaves mid-recording.
   useEffect(() => {
     return () => {
       void (async () => {
+        let orphanUri: string | null = null;
         try {
           const st = audioRecorder.getStatus();
-          if (st.isRecording) await audioRecorder.stop();
+          if (st.isRecording) {
+            await audioRecorder.stop();
+            orphanUri = audioRecorder.uri ?? st.url;
+          }
         } catch {
           /* unmounted */
         }
+        if (orphanUri) await deleteAudioFile(orphanUri);
         try {
           await setAudioModeAsync({
             playsInSilentMode: true,

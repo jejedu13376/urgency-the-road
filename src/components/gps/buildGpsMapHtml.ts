@@ -134,6 +134,8 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   var routeLine = null;
   var destMarker = null;
   var followLive = false;
+  /** True only after startNavigation — not mere recenter / followLive. */
+  var navTripActive = false;
   var arrivedPosted = false;
   var layerGroup = null;
   var lastPanAt = 0;
@@ -261,6 +263,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     routeCoords = [];
     document.getElementById('btnGo').disabled = true;
     followLive = false;
+    navTripActive = false;
   }
 
   function applyMode(next, opts){
@@ -282,6 +285,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     }
     dest = { lat: latlng.lat, lon: latlng.lng };
     arrivedPosted = false;
+    navTripActive = false;
     followLive = false;
     if (destMarker) map.removeLayer(destMarker);
     destMarker = L.marker([dest.lat, dest.lon], { icon: destDivIcon(), zIndexOffset: 700 }).addTo(map);
@@ -353,11 +357,12 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
       lastPanAt = now;
       map.panTo([lat, lon], { animate: true, duration: 0.55, easeLinearity: 0.3 });
     }
-    // Post-trip voice logbook: fire arrived once within ~80 m of destination.
-    if (followLive && dest && !arrivedPosted) {
+    // Post-trip voice logbook: only after an explicit startNavigation trip.
+    if (navTripActive && dest && !arrivedPosted) {
       var distM = haversineM(origin, dest);
       if (distM <= 80) {
         arrivedPosted = true;
+        navTripActive = false;
         setStatus('Arrivée — note vocale trajet dispo');
         post({ type: 'arrived', mode: mode, to: { lat: dest.lat, lon: dest.lon } });
       }
@@ -487,6 +492,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   function startNavigation(){
     if (!routeCoords.length || !gpsOk || !dest) return false;
     followLive = true;
+    navTripActive = true;
     arrivedPosted = false;
     setStatus('Navigation — marqueur = position appareil (pas de démo polyline)');
     post({ type: 'navigating', mode: mode, to: dest });
