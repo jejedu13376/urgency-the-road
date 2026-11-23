@@ -74,16 +74,19 @@ export type NearbyGaragesMeta = {
 /**
  * Module 9 — nearby garages / pieces / tow.
  * Prefer Overpass OSM around device GPS; Firestore if populated; else mock.
+ * @param radiusKm search radius (default 10 km, clamped 2–25).
  */
-export async function listGaragesNearby(): Promise<
-  ServiceResult<GarageDoc[]> & { meta?: NearbyGaragesMeta }
-> {
+export async function listGaragesNearby(opts?: {
+  radiusKm?: number;
+}): Promise<ServiceResult<GarageDoc[]> & { meta?: NearbyGaragesMeta }> {
   const coordsRes = await getDeviceCoords({ allowFallback: true });
   const lat = coordsRes.data?.lat ?? FALLBACK_LAT;
   const lon = coordsRes.data?.lon ?? FALLBACK_LON;
   const gpsLabel = coordsRes.data?.label ?? 'GPS fallback';
+  const radiusKm = Math.min(Math.max(opts?.radiusKm ?? 10, 2), 25);
+  const radiusM = radiusKm * 1000;
 
-  const osm = await fetchNearbyAutoPlaces(lat, lon, 10000);
+  const osm = await fetchNearbyAutoPlaces(lat, lon, radiusM);
   const photon =
     osm.ok && osm.places.length ? null : await fetchPhotonAutoPlaces(lat, lon);
   const livePlaces =

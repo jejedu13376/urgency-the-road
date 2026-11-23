@@ -40,18 +40,21 @@ export type WeighListMeta = {
 /**
  * Module 8 — weigh stations near device GPS via Overpass (amenity=weighbridge).
  * ON/OFF live feeds do not exist as a free global API — unknown stays unknown (no fake ON).
+ * @param radiusKm weigh search radius (default 100 km, clamped 20–150).
  */
-export async function listWeighStations(): Promise<
-  ServiceResult<WeighStationDoc[]> & { meta?: WeighListMeta }
-> {
+export async function listWeighStations(opts?: {
+  radiusKm?: number;
+}): Promise<ServiceResult<WeighStationDoc[]> & { meta?: WeighListMeta }> {
   const coordsRes = await getDeviceCoords({ allowFallback: true });
   const lat = coordsRes.data?.lat ?? FALLBACK_LAT;
   const lon = coordsRes.data?.lon ?? FALLBACK_LON;
   const gpsLabel = coordsRes.data?.label ?? 'GPS fallback';
+  const radiusKm = Math.min(Math.max(opts?.radiusKm ?? 100, 20), 150);
+  const depotRadiusM = Math.min(Math.max(Math.round(radiusKm * 300), 10000), 60000);
 
   const [weigh, depotsRes] = await Promise.all([
-    fetchNearbyWeighStations(lat, lon, 100000),
-    fetchNearbyTruckDepots(lat, lon, 30000),
+    fetchNearbyWeighStations(lat, lon, radiusKm * 1000),
+    fetchNearbyTruckDepots(lat, lon, depotRadiusM),
   ]);
 
   const depots = withDistance(
@@ -84,8 +87,8 @@ export async function listWeighStations(): Promise<
     };
   }
 
-  // Cap Photon hits to Overpass weigh radius (100 km) — no distant NA pins as « nearby »
-  const photon = await fetchPhotonWeighHints(lat, lon, 100);
+  // Cap Photon hits to Overpass weigh radius — no distant pins as « nearby »
+  const photon = await fetchPhotonWeighHints(lat, lon, radiusKm);
   if (photon.ok && photon.stations.length) {
     const stations: WeighStationDoc[] = photon.stations.map((s) => ({
       id: s.id,

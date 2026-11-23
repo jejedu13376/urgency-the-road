@@ -323,3 +323,68 @@ export function withDistance<T extends { lat: number; lon: number }>(
     return { ...p, distanceKm, etaMin: etaMinutesFromKm(distanceKm) };
   });
 }
+
+export type BridgeClearance = {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  maxheightM?: number;
+  distanceKm: number;
+};
+
+/**
+ * Advisory OSM maxheight / bridge tags near GPS — NOT a commercial PTAC routing graph.
+ * Informs truck mode only; never invents clearance values.
+ */
+export async function fetchNearbyBridgeClearances(
+  lat: number,
+  lon: number,
+  radiusM = 15000,
+): Promise<{ ok: boolean; bridges: BridgeClearance[]; label: string; error?: string }> {
+  const r = Math.min(Math.max(radiusM, 3000), 40000);
+  const ql = `[out:json][timeout:25];
+(
+  way["maxheight"](around:${r},${lat},${lon});
+  node["maxheight"](around:${r},${lat},${lon});
+  way["bridge"="yes"]["maxheight"](around:${r},${lat},${lon});
+);
+out center tags 25;`;
+  try {
+    const els = await overpassQuery(ql);
+    const bridges: BridgeClearance[] = [];
+    for (const el of els) {
+      const c = coordsOf(el);
+      if (!c) continue;
+      const tags = el.tags ?? {};
+      const raw = tags.maxheight;
+      if (!raw) continue;
+      const parsed = Number.parseFloat(raw.replace(',', '.').replace(/m$/i, '').trim());
+      const maxheightM = Number.isFinite(parsed) ? parsed : undefined;
+      const name = tags.name ?? tags.ref ?? `Ouvrage OSM #${el.id}`;
+      bridges.push({
+        id: `br-${el.type}-${el.id}`,
+        name,
+        lat: c.lat,
+        lon: c.lon,
+        maxheightM,
+        distanceKm: Math.round(haversineKm(lat, lon, c.lat, c.lon) * 10) / 10,
+      });
+    }
+    bridges.sort((a, b) => a.distanceKm - b.distanceKm);
+    return {
+      ok: bridges.length > 0,
+      bridges: bridges.slice(0, 12),
+      label: bridges.length
+        ? `LIVE Overpass maxheight · ${Math.min(bridges.length, 12)} ouvrage(s) · advisory (pas de graphe PTAC)`
+        : 'Aucun maxheight OSM dans le rayon — graphe commercial non branché',
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      bridges: [],
+      label: 'Overpass maxheight KO',
+      error: e instanceof Error ? e.message : 'Overpass error',
+    };
+  }
+}
