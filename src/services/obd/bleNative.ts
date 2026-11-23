@@ -1,10 +1,16 @@
 /**
  * Shared native BLE helpers (PoweredOn wait + Android 12+ runtime permissions).
  * Soft-used only when react-native-ble-plx is present (Dev Client).
+ *
+ * BleManager is a native singleton — create once, never destroy after a scan
+ * (destroy would kill any live GATT session).
  */
 import { PermissionsAndroid, Platform } from 'react-native';
 
-/** Wait until BleManager reports PoweredOn (required after create / after destroy+recreate). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let sharedManager: any = null;
+
+/** Wait until BleManager reports PoweredOn (required after create / after adapter toggle). */
 export async function waitForBlePoweredOn(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   manager: any,
@@ -54,7 +60,22 @@ export async function waitForBlePoweredOn(
   });
 }
 
-/** Request Android BLE runtime permissions (SCAN/CONNECT on API 31+, location on older). */
+/** Process-wide BleManager — do not destroy between scan/connect (singleton native client). */
+export async function getSharedBleManager(): Promise<unknown> {
+  if (!sharedManager) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { BleManager } = require('react-native-ble-plx');
+    sharedManager = new BleManager();
+  }
+  await waitForBlePoweredOn(sharedManager);
+  return sharedManager;
+}
+
+/**
+ * Request Android BLE runtime permissions.
+ * API 31+: SCAN + CONNECT + FINE_LOCATION (scan needs location when neverForLocation is unset).
+ * Older: FINE_LOCATION.
+ */
 export async function ensureAndroidBlePermissions(): Promise<{ ok: boolean; message?: string }> {
   if (Platform.OS !== 'android') return { ok: true };
 
@@ -66,13 +87,22 @@ export async function ensureAndroidBlePermissions(): Promise<{ ok: boolean; mess
       const result = await PermissionsAndroid.requestMultiple([
         PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
         PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
       ]);
       const scanOk = result[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN] === 'granted';
       const connectOk = result[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT] === 'granted';
+      const locOk = result[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] === 'granted';
       if (!scanOk || !connectOk) {
         return {
           ok: false,
           message: 'Permissions Bluetooth refusées (BLUETOOTH_SCAN / BLUETOOTH_CONNECT requis Android 12+).',
+        };
+      }
+      if (!locOk) {
+        return {
+          ok: false,
+          message:
+            'Permission localisation refusée — requise pour le scan BLE Android 12+ (sans neverForLocation).',
         };
       }
       return { ok: true };
@@ -96,13 +126,23 @@ export async function ensureAndroidBlePermissions(): Promise<{ ok: boolean; mess
   }
 }
 
-/** True when an AT/init reply means the adapter did not come up. */
-export function isElmInitFailure(resp: string): boolean {
+/**
+ * True when an AT/init reply means the adapter did not come up.
+ * ATZ: TIMEOUT alone is not a hard fail (reset is slow over BLE) — ERROR/NO DATA still are.
+ */
+export function isElmInitFailure(resp: string, cmd?: string): boolean {
   const t = resp.trim().toUpperCase();
-  if (!t) return true;
-  if (t === 'TIMEOUT' || t === 'NO_SESSION' || t === 'DISCONNECTED') return true;
+  const isAtz = (cmd ?? '').trim().toUpperCase() === 'ATZ';
+  if (!t) return !isAtz;
+  if (t === 'NO_SESSION' || t === 'DISCONNECTED') return true;
+  if (t === 'TIMEOUT') return !isAtz;
   if (t.includes('NO DATA')) return true;
   if (/\bERROR\b/.test(t)) return true;
   if (t.includes('UNABLE TO CONNECT')) return true;
   return false;
+}
+
+/** Prefer ~3.5s wait for ATZ; shorter for other AT commands. */
+export function atInitWaitMs(cmd: string): number {
+  return cmd.trim().toUpperCase() === 'ATZ' ? 3500 : 1200;
 }

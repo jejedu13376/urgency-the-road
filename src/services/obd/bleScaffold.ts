@@ -5,11 +5,12 @@
  * This module:
  *  - detects whether a native BLE module is present
  *  - scan / connect (after PoweredOn + Android runtime permissions)
+ *  - reuses shared BleManager (never destroy after scan — would kill live session)
  *  - delegates ELM327 AT init + PID/DTC to bleSession (live path)
  *  - never pretends a hardware link succeeded without native BLE
  */
 import { getBleCapability } from './bleCapability';
-import { ensureAndroidBlePermissions, waitForBlePoweredOn } from './bleNative';
+import { ensureAndroidBlePermissions, getSharedBleManager } from './bleNative';
 
 export type { BleCapability } from './bleCapability';
 export { getBleCapability };
@@ -38,18 +39,24 @@ export async function scanBleDevices(): Promise<BleScanResult> {
     };
   }
 
+  // Refuse rescan while a live session owns the radio — disconnect first intentionally.
+  const { getActiveBleSession } = await import('./bleSession');
+  if (getActiveBleSession()) {
+    return {
+      ok: false,
+      devices: [],
+      message: 'Session ELM live ouverte — déconnectez la valise avant un nouveau scan.',
+    };
+  }
+
   const perm = await ensureAndroidBlePermissions();
   if (!perm.ok) {
     return { ok: false, devices: [], message: perm.message ?? 'Permissions Bluetooth manquantes.' };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let manager: any = null;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { BleManager } = require('react-native-ble-plx');
-    manager = new BleManager();
-    await waitForBlePoweredOn(manager);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const manager: any = await getSharedBleManager();
     const found: { id: string; name: string }[] = [];
     await new Promise<void>((resolve) => {
       const sub = manager.startDeviceScan(
@@ -87,6 +94,7 @@ export async function scanBleDevices(): Promise<BleScanResult> {
         resolve();
       }, 5000);
     });
+    // Do NOT destroy shared BleManager here — native client is singleton.
     return {
       ok: true,
       devices: found,
@@ -98,12 +106,6 @@ export async function scanBleDevices(): Promise<BleScanResult> {
       devices: [],
       message: e instanceof Error ? e.message : 'Erreur scan BLE',
     };
-  } finally {
-    try {
-      manager?.destroy?.();
-    } catch {
-      /* ignore */
-    }
   }
 }
 

@@ -17,7 +17,12 @@ import {
   type PidSnapshot,
 } from './elm327Protocol';
 import { getBleCapability } from './bleCapability';
-import { ensureAndroidBlePermissions, isElmInitFailure, waitForBlePoweredOn } from './bleNative';
+import {
+  atInitWaitMs,
+  ensureAndroidBlePermissions,
+  getSharedBleManager,
+  isElmInitFailure,
+} from './bleNative';
 
 /** Common ELM327 UART-over-BLE service/characteristic UUIDs (FFE0/FFE1 family). */
 const UART_SERVICE_MARKERS = ['ffe0', 'fff0'];
@@ -80,14 +85,10 @@ async function teardownUnlocked(cur: SessionState | null): Promise<void> {
   } catch {
     /* ignore */
   }
-  try {
-    cur.manager.destroy?.();
-  } catch {
-    /* ignore */
-  }
+  // Never destroy shared BleManager — native client is a singleton; destroy kills live/scans.
 }
 
-async function destroyManager(
+async function releaseAttempt(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   manager: any,
   deviceId: string,
@@ -107,11 +108,6 @@ async function destroyManager(
   if (!manager) return;
   try {
     await manager.cancelDeviceConnection(deviceId);
-  } catch {
-    /* ignore */
-  }
-  try {
-    manager.destroy?.();
   } catch {
     /* ignore */
   }
@@ -135,7 +131,7 @@ function clearSessionIfId(id: number): void {
       /* ignore */
     }
     try {
-      cur.manager.destroy?.();
+      await cur.manager.cancelDeviceConnection(cur.deviceId);
     } catch {
       /* ignore */
     }
@@ -191,10 +187,7 @@ export async function connectAndInitElm(
     const id = ++sessionSeq;
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { BleManager } = require('react-native-ble-plx');
-      manager = new BleManager();
-      await waitForBlePoweredOn(manager);
+      manager = await getSharedBleManager();
       await manager.connectToDevice(deviceId, { timeout: 10000 });
       await manager.discoverAllServicesAndCharacteristicsForDevice(deviceId);
 
@@ -231,7 +224,7 @@ export async function connectAndInitElm(
       }
 
       if (!writeUuid) {
-        await destroyManager(manager, deviceId, null, null);
+        await releaseAttempt(manager, deviceId, null, null);
         return {
           ok: false,
           message:
@@ -286,11 +279,10 @@ export async function connectAndInitElm(
       const init = protocol === 'J1939' || protocol === 'J1708' ? J1939_INIT_AT : ELM327_INIT_AT;
       const log: string[] = [];
       for (const at of init) {
-        const resp = await writeAndAwait(at, 1200, pending);
+        const resp = await writeAndAwait(at, atInitWaitMs(at), pending);
         log.push(`${at} → ${resp.slice(0, 80)}`);
-        if (isElmInitFailure(resp)) {
-          await destroyManager(manager, deviceId, monitorSub, disconnectSub);
-          // Session was never published (still null under this lock) — only destroy pending manager.
+        if (isElmInitFailure(resp, at)) {
+          await releaseAttempt(manager, deviceId, monitorSub, disconnectSub);
           return {
             ok: false,
             message: `Init AT échouée (${at} → ${resp.slice(0, 40)}) — valise non prête.`,
@@ -306,7 +298,7 @@ export async function connectAndInitElm(
         message: `Valise BLE connectée (${deviceId.slice(0, 8)}…) · init ${protocol} OK · ${log.length} AT`,
       };
     } catch (e) {
-      await destroyManager(manager, deviceId, monitorSub, disconnectSub);
+      await releaseAttempt(manager, deviceId, monitorSub, disconnectSub);
       // Under this IO lock, global session stays null until successful publish.
       return { ok: false, message: e instanceof Error ? e.message : 'Échec connectAndInitElm' };
     }

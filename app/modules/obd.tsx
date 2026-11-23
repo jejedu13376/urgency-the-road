@@ -148,9 +148,17 @@ export default function ObdScreen() {
 
   const onBleScan = async () => {
     if (busy) return;
+    if (liveBle) {
+      setBleMsg('Session ELM live ouverte — déconnectez avant un nouveau scan.');
+      return;
+    }
     setBusy(true);
     try {
       const r = await scanBleDevices();
+      if (!r.ok && r.message.includes('Session ELM')) {
+        setBleMsg(r.message);
+        return;
+      }
       setDevices(
         r.devices.length
           ? r.devices
@@ -285,8 +293,12 @@ export default function ObdScreen() {
         <Card title="Bluetooth (BLE) — ELM327 / J1939">
           <Text style={styles.meta}>{cap.available ? 'BLE natif prêt' : `Expo Go / web : ${cap.reason}`}</Text>
           <Text style={styles.meta}>{cap.pathToLive}</Text>
-          <Pressable style={[styles.btn, busy && styles.btnDisabled]} disabled={busy} onPress={() => void onBleScan()}>
-            <Text style={styles.btnTxt}>Scanner appareils OBD</Text>
+          <Pressable
+            style={[styles.btn, (busy || liveBle) && styles.btnDisabled]}
+            disabled={busy || liveBle}
+            onPress={() => void onBleScan()}
+          >
+            <Text style={styles.btnTxt}>{liveBle ? 'Scan bloqué (session live)' : 'Scanner appareils OBD'}</Text>
           </Pressable>
           {devices.map((d) => {
             const on = connectedId === d.id;
