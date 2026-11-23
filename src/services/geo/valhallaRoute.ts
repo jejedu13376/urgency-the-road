@@ -110,7 +110,7 @@ export async function fetchVehicleRoute(
     const source = mode === 'camion' ? 'valhalla-truck' : 'valhalla-auto';
     const label =
       mode === 'camion'
-        ? `LIVE Valhalla truck · ${distanceKm} km · ~${durationMin} min · gabarit advisory (pas de graphe PTAC commercial)`
+        ? `LIVE Valhalla truck · ${distanceKm} km · ~${durationMin} min`
         : `LIVE Valhalla auto · ${distanceKm} km · ~${durationMin} min`;
     return { ok: true, mode, coords, distanceKm, durationMin, source, label };
   } catch (e) {
@@ -141,7 +141,7 @@ export function mapsHandoffUrls(dest: RoutePoint, mode: GpsVehicleMode): {
     apple: `http://maps.apple.com/?daddr=${ll}&dirflg=d`,
     truckNote:
       mode === 'camion'
-        ? 'Apps Maps/Waze n’exposent pas un mode PL gratuit via URL — gabarit / PTAC = advisory in-app (Valhalla truck + OSM maxheight).'
+        ? 'Apps Maps/Waze n’exposent pas un mode PL gratuit via URL — handoff auto uniquement.'
         : null,
   };
 }

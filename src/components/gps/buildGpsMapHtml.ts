@@ -227,7 +227,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     setStatus('GPS appareil refusé — activez la localisation (bouton GPS). Pas de départ silencieux.');
   } else {
     setStatus(mode === 'camion'
-      ? 'Mode camion — touchez une destination (Valhalla truck + alertes gabarit)'
+      ? 'Mode camion — touchez une destination'
       : 'Mode voiture — touchez une destination');
   }
 
