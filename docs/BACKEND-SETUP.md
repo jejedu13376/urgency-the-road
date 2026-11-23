@@ -132,8 +132,13 @@ Full steps + exact secret names: **`docs/MULTI-IA-PROXY.md`**. Deploy order: **`
 ```bash
 cd firebase/functions && npm install && npm run build && cd ../..
 firebase deploy --config firebase/firebase.json --only functions:multiIa --project urgency-road
-# then in app .env:
-# EXPO_PUBLIC_MULTI_IA_PROXY_URL=https://us-central1-<PROJECT_ID>.cloudfunctions.net/multiIa
+```
+
+**LIVE URL** — paste this exact line into root `.env`  
+(Windows: `C:\Users\Jejedou13376\urgency-the-road\.env`), then `npx expo start -c`:
+
+```bash
+EXPO_PUBLIC_MULTI_IA_PROXY_URL=https://us-central1-urgency-road.cloudfunctions.net/multiIa
 ```
 
 Live votes require Module 15 sign-in (Firebase ID token). Without proxy URL → heuristic engines only.

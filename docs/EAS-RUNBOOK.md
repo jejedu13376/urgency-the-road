@@ -2,25 +2,29 @@
 
 **Goal:** a real downloadable Android APK URL for Urgence Mécanique (`urgency-road-one`).
 
-**Cloud agent status (2026-11-23):** `eas-cli whoami` → **Not logged in**. No `EXPO_TOKEN` on the VM. Config is ready; build is blocked on Expo auth.
+**Cloud agent status (2026-11-23 ~4:27 PM America/Edmonton):**
 
----
+| Check | Result |
+| --- | --- |
+| `EXPO_TOKEN` | **Present** (env set; length checked only — value never logged) |
+| `npx eas-cli whoami` | **Valid** — `jejedu13376` (authenticated using `EXPO_TOKEN`) |
+| Diagnosis | **Not missing / not invalid / not login-fail** — token works on this VM |
+| Preview APK | **FINISHED** — build `e36fd307-416c-474f-aa31-bc7433d65064` |
 
-## Provisional download link (until EAS finishes)
+**APK download:** https://expo.dev/artifacts/eas/9jnRpoYEjSrzH8b4wPGgg72rsW3xBKgeX7zfXxuHkZI.apk  
+**Build page:** https://expo.dev/accounts/jejedu13376/projects/urgency-road-one/builds/e36fd307-416c-474f-aa31-bc7433d65064  
 
-**https://github.com/jejedu13376/urgency-the-road/releases**
+Provisional Releases fallback (optional): https://github.com/jejedu13376/urgency-the-road/releases
 
-Use this as the stand-in app download link. After the first successful `preview` build, replace it with the Expo build page (or attach the `.apk` as a GitHub Release asset).
+### If `EXPO_TOKEN` breaks later (diagnose → fix)
 
-Repo fallback: https://github.com/jejedu13376/urgency-the-road
+| Symptom | Cause | Fix (Lorenzo) |
+| --- | --- | --- |
+| `test -n "$EXPO_TOKEN"` empty | Missing secret | Dashboard → Cloud Agents → Secrets → add `EXPO_TOKEN` from expo.dev Access tokens |
+| `whoami` → Not logged in / 401 | Invalid or revoked token | Create a new Expo access token → replace Dashboard `EXPO_TOKEN` |
+| Interactive PC only | Prefer session login | `npx eas-cli login` (no token file needed) |
 
----
-
-## Missing for a real EAS APK
-
-1. Free Expo account (or login to existing)
-2. Either interactive `eas login` **or** Cursor Cloud Agent secret `EXPO_TOKEN`
-3. One successful `eas build -p android --profile preview` (fills `extra.eas.projectId` + `owner` in `app.json`)
+Never put `EXPO_TOKEN` in `.env` as `EXPO_PUBLIC_*`. Never paste the token value into chat.
 
 ---
 

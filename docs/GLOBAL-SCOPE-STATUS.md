@@ -37,17 +37,16 @@
 | Multi-IA **heuristic** | Live LLM votes (provider keys + proxy URL) |
 | Client Firebase/YouTube via `EXPO_PUBLIC_*` `.env` | — |
 
-## Deploy / secrets (blocked)
-
-Deploy is **blocked on secrets** — not on code. Agent attempt: **nothing deployed**.
+## Deploy / secrets (2026-11-23 update)
 
 | Secret / config | Status |
 | --- | --- |
-| `EXPO_TOKEN` | **Absent** → no EAS APK tonight without Lorenzo |
-| `FIREBASE_TOKEN` / local `firebase login` | **Absent** → no rules/functions deploy |
-| Multi-IA provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`) | **Absent** (server-side only) |
-| `EXPO_PUBLIC_MULTI_IA_PROXY_URL` | Not set (needs functions deploy first) |
-| `EXPO_PUBLIC_INSTALL_URL` | Not set (set after EAS APK) |
+| `EXPO_TOKEN` | **Present + valid** (`whoami` = `jejedu13376`) · APK `e36fd307` **FINISHED** |
+| `FIREBASE_TOKEN` / local `firebase login` | Used for deploy when present (CI / Dashboard) |
+| Multi-IA provider keys (`ANTHROPIC_API_KEY`, …) | Server-side only — set the engines you use |
+| `functions:multiIa` | **LIVE** → `https://us-central1-urgency-road.cloudfunctions.net/multiIa` |
+| `EXPO_PUBLIC_MULTI_IA_PROXY_URL` | **Paste into local `.env`** (see `.env.example` / `docs/MULTI-IA-PROXY.md`) |
+| `EXPO_PUBLIC_INSTALL_URL` | Optional — set to APK / build page URL after install |
 
 Once Lorenzo injects secrets → **`docs/DEPLOY-CHECKLIST.md`**. Tonight framing → **`docs/urgency-road-one/SUIVI.md`**. Modules → **`docs/MODULES-STATUS.md`**.
 
@@ -57,17 +56,18 @@ Once Lorenzo injects secrets → **`docs/DEPLOY-CHECKLIST.md`**. Tonight framing
 | --- | --- | --- |
 | M1–M17 UI + free APIs | On `main` (batches A/B/C) | OEM / paid / hardware as per MODULES-STATUS |
 | Firebase Auth/Firestore code + rules | On `main` | `firebase deploy` rules/indexes |
-| Multi-IA proxy | Code on `main` (#8) | Provider secrets + functions deploy + proxy URL |
-| EAS APK | Config on `main` (#9) | `EXPO_TOKEN` / `eas login` |
+| Multi-IA proxy | Deployed live + health OK | Client `.env` paste + provider keys |
+| EAS APK | Preview APK `e36fd307` finished | Optional: set `EXPO_PUBLIC_INSTALL_URL` |
 | Formations | Standby | — (never touch) |
 
 ## Client-only checklist (after secrets)
 
 ```bash
-firebase deploy --config firebase/firebase.json \
-  --only firestore:rules,firestore:indexes,functions:multiIa --project urgency-road
-npx eas-cli build -p android --profile preview
-# then set EXPO_PUBLIC_MULTI_IA_PROXY_URL + EXPO_PUBLIC_INSTALL_URL in app .env
+# multiIa already live — Lorenzo pastes into root .env:
+EXPO_PUBLIC_MULTI_IA_PROXY_URL=https://us-central1-urgency-road.cloudfunctions.net/multiIa
+# optional install share (APK e36fd307):
+# EXPO_PUBLIC_INSTALL_URL=https://expo.dev/accounts/jejedu13376/projects/urgency-road-one/builds/e36fd307-416c-474f-aa31-bc7433d65064
+npx expo start -c
 ```
 
 ## Payments

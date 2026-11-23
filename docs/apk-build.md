@@ -1,9 +1,11 @@
 # Test APK build (EAS preview)
 
-**Status on this cloud VM:** blocked — no Expo login / no `EXPO_TOKEN`.  
-Full click-by-click: **`docs/EAS-RUNBOOK.md`**. Hosting overview: **`docs/HOSTING-RESTORE.md`**.
+**Status (2026-11-23):** `EXPO_TOKEN` **present + valid** on cloud VM (`eas whoami` → `jejedu13376`).  
+Preview APK **FINISHED**: build `e36fd307` —  
+https://expo.dev/accounts/jejedu13376/projects/urgency-road-one/builds/e36fd307-416c-474f-aa31-bc7433d65064  
+**APK:** https://expo.dev/artifacts/eas/9jnRpoYEjSrzH8b4wPGgg72rsW3xBKgeX7zfXxuHkZI.apk  
 
-**Provisional download link:** https://github.com/jejedu13376/urgency-the-road/releases
+Full click-by-click: **`docs/EAS-RUNBOOK.md`**. Hosting overview: **`docs/HOSTING-RESTORE.md`**.
 
 `eas.json` is ready with a **preview** profile that outputs an **APK** (no production keystore) and a **development** profile for BLE Dev Client.
 
@@ -39,14 +41,14 @@ npx eas-cli build -p android --profile preview
 https://expo.dev/accounts/<account>/projects/urgency-road-one/builds/<build-id>
 ```
 
-## What this agent already ran
+## What cloud agents already ran
 
 ```text
 npx eas-cli whoami
-→ Not logged in
+→ jejedu13376 (authenticated using EXPO_TOKEN)
 
 eas build -p android --profile preview --non-interactive
-→ An Expo user account is required to proceed.
+→ FINISHED (e36fd307-416c-474f-aa31-bc7433d65064)
 ```
 
-No APK URL until login (or `EXPO_TOKEN`) and a successful build.
+Suggested app `.env` (Module 16 partage): set `EXPO_PUBLIC_INSTALL_URL` to the build page or APK URL above.

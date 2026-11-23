@@ -1,7 +1,10 @@
 # Deploy checklist — Urgency Road (Lorenzo)
 
-**Status (2026-11-23):** **BLOCKED** — missing `FIREBASE_TOKEN` (or local `firebase login`), Multi-IA provider keys, and `EXPO_TOKEN` (or local `eas login`). Agent deploy attempt = nothing published. See `docs/urgency-road-one/SUIVI.md`.  
-**When:** after secrets exist (`EXPO_TOKEN` and/or local `eas login`; Multi-IA provider keys server-side; Firebase login or `FIREBASE_TOKEN`).  
+**Status (2026-11-23 ~4:27 PM America/Edmonton):**  
+- `EXPO_TOKEN` → **OK** on cloud VM (`whoami` = `jejedu13376`); preview APK **FINISHED** (`e36fd307`)  
+- `functions:multiIa` → **LIVE** at `https://us-central1-urgency-road.cloudfunctions.net/multiIa`  
+- Remaining user paste: `EXPO_PUBLIC_MULTI_IA_PROXY_URL` (+ optional `EXPO_PUBLIC_INSTALL_URL`) in local `.env`  
+- Provider LLM keys still server-side as needed — see `docs/MULTI-IA-PROXY.md`  
 **Repo:** `jejedu13376/urgency-the-road` · project id `urgency-road` · config `firebase/firebase.json`  
 **Formations:** standby — do not touch.  
 **Never paste secret values into chat or commit them.**
@@ -16,8 +19,8 @@ Canonical in GitHub: `docs/DEPLOY-CHECKLIST.md`. Store mirror: `docs/urgency-roa
 - [ ] Multi-IA provider keys ready to set on the function (only the engines you use):  
   `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`  
   → details: `docs/MULTI-IA-PROXY.md`
-- [ ] Expo auth ready: interactive `eas login` **or** Cursor secret `EXPO_TOKEN`  
-  → details: `docs/EAS-RUNBOOK.md`
+- [x] Expo auth ready: Cursor secret `EXPO_TOKEN` valid (`eas whoami` → `jejedu13376`)  
+  → details: `docs/EAS-RUNBOOK.md` · APK `e36fd307` already built
 
 ```bash
 cd /path/to/urgency-the-road
@@ -53,13 +56,15 @@ Set provider secrets on the function (Console env/Secrets **or** `firebase funct
 
 ## 2) App `.env` — Multi-IA proxy URL
 
-After deploy, copy the HTTPS URL (shape below) into the **app root** `.env` (gitignored):
+**multiIa is already live.** Lorenzo — paste this **exact** line into root `.env`  
+(Windows: `C:\Users\Jejedou13376\urgency-the-road\.env`):
 
 ```bash
-EXPO_PUBLIC_MULTI_IA_PROXY_URL=https://us-central1-<PROJECT_ID>.cloudfunctions.net/multiIa
+EXPO_PUBLIC_MULTI_IA_PROXY_URL=https://us-central1-urgency-road.cloudfunctions.net/multiIa
 ```
 
-Do **not** put provider API keys in any `EXPO_PUBLIC_*` var.
+URL is public (not a secret). Do **not** put provider API keys in any `EXPO_PUBLIC_*` var.  
+`bind-app-secrets` refuses `EXPO_PUBLIC_*` — Dashboard secret and/or local `.env` only.
 
 ```bash
 npx expo start -c
