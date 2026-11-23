@@ -336,26 +336,66 @@ export type BridgeClearance = {
   lat: number;
   lon: number;
   maxheightM?: number;
+  maxweightT?: number;
   distanceKm: number;
+  /** Relative to active truck profile — null if dims unknown. */
+  pass: 'ok' | 'no' | 'unknown';
 };
 
+function parseOsmMeters(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const parsed = Number.parseFloat(raw.replace(',', '.').replace(/m$/i, '').trim());
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseOsmTonnes(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const cleaned = raw.replace(',', '.').replace(/\s*(t|tonnes?|tons?)?$/i, '').trim();
+  const parsed = Number.parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export function bridgePassForTruck(
+  bridge: Pick<BridgeClearance, 'maxheightM' | 'maxweightT'>,
+  truck?: { heightM?: number; weightT?: number },
+): BridgeClearance['pass'] {
+  const h = truck?.heightM;
+  const w = truck?.weightT;
+  let blocked = false;
+  let known = false;
+  if (bridge.maxheightM != null && h != null) {
+    known = true;
+    if (h > bridge.maxheightM) blocked = true;
+  }
+  if (bridge.maxweightT != null && w != null) {
+    known = true;
+    if (w > bridge.maxweightT) blocked = true;
+  }
+  if (!known) return 'unknown';
+  return blocked ? 'no' : 'ok';
+}
+
 /**
- * Advisory OSM maxheight / bridge tags near GPS — NOT a commercial PTAC routing graph.
- * Informs truck mode only; never invents clearance values.
+ * Advisory OSM maxheight / maxweight / bridge tags near GPS — NOT a commercial PTAC graph.
+ * Never invents clearance values; pass/no-pass is vs truck prefs only.
  */
 export async function fetchNearbyBridgeClearances(
   lat: number,
   lon: number,
   radiusM = 15000,
+  truck?: { heightM?: number; weightT?: number },
 ): Promise<{ ok: boolean; bridges: BridgeClearance[]; label: string; error?: string }> {
   const r = Math.min(Math.max(radiusM, 3000), 40000);
   const ql = `[out:json][timeout:25];
 (
   way["maxheight"](around:${r},${lat},${lon});
   node["maxheight"](around:${r},${lat},${lon});
+  way["maxweight"](around:${r},${lat},${lon});
+  node["maxweight"](around:${r},${lat},${lon});
   way["bridge"="yes"]["maxheight"](around:${r},${lat},${lon});
+  way["bridge"="yes"]["maxweight"](around:${r},${lat},${lon});
 );
-out center tags 25;`;
+out center tags 40;`;
   try {
     const els = await overpassQuery(ql);
     const bridges: BridgeClearance[] = [];
@@ -363,27 +403,30 @@ out center tags 25;`;
       const c = coordsOf(el);
       if (!c) continue;
       const tags = el.tags ?? {};
-      const raw = tags.maxheight;
-      if (!raw) continue;
-      const parsed = Number.parseFloat(raw.replace(',', '.').replace(/m$/i, '').trim());
-      const maxheightM = Number.isFinite(parsed) ? parsed : undefined;
+      const maxheightM = parseOsmMeters(tags.maxheight);
+      const maxweightT = parseOsmTonnes(tags.maxweight);
+      if (maxheightM == null && maxweightT == null) continue;
       const name = tags.name ?? tags.ref ?? `Ouvrage OSM #${el.id}`;
-      bridges.push({
+      const base = {
         id: `br-${el.type}-${el.id}`,
         name,
         lat: c.lat,
         lon: c.lon,
         maxheightM,
+        maxweightT,
         distanceKm: Math.round(haversineKm(lat, lon, c.lat, c.lon) * 10) / 10,
-      });
+      };
+      bridges.push({ ...base, pass: bridgePassForTruck(base, truck) });
     }
     bridges.sort((a, b) => a.distanceKm - b.distanceKm);
+    const sliced = bridges.slice(0, 24);
+    const noPass = sliced.filter((b) => b.pass === 'no').length;
     return {
-      ok: bridges.length > 0,
-      bridges: bridges.slice(0, 12),
-      label: bridges.length
-        ? `LIVE Overpass maxheight · ${Math.min(bridges.length, 12)} ouvrage(s) · advisory (pas de graphe PTAC)`
-        : 'Aucun maxheight OSM dans le rayon — graphe commercial non branché',
+      ok: sliced.length > 0,
+      bridges: sliced,
+      label: sliced.length
+        ? `LIVE Overpass gabarit · ${sliced.length} ouvrage(s)${noPass ? ` · ${noPass} no-pass vs profil` : ''} · advisory OSM (pas de graphe PTAC)`
+        : 'Aucun maxheight/maxweight OSM dans le rayon — graphe commercial non branché',
     };
   } catch (e) {
     return {

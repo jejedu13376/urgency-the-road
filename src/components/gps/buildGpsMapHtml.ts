@@ -1,8 +1,7 @@
-import type { GpsMapI18n } from '../../i18n';
-
 /**
  * Self-contained Leaflet + OSM map HTML for WebView.
- * Tap destination → voiture/camion picker (truck SVG) → route + animate vehicle.
+ * Vehicle DivIcon = LIVE GPS (parent injects ticks) — not a canned polyline demo.
+ * Voiture/camion = top chips only (once). Tap / search = destination only → Valhalla.
  */
 export type GpsMapBoot = {
   lat: number;
@@ -17,15 +16,12 @@ export type GpsMapBoot = {
   padRight: number;
   padBottom: number;
   padLeft: number;
-  i18n: GpsMapI18n;
 };
 
 export function buildGpsMapHtml(boot: GpsMapBoot): string {
   const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
-  const lang = boot.i18n.lang || 'fr';
-  const S = boot.i18n;
   return `<!DOCTYPE html>
-<html lang="${lang}">
+<html lang="fr">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
@@ -35,115 +31,109 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
 <style>
   :root{
     --pad-top:0px;--pad-right:0px;--pad-bottom:0px;--pad-left:0px;
+    --ink:#101820;--slate:#2C3A47;--signal:#C45C26;--garage:#1F6B4A;--paper:#F7F4EF;--muted:#6B7785;
   }
   html,body,#map{margin:0;padding:0;height:100%;width:100%;background:#1B2430;overflow:hidden}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   .hud{
     position:absolute;z-index:1000;
     left:calc(10px + var(--pad-left));right:calc(10px + var(--pad-right));
-    top:calc(10px + var(--pad-top));
-    display:flex;flex-direction:column;gap:8px;pointer-events:none;
+    top:calc(8px + var(--pad-top));
+    display:flex;flex-direction:column;gap:6px;pointer-events:none;
   }
   .hud > *{pointer-events:auto}
-  .chip-row{display:flex;gap:8px}
+  .chip-row{display:flex;gap:6px}
   .chip{
-    flex:1;border:0;border-radius:12px;padding:10px 12px;font:700 13px/1.2 system-ui,sans-serif;
-    background:rgba(255,255,255,.94);color:#101820;box-shadow:0 2px 10px rgba(0,0,0,.18);
+    flex:1;border:0;border-radius:11px;padding:9px 10px;font:650 12px/1.15 system-ui,sans-serif;
+    background:rgba(255,255,255,.94);color:var(--ink);box-shadow:0 1px 8px rgba(0,0,0,.16);
+    transition:background .2s ease,color .2s ease,transform .15s ease;
   }
-  .chip.on{background:#C45C26;color:#fff}
-  .chip small{display:block;font-weight:600;opacity:.75;margin-top:2px;font-size:11px}
+  .chip.on{background:var(--signal);color:#fff}
+  .chip.on.truck{background:var(--garage)}
+  .chip small{display:block;font-weight:550;opacity:.72;margin-top:2px;font-size:10px;letter-spacing:.01em}
   .status{
-    align-self:flex-start;max-width:92%;
-    background:rgba(27,36,48,.88);color:#fff;border-radius:10px;padding:8px 10px;
-    font:600 11px/1.35 system-ui,sans-serif;
+    align-self:flex-start;max-width:94%;
+    background:rgba(27,36,48,.9);color:#fff;border-radius:9px;padding:7px 10px;
+    font:550 11px/1.35 system-ui,sans-serif;letter-spacing:.01em;
   }
-  .picker{
-    display:none;position:absolute;z-index:1100;left:50%;top:50%;transform:translate(-50%,-50%);
-    width:min(300px,86vw);background:rgba(255,255,255,.97);border-radius:16px;padding:14px;
-    box-shadow:0 8px 28px rgba(0,0,0,.35);font:600 13px system-ui,sans-serif;color:#101820;
-  }
-  .picker.show{display:block}
-  .picker h3{margin:0 0 6px;font-size:15px}
-  .picker p{margin:0 0 12px;color:#6B7785;font-weight:500;font-size:12px;line-height:1.35}
-  .pick-row{display:flex;gap:8px}
-  .pick{
-    flex:1;border:1px solid #D3D9DF;border-radius:12px;background:#F7F4EF;padding:12px 8px;
-    display:flex;flex-direction:column;align-items:center;gap:6px;font:800 13px system-ui,sans-serif;
-  }
-  .pick:active{transform:scale(.98)}
-  .icon{width:36px;height:36px}
   .bottom{
     position:absolute;z-index:1000;
     left:calc(10px + var(--pad-left));right:calc(74px + var(--pad-right));
-    bottom:calc(18px + var(--pad-bottom));
+    bottom:calc(14px + var(--pad-bottom));
     display:flex;gap:8px;pointer-events:none;
   }
   .bottom > *{pointer-events:auto}
   .go{
-    flex:1;border:0;border-radius:14px;padding:14px;font:800 14px system-ui,sans-serif;
-    background:#C45C26;color:#fff;box-shadow:0 4px 14px rgba(196,92,38,.4);
+    flex:1;border:0;border-radius:13px;padding:13px;font:750 13px system-ui,sans-serif;
+    background:var(--signal);color:#fff;box-shadow:0 3px 12px rgba(196,92,38,.38);
+    transition:opacity .2s ease,transform .15s ease;
   }
-  .go:disabled{opacity:.45}
+  .go:disabled{opacity:.4}
   .ghost{
-    border:0;border-radius:14px;padding:14px 12px;font:700 12px system-ui,sans-serif;
-    background:rgba(255,255,255,.94);color:#101820;
+    border:0;border-radius:13px;padding:13px 11px;font:650 11px system-ui,sans-serif;
+    background:rgba(255,255,255,.94);color:var(--ink);
+  }
+  .vehicle-wrap{
+    width:42px;height:42px;display:flex;align-items:center;justify-content:center;
+    transition:transform .18s linear;
+    will-change:transform;
   }
   .vehicle-icon{
-    width:34px;height:34px;border-radius:17px;background:#fff;border:2px solid #C45C26;
-    display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.35);
+    width:36px;height:36px;border-radius:18px;background:#fff;border:2.5px solid var(--signal);
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 2px 10px rgba(0,0,0,.35);
+    transition:border-color .25s ease,box-shadow .25s ease;
   }
-  .vehicle-icon.svg{width:22px;height:22px}
-  .vehicle-icon svg{width:22px;height:22px}
+  .vehicle-icon.camion{border-color:var(--garage);box-shadow:0 2px 10px rgba(31,107,74,.35)}
+  .vehicle-icon svg{width:24px;height:24px;display:block}
   .dest-pin{
     width:28px;height:36px;display:flex;align-items:flex-end;justify-content:center;
     filter:drop-shadow(0 2px 4px rgba(0,0,0,.35));
   }
   .dest-pin svg{width:28px;height:36px;display:block}
+  .layer-pin{
+    min-width:28px;height:28px;padding:0 6px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+    font:750 10px/1 system-ui,sans-serif;color:#fff;box-shadow:0 1px 6px rgba(0,0,0,.3);
+    white-space:nowrap;
+  }
+  .layer-pin.bridge-ok{background:var(--garage)}
+  .layer-pin.bridge-no{background:#A61B1B}
+  .layer-pin.bridge-unk{background:var(--slate)}
+  .layer-pin.weigh-on{background:#B08900;border:2px solid #fff}
+  .layer-pin.weigh-off{background:var(--muted)}
+  .layer-pin.report{background:#3B5BDB}
   .leaflet-bottom.leaflet-right{bottom:calc(72px + var(--pad-bottom)) !important;right:calc(8px + var(--pad-right)) !important}
+  .route-line{transition:opacity .35s ease}
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div class="hud">
   <div class="chip-row">
-    <button type="button" class="chip" id="btnCar"><span>${escapeHtml(S.car)}</span><small>${escapeHtml(S.carSub)}</small></button>
-    <button type="button" class="chip" id="btnTruck"><span>${escapeHtml(S.truck)}</span><small>${escapeHtml(S.truckSub)}</small></button>
+    <button type="button" class="chip" id="btnCar"><span>Voiture</span><small>Profil auto</small></button>
+    <button type="button" class="chip" id="btnTruck"><span>Camion</span><small>Profil truck</small></button>
   </div>
-  <div class="status" id="status">${escapeHtml(S.statusTap)}</div>
-</div>
-<div class="picker" id="picker">
-  <h3>${escapeHtml(S.pickerTitle)}</h3>
-  <p id="pickerHint">${escapeHtml(S.pickerHint)}</p>
-  <div class="pick-row">
-    <button type="button" class="pick" id="pickCar">
-      <svg class="icon" viewBox="0 0 64 64" aria-hidden="true"><rect x="8" y="28" width="48" height="16" rx="4" fill="#2C3A47"/><circle cx="18" cy="46" r="6" fill="#101820"/><circle cx="46" cy="46" r="6" fill="#101820"/><path d="M14 28 L22 16 H42 L50 28" fill="#C45C26"/></svg>
-      ${escapeHtml(S.car)}
-    </button>
-    <button type="button" class="pick" id="pickTruck">
-      <svg class="icon" viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="22" width="34" height="20" rx="3" fill="#1F6B4A"/><rect x="38" y="28" width="20" height="14" rx="2" fill="#C45C26"/><circle cx="16" cy="46" r="6" fill="#101820"/><circle cx="48" cy="46" r="6" fill="#101820"/><rect x="8" y="26" width="10" height="8" fill="#D7EDE3"/></svg>
-      ${escapeHtml(S.truck.replace(/^🚛\s*/, ''))}
-    </button>
-  </div>
+  <div class="status" id="status">Choisissez Voiture ou Camion en haut, puis touchez / cherchez une destination</div>
 </div>
 <div class="bottom">
   <button type="button" class="ghost" id="btnRecenter">GPS</button>
-  <button type="button" class="go" id="btnGo" disabled>${escapeHtml(S.start)}</button>
+  <button type="button" class="go" id="btnGo" disabled>Suivre GPS</button>
 </div>
 <script>
 (function(){
   var BOOT = ${bootJson};
-  var I18N = BOOT.i18n || {};
   var mode = BOOT.mode === 'camion' ? 'camion' : 'voiture';
   var gpsOk = !!BOOT.gpsOk;
   var origin = { lat: BOOT.lat, lon: BOOT.lon };
+  var headingDeg = null;
   var dest = null;
   var routeCoords = [];
-  var animTimer = null;
   var vehicleMarker = null;
   var routeLine = null;
   var destMarker = null;
-  var originMarker = null;
-  var pendingPick = null;
+  var followLive = false;
+  var layerGroup = null;
+  var lastPanAt = 0;
 
   function applyChrome(p){
     var r = document.documentElement.style;
@@ -168,27 +158,36 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   function setStatus(t){ document.getElementById('status').textContent = t; }
 
   function syncChips(){
-    document.getElementById('btnCar').classList.toggle('on', mode === 'voiture');
-    document.getElementById('btnTruck').classList.toggle('on', mode === 'camion');
+    var car = document.getElementById('btnCar');
+    var truck = document.getElementById('btnTruck');
+    car.classList.toggle('on', mode === 'voiture');
+    truck.classList.toggle('on', mode === 'camion');
+    truck.classList.toggle('truck', mode === 'camion');
   }
 
-  function carIconHtml(){
-    return '<div class="vehicle-icon"><svg viewBox="0 0 64 64"><rect x="8" y="28" width="48" height="16" rx="4" fill="#2C3A47"/><circle cx="18" cy="46" r="6" fill="#101820"/><circle cx="46" cy="46" r="6" fill="#101820"/><path d="M14 28 L22 16 H42 L50 28" fill="#C45C26"/></svg></div>';
+  function carSvg(){
+    return '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M12 30 L20 18 H44 L52 30 Z" fill="#C45C26"/><rect x="10" y="30" width="44" height="14" rx="5" fill="#2C3A47"/><circle cx="20" cy="46" r="5.5" fill="#101820"/><circle cx="44" cy="46" r="5.5" fill="#101820"/><rect x="16" y="33" width="10" height="6" rx="1.5" fill="#E8EEF2"/><rect x="38" y="33" width="10" height="6" rx="1.5" fill="#E8EEF2"/></svg>';
   }
-  function truckIconHtml(){
-    return '<div class="vehicle-icon"><svg viewBox="0 0 64 64"><rect x="4" y="22" width="34" height="20" rx="3" fill="#1F6B4A"/><rect x="38" y="28" width="20" height="14" rx="2" fill="#C45C26"/><circle cx="16" cy="46" r="6" fill="#101820"/><circle cx="48" cy="46" r="6" fill="#101820"/><rect x="8" y="26" width="10" height="8" fill="#D7EDE3"/></svg></div>';
+  function truckSvg(){
+    return '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="20" width="32" height="22" rx="3" fill="#1F6B4A"/><rect x="36" y="26" width="22" height="16" rx="3" fill="#C45C26"/><rect x="40" y="29" width="10" height="7" rx="1.5" fill="#F3D9C8"/><circle cx="16" cy="46" r="5.5" fill="#101820"/><circle cx="48" cy="46" r="5.5" fill="#101820"/><rect x="8" y="24" width="12" height="8" rx="1" fill="#D7EDE3"/></svg>';
+  }
+
+  function vehicleHtml(){
+    var cls = mode === 'camion' ? 'vehicle-icon camion' : 'vehicle-icon';
+    var rot = (headingDeg != null && isFinite(headingDeg)) ? headingDeg : 0;
+    return '<div class="vehicle-wrap" style="transform:rotate(' + rot + 'deg)"><div class="' + cls + '">' +
+      (mode === 'camion' ? truckSvg() : carSvg()) + '</div></div>';
   }
 
   function vehicleDivIcon(){
     return L.divIcon({
       className: '',
-      html: mode === 'camion' ? truckIconHtml() : carIconHtml(),
-      iconSize: [34, 34],
-      iconAnchor: [17, 17],
+      html: vehicleHtml(),
+      iconSize: [42, 42],
+      iconAnchor: [21, 21],
     });
   }
 
-  /** Inline SVG pin — no unpkg marker-icon.png (CSP img-src blocks remote images). */
   function destDivIcon(){
     return L.divIcon({
       className: '',
@@ -206,89 +205,83 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     }
   }, true);
 
-  var map = L.map('map', { zoomControl: false, attributionControl: true }).setView([origin.lat, origin.lon], gpsOk ? 13 : 5);
+  var map = L.map('map', { zoomControl: false, attributionControl: true, preferCanvas: true })
+    .setView([origin.lat, origin.lon], gpsOk ? 14 : 5);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap'
   }).addTo(map);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
+  layerGroup = L.layerGroup().addTo(map);
 
-  function ensureOriginMarker(){
+  function ensureVehicleMarker(){
     if (!gpsOk) {
-      if (originMarker) { map.removeLayer(originMarker); originMarker = null; }
+      if (vehicleMarker) { map.removeLayer(vehicleMarker); vehicleMarker = null; }
       return;
     }
-    if (!originMarker) {
-      originMarker = L.circleMarker([origin.lat, origin.lon], {
-        radius: 7, color: '#C45C26', fillColor: '#F3D9C8', fillOpacity: 1, weight: 2
-      }).addTo(map).bindTooltip(I18N.originTooltip || 'GPS');
+    if (!vehicleMarker) {
+      vehicleMarker = L.marker([origin.lat, origin.lon], {
+        icon: vehicleDivIcon(),
+        zIndexOffset: 900,
+        interactive: false,
+      }).addTo(map);
     } else {
-      originMarker.setLatLng([origin.lat, origin.lon]);
+      vehicleMarker.setLatLng([origin.lat, origin.lon]);
+      vehicleMarker.setIcon(vehicleDivIcon());
     }
   }
-  ensureOriginMarker();
+  ensureVehicleMarker();
 
   syncChips();
   if (!gpsOk) {
-    setStatus(I18N.gpsDeniedSilent || '');
+    setStatus('GPS appareil refusé — activez la localisation (bouton GPS). Pas de départ silencieux.');
   } else {
-    setStatus(mode === 'camion' ? (I18N.modeTruckTap || '') : (I18N.modeCarTap || ''));
+    setStatus(mode === 'camion'
+      ? 'GPS live · mode camion — touchez / cherchez une destination'
+      : 'GPS live · mode voiture — touchez / cherchez une destination');
   }
 
-  function stopAnim(){
-    if (animTimer) { clearInterval(animTimer); animTimer = null; }
-  }
-
-  function clearRoute(){
-    stopAnim();
+  function clearRouteGraphics(){
     if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
-    if (vehicleMarker) { map.removeLayer(vehicleMarker); vehicleMarker = null; }
     routeCoords = [];
     document.getElementById('btnGo').disabled = true;
+    followLive = false;
   }
-
-  function showPicker(latlng){
-    if (!gpsOk) {
-      setStatus(I18N.needGpsBeforeRoute || '');
-      return;
-    }
-    pendingPick = latlng;
-    var tpl = I18N.pickerHintCoordsTpl || '';
-    document.getElementById('pickerHint').textContent = tpl
-      .replace('{lat}', latlng.lat.toFixed(4))
-      .replace('{lon}', latlng.lng.toFixed(4));
-    document.getElementById('picker').classList.add('show');
-  }
-
-  function hidePicker(){ document.getElementById('picker').classList.remove('show'); }
 
   function applyMode(next, opts){
     mode = next;
     syncChips();
-    if (vehicleMarker) vehicleMarker.setIcon(vehicleDivIcon());
+    ensureVehicleMarker();
     if (!opts || !opts.silent) post({ type: 'mode', mode: mode });
+    setStatus(mode === 'camion'
+      ? 'Mode camion — touchez / cherchez une destination'
+      : 'Mode voiture — touchez / cherchez une destination');
     if (dest && gpsOk) requestRoute();
   }
 
-  function setDestination(latlng){
+  /** Destination only — mode comes from top chips, never re-prompted on tap. */
+  function setDestination(latlng, label){
     if (!gpsOk) {
-      setStatus(I18N.needGpsNoRoute || '');
+      setStatus('GPS appareil requis — pas d’itinéraire sans position réelle');
       return;
     }
     dest = { lat: latlng.lat, lon: latlng.lng };
     if (destMarker) map.removeLayer(destMarker);
     destMarker = L.marker([dest.lat, dest.lon], { icon: destDivIcon(), zIndexOffset: 700 }).addTo(map);
+    setStatus(
+      (label ? 'Destination · ' + label + ' · ' : 'Destination · ') +
+      (mode === 'camion' ? 'camion' : 'voiture')
+    );
     requestRoute();
   }
 
   function requestRoute(){
     if (!dest) return;
     if (!gpsOk) {
-      setStatus(I18N.needGpsAuthorize || '');
+      setStatus('GPS appareil requis — autorisez la localisation');
       return;
     }
-    clearRoute();
-    setStatus(mode === 'camion' ? (I18N.calculatingTruck || '') : (I18N.calculatingCar || ''));
+    setStatus('Calcul itinéraire ' + (mode === 'camion' ? 'camion' : 'voiture') + '…');
     post({
       type: 'route',
       mode: mode,
@@ -305,43 +298,56 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   window.__gpsApplyRoute = function(payload){
     try {
       if (!payload || !payload.ok || !payload.coords || !payload.coords.length) {
-        setStatus((payload && payload.label) || I18N.routeUnavailable || '');
+        setStatus((payload && payload.label) || 'Itinéraire indisponible');
+        clearRouteGraphics();
         return;
       }
-      clearRoute();
-      // Locale remount restore: reinject dest + pin so chips/Go/navigating keep working.
-      if (payload.to && payload.to.lat != null && payload.to.lon != null) {
-        dest = { lat: payload.to.lat, lon: payload.to.lon };
-        if (destMarker) map.removeLayer(destMarker);
-        destMarker = L.marker([dest.lat, dest.lon], { icon: destDivIcon(), zIndexOffset: 700 }).addTo(map);
-      }
+      if (routeLine) map.removeLayer(routeLine);
       routeCoords = payload.coords;
       routeLine = L.polyline(routeCoords, {
         color: mode === 'camion' ? '#1F6B4A' : '#C45C26',
         weight: 5,
-        opacity: 0.9,
+        opacity: 0.88,
+        className: 'route-line',
       }).addTo(map);
-      map.fitBounds(routeLine.getBounds(), { padding: [48, 48] });
-      vehicleMarker = L.marker(routeCoords[0], { icon: vehicleDivIcon(), zIndexOffset: 800 }).addTo(map);
+      map.fitBounds(routeLine.getBounds(), { padding: [52, 52], animate: true, duration: 0.45 });
+      ensureVehicleMarker();
       document.getElementById('btnGo').disabled = false;
-      setStatus(payload.label || I18N.routeReady || '');
+      setStatus(payload.label || 'Itinéraire prêt — Suivre GPS = position live');
       post({ type: 'routed', mode: mode, distanceKm: payload.distanceKm, durationMin: payload.durationMin, label: payload.label });
     } catch (e) {
-      setStatus(I18N.routeDisplayFail || '');
+      setStatus('Affichage itinéraire KO');
+    }
+  };
+
+  /** LIVE GPS tick — never remount map; marker = device coords. */
+  window.__gpsUpdatePosition = function(lat, lon, ok, heading, speed){
+    gpsOk = ok !== false;
+    if (!gpsOk) {
+      ensureVehicleMarker();
+      setStatus('GPS appareil perdu — réactivez la localisation');
+      return;
+    }
+    origin = { lat: lat, lon: lon };
+    if (typeof heading === 'number' && isFinite(heading) && heading >= 0) headingDeg = heading;
+    ensureVehicleMarker();
+    var now = Date.now();
+    if (followLive && now - lastPanAt > 700) {
+      lastPanAt = now;
+      map.panTo([lat, lon], { animate: true, duration: 0.55, easeLinearity: 0.3 });
     }
   };
 
   window.__gpsSetOrigin = function(lat, lon, ok){
-    gpsOk = ok !== false;
-    if (gpsOk) {
-      origin = { lat: lat, lon: lon };
-      ensureOriginMarker();
-      map.setView([lat, lon], Math.max(map.getZoom(), 13));
-      setStatus(mode === 'camion' ? (I18N.gpsOkTruck || '') : (I18N.gpsOkCar || ''));
+    window.__gpsUpdatePosition(lat, lon, ok, headingDeg, null);
+    if (ok !== false) {
+      map.setView([lat, lon], Math.max(map.getZoom(), 14), { animate: true });
+      setStatus(mode === 'camion'
+        ? 'GPS appareil OK — mode camion, touchez une destination'
+        : 'GPS appareil OK — touchez une destination');
     } else {
-      ensureOriginMarker();
-      setStatus(I18N.gpsDeniedBtn || '');
-      clearRoute();
+      // One-shot GPS fail must NOT wipe live route / destination while watch may recover.
+      setStatus('GPS one-shot refusé — itinéraire conservé (réessayez GPS)');
     }
   };
 
@@ -356,7 +362,82 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
 
   window.__gpsSetChrome = function(p){ applyChrome(p || {}); };
 
-  /** Parent → map commands (opaque/null-origin sandboxed iframe on web). */
+  window.__gpsProposeDestination = function(lat, lon, label){
+    setDestination(L.latLng(lat, lon), label || '');
+  };
+
+  /** Escape untrusted OSM/crowd strings before any HTML sink (DivIcon / tooltips). */
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+  /** Leaflet tooltip via textContent — never innerHTML with raw notes/names. */
+  function tipEl(text){
+    var el = document.createElement('span');
+    el.textContent = String(text == null ? '' : text);
+    return el;
+  }
+  function finiteLatLon(lat, lon){
+    return typeof lat === 'number' && isFinite(lat) && typeof lon === 'number' && isFinite(lon)
+      && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+  }
+
+  var pendingLayers = null;
+  var layersReady = false;
+  function applyLayersPayload(payload){
+    try {
+      layerGroup.clearLayers();
+      if (!payload) return;
+      var bridges = payload.bridges || [];
+      var weigh = payload.weigh || [];
+      var reports = payload.reports || [];
+      bridges.forEach(function(b){
+        if (!finiteLatLon(b.lat, b.lon)) return;
+        var pass = b.pass === 'ok' || b.pass === 'no' ? b.pass : 'unknown';
+        var cls = pass === 'ok' ? 'bridge-ok' : pass === 'no' ? 'bridge-no' : 'bridge-unk';
+        var h = typeof b.maxheightM === 'number' && isFinite(b.maxheightM) ? (b.maxheightM + 'm') : '?';
+        var w = typeof b.maxweightT === 'number' && isFinite(b.maxweightT) ? ('/' + b.maxweightT + 't') : '';
+        var html = '<div class="layer-pin ' + cls + '">' + esc(h + w) + '</div>';
+        L.marker([b.lat, b.lon], {
+          icon: L.divIcon({ className: '', html: html, iconSize: [48, 28], iconAnchor: [24, 14] }),
+          zIndexOffset: 400,
+        }).bindTooltip(tipEl((b.name || 'Ouvrage') + ' · ' + (pass === 'ok' ? 'PASS' : pass === 'no' ? 'NO-PASS' : 'UNKNOWN')), { direction: 'top' })
+          .addTo(layerGroup);
+      });
+      weigh.forEach(function(s){
+        if (!finiteLatLon(s.lat, s.lon)) return;
+        var on = !!s.litUp || s.status === 'open';
+        var html = '<div class="layer-pin ' + (on ? 'weigh-on' : 'weigh-off') + '">' + (on ? 'ON' : '?') + '</div>';
+        L.marker([s.lat, s.lon], {
+          icon: L.divIcon({ className: '', html: html, iconSize: [32, 28], iconAnchor: [16, 14] }),
+          zIndexOffset: 450,
+        }).bindTooltip(tipEl((s.name || 'Pesage') + (on ? ' · scale ON (advisory OSM)' : ' · statut inconnu / fermé')), { direction: 'top' })
+          .addTo(layerGroup);
+      });
+      reports.forEach(function(r){
+        if (!finiteLatLon(r.lat, r.lon)) return;
+        var kind = String(r.kind || 'alerte').replace(/[^a-z0-9_-]/gi, '').slice(0, 12) || 'alerte';
+        var label = kind.slice(0, 3).toUpperCase();
+        var html = '<div class="layer-pin report">' + esc(label) + '</div>';
+        var tip = kind + (r.note ? ' — ' + String(r.note).slice(0, 80) : '') + ' · expire crowd';
+        L.marker([r.lat, r.lon], {
+          icon: L.divIcon({ className: '', html: html, iconSize: [36, 28], iconAnchor: [18, 14] }),
+          zIndexOffset: 500,
+        }).bindTooltip(tipEl(tip), { direction: 'top' })
+          .addTo(layerGroup);
+      });
+    } catch (e) {}
+  }
+  window.__gpsSetLayers = function(payload){
+    pendingLayers = payload || null;
+    if (!layersReady) return;
+    applyLayersPayload(pendingLayers);
+  };
+
   window.addEventListener('message', function(ev){
     if (ev.source !== window.parent) return;
     var raw = ev.data;
@@ -365,68 +446,36 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     if (!msg || msg.__gps !== 1 || typeof msg.cmd !== 'string') return;
     if (msg.cmd === 'applyRoute') window.__gpsApplyRoute(msg.payload);
     else if (msg.cmd === 'setOrigin') window.__gpsSetOrigin(msg.lat, msg.lon, msg.ok);
+    else if (msg.cmd === 'updatePosition') window.__gpsUpdatePosition(msg.lat, msg.lon, msg.ok, msg.heading, msg.speed);
     else if (msg.cmd === 'applyMode') window.__gpsApplyMode(msg.mode, msg.truck);
     else if (msg.cmd === 'setChrome') window.__gpsSetChrome(msg.pads);
+    else if (msg.cmd === 'proposeDestination') window.__gpsProposeDestination(msg.lat, msg.lon, msg.label);
+    else if (msg.cmd === 'setLayers') window.__gpsSetLayers(msg.payload);
   });
-
-  function animateDrive(){
-    if (!routeCoords.length || !gpsOk) return;
-    stopAnim();
-    if (vehicleMarker) map.removeLayer(vehicleMarker);
-    vehicleMarker = L.marker(routeCoords[0], { icon: vehicleDivIcon(), zIndexOffset: 900 }).addTo(map);
-    var i = 0;
-    var step = Math.max(1, Math.floor(routeCoords.length / 120));
-    setStatus(mode === 'camion' ? (I18N.navigatingTruck || '') : (I18N.navigatingCar || ''));
-    post({ type: 'navigating', mode: mode, to: dest });
-    animTimer = setInterval(function(){
-      i += step;
-      if (i >= routeCoords.length) {
-        i = routeCoords.length - 1;
-        vehicleMarker.setLatLng(routeCoords[i]);
-        stopAnim();
-        setStatus(I18N.arrived || '');
-        post({ type: 'arrived', mode: mode, to: dest });
-        return;
-      }
-      vehicleMarker.setLatLng(routeCoords[i]);
-      map.panTo(routeCoords[i], { animate: true, duration: 0.25 });
-    }, 120);
-  }
 
   map.on('click', function(e){
-    hidePicker();
-    showPicker(e.latlng);
+    setDestination(e.latlng);
   });
 
-  document.getElementById('pickCar').onclick = function(){
-    hidePicker();
-    applyMode('voiture');
-    if (pendingPick) setDestination(pendingPick);
-  };
-  document.getElementById('pickTruck').onclick = function(){
-    hidePicker();
-    applyMode('camion');
-    if (pendingPick) setDestination(pendingPick);
-  };
   document.getElementById('btnCar').onclick = function(){ applyMode('voiture'); };
   document.getElementById('btnTruck').onclick = function(){ applyMode('camion'); };
-  document.getElementById('btnGo').onclick = function(){ animateDrive(); };
+  document.getElementById('btnGo').onclick = function(){
+    if (!routeCoords.length || !gpsOk) return;
+    followLive = true;
+    setStatus('Suivi GPS live — marqueur = position appareil (pas de démo polyline)');
+    post({ type: 'navigating', mode: mode, to: dest });
+    map.panTo([origin.lat, origin.lon], { animate: true, duration: 0.4 });
+  };
   document.getElementById('btnRecenter').onclick = function(){
+    followLive = true;
     post({ type: 'recenter' });
   };
 
+  layersReady = true;
+  if (pendingLayers) applyLayersPayload(pendingLayers);
   post({ type: 'ready', mode: mode });
 })();
 </script>
 </body>
 </html>`;
 }
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
