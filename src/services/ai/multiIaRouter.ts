@@ -114,8 +114,8 @@ async function authBearerForProxy(): Promise<string | undefined> {
 }
 
 /**
- * Live vote via server proxy only. Proxy must hold OpenAI/Anthropic/etc. keys
- * and authenticate callers (Firebase ID token when available).
+ * Live vote via server proxy only. Proxy holds OpenAI/Anthropic/etc. keys and
+ * requires a Firebase ID token. Without auth / on 401·403·503 → null (heuristic).
  */
 async function liveProxyVote(
   engine: IaEngineId,
@@ -124,13 +124,17 @@ async function liveProxyVote(
 ): Promise<IaEngineVote | null> {
   const base = proxyUrl();
   if (!base) return null;
+  // Proxy requires Firebase ID token — without it, skip live and use heuristic.
+  const auth = await authBearerForProxy();
+  if (!auth) return null;
   const t0 = Date.now();
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 8000);
-    const auth = await authBearerForProxy();
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (auth) headers.Authorization = auth;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: auth,
+    };
     const res = await fetch(base, {
       method: 'POST',
       headers,
@@ -139,6 +143,8 @@ async function liveProxyVote(
     });
     clearTimeout(timer);
     if (!res.ok) {
+      // Auth / missing provider key → fall back to heuristic (null), not a hard error vote.
+      if (res.status === 401 || res.status === 403 || res.status === 503) return null;
       return {
         engine,
         ok: false,
