@@ -1,11 +1,12 @@
 # Deploy checklist — Urgency Road (Lorenzo)
 
+**Status (2026-11-23):** **BLOCKED** — missing `FIREBASE_TOKEN` (or local `firebase login`), Multi-IA provider keys, and `EXPO_TOKEN` (or local `eas login`). Agent deploy attempt = nothing published. See `docs/urgency-road-one/SUIVI.md`.  
 **When:** after secrets exist (`EXPO_TOKEN` and/or local `eas login`; Multi-IA provider keys server-side; Firebase login or `FIREBASE_TOKEN`).  
-**Repo:** `jejedu13376/urgency-the-road` · project id `urgency-road`  
+**Repo:** `jejedu13376/urgency-the-road` · project id `urgency-road` · config `firebase/firebase.json`  
 **Formations:** standby — do not touch.  
 **Never paste secret values into chat or commit them.**
 
-Canonical in GitHub: `docs/DEPLOY-CHECKLIST.md`.
+Canonical in GitHub: `docs/DEPLOY-CHECKLIST.md`. Store mirror: `docs/urgency-road-one/DEPLOY-CHECKLIST.md`.
 
 ---
 

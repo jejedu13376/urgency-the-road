@@ -51,11 +51,11 @@ Fill **only** these (leave empty in git; never commit real values):
 | `appId` | `EXPO_PUBLIC_FIREBASE_APP_ID` |
 | `measurementId` (optional) | `EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID` |
 
-CDN/npm field reference (web snippets only): store `FIREBASE-CDN.md` / repo `docs/urgency-road-one/FIREBASE-CDN.md`.
+CDN/npm field reference (web snippets only): `docs/urgency-road-one/FIREBASE-CDN.md` (store mirror same path under `docs/urgency-road-one/`).
 
 ### 6. Deploy rules (once CLI is installed)
 
-**Full guide:** `docs/FIREBASE-DEPLOY.md`. Post-secrets order: `docs/DEPLOY-CHECKLIST.md`.
+**Blocked until** `FIREBASE_TOKEN` or local `firebase login`. **Full guide:** `docs/FIREBASE-DEPLOY.md`. Post-secrets order: `docs/DEPLOY-CHECKLIST.md`. Status: `docs/urgency-road-one/SUIVI.md`.
 
 ```bash
 cd /path/to/urgency-the-road

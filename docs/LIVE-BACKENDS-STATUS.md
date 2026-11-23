@@ -14,7 +14,8 @@ Updated continuously. **Formations: never touched.**
 | Multi-IA router | **Heuristique + SERVER proxy** (Firebase `multiIa` in repo; deploy = Lorenzo) | `src/services/ai/multiIaRouter.ts` + `firebase/functions/` |
 | Recalls NHTSA | **LIVE** (free) | `src/services/recalls/nhtsaRecalls.ts` |
 | Weather banner | **LIVE Open-Meteo** (cache 10 min) | `src/services/weather/openMeteo.ts` |
-| Geocode destination | **LIVE Open-Meteo** | `src/services/geo/openMeteoGeocode.ts` |
+| Geocode destination (forward) | **LIVE Open-Meteo** | `src/services/geo/openMeteoGeocode.ts` |
+| Reverse geocode | **LIVE Photon only** (#18) | `src/services/geo/` (Photon reverse) |
 | Device GPS | **LIVE expo-location** (Lille fallback opt-in for discovery; **M13 SOS refuses fallback**) | `src/services/geo/deviceLocation.ts` |
 | Garages / pièces around me | **LIVE Overpass OSM** (+ Firestore/mock fallback) | `overpassPlaces.ts` + `garagesService.ts` |
 | Weigh / dépôts PL | **LIVE Overpass OSM** (ON/OFF unknown if untagged) | `weighService.ts` |
@@ -53,7 +54,9 @@ Updated continuously. **Formations: never touched.**
 
 ## Deploy docs
 
+- `docs/DEPLOY-CHECKLIST.md` ← post-secrets order (**blocked** on `FIREBASE_TOKEN` / Multi-IA / `EXPO_TOKEN`)
+- `docs/urgency-road-one/SUIVI.md` ← tonight / secrets / modules
 - `docs/FIREBASE-DEPLOY.md` ← exact CLI steps
 - `docs/MULTI-IA-PROXY.md` ← Multi-IA Cloud Function + secrets
-- `docs/BACKEND-SETUP.md`
-- This file + `GLOBAL-SCOPE-STATUS.md`
+- `docs/BACKEND-SETUP.md` · `docs/urgency-road-one/FIREBASE-CDN.md`
+- This file + `GLOBAL-SCOPE-STATUS.md` · `MODULES-STATUS.md`
