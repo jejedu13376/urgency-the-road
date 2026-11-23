@@ -22,6 +22,38 @@ service cloud.firestore {
         && userDoc().subscription == 'rescuer'
         && userDoc().subscriptionActive == true;
     }
+    /** Opaque QR: UM-QR- + ≥16 alnum — matches mintScanCode(); blocks guessable short ids. */
+    function isOpaqueScanCode(code) {
+      return code is string
+        && code.size() >= 22
+        && code.matches('^UM-QR-[A-Z0-9]{16,}$');
+    }
+    /** Frozen entitlement on users/{ownerUid} — owner cannot freely toggle via index flag alone. */
+    function ownerIsActiveSubscriber(ownerUid) {
+      return exists(/databases/$(database)/documents/users/$(ownerUid))
+        && get(/databases/$(database)/documents/users/$(ownerUid)).data.subscriptionActive == true;
+    }
+    /** Index write: reservation stub (no PHI) OR full PHI only when users entitlement is active. */
+    function medicalIndexWriteOk() {
+      return isOpaqueScanCode(request.resource.data.scanCode)
+        && (
+          (
+            request.resource.data.subscriberActive == false
+            && request.resource.data.fullName == ''
+            && request.resource.data.allergies.size() == 0
+            && request.resource.data.conditions.size() == 0
+            && request.resource.data.medications.size() == 0
+            && request.resource.data.emergencyContacts.size() == 0
+            && !('address' in request.resource.data)
+            && !('bloodType' in request.resource.data)
+            && !('notes' in request.resource.data)
+          )
+          || (
+            request.resource.data.subscriberActive == true
+            && ownerIsActiveSubscriber(uid())
+          )
+        );
+    }
     match /users/{userId} {
       allow read: if signedIn() && (uid() == userId || isAdmin());
       allow create: if signedIn() && uid() == userId
@@ -84,8 +116,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && (id == uid() || id == ('med-' + uid()))
         && request.resource.data.ownerUid == uid()
-        && request.resource.data.scanCode is string
-        && request.resource.data.scanCode.size() >= 8
+        && isOpaqueScanCode(request.resource.data.scanCode)
         && (
           !exists(/databases/$(database)/documents/medicalScanIndex/$(request.resource.data.scanCode))
           || get(/databases/$(database)/documents/medicalScanIndex/$(request.resource.data.scanCode)).data.ownerUid == uid()
@@ -95,8 +126,7 @@ service cloud.firestore {
         && (id == uid() || id == ('med-' + uid()))
         && resource.data.ownerUid == uid()
         && request.resource.data.ownerUid == resource.data.ownerUid
-        && request.resource.data.scanCode is string
-        && request.resource.data.scanCode.size() >= 8
+        && isOpaqueScanCode(request.resource.data.scanCode)
         && (
           request.resource.data.scanCode == resource.data.scanCode
           || (
@@ -111,19 +141,23 @@ service cloud.firestore {
 
     /**
      * Doc id MUST equal scanCode. list denied → rescuer cannot dump all cards.
-     * cardId must be caller's uid or med-{uid} (no pointing index at victim card).
-     * Rescuer get only when subscriberActive == true (inactive = reservation stub, no PHI).
+     * Opaque scanCode enforced on create/update. Rescuer get requires frozen
+     * users/{ownerUid}.subscriptionActive (not only owner-writable index flag).
      */
     match /medicalScanIndex/{scanCode} {
       // resource == null on missing docs — needed for collision getDoc before create
       allow get: if (resource == null && signedIn())
-        || (isActiveRescuer() && resource.data.subscriberActive == true)
+        || (isActiveRescuer()
+            && resource.data.subscriberActive == true
+            && ownerIsActiveSubscriber(resource.data.ownerUid))
         || (signedIn() && resource.data.ownerUid == uid())
         || isAdmin();
       allow list: if false;
       allow create: if signedIn()
         && request.resource.data.ownerUid == uid()
         && request.resource.data.scanCode == scanCode
+        && isOpaqueScanCode(scanCode)
+        && medicalIndexWriteOk()
         && request.resource.data.cardId is string
         && (request.resource.data.cardId == uid()
             || request.resource.data.cardId == ('med-' + uid()))
@@ -133,6 +167,8 @@ service cloud.firestore {
         && request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.scanCode == resource.data.scanCode
         && request.resource.data.scanCode == scanCode
+        && isOpaqueScanCode(scanCode)
+        && medicalIndexWriteOk()
         && (request.resource.data.cardId == uid()
             || request.resource.data.cardId == ('med-' + uid()));
       allow delete: if signedIn() && resource.data.ownerUid == uid();

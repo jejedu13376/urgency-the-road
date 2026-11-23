@@ -30,13 +30,18 @@ const MOCK_CARD: MedicalCardDoc = {
   updatedAt: new Date().toISOString(),
 };
 
-/** Unpredictable scan code — avoids collision/hijack from uid-derived codes. */
+/** Unpredictable scan code — UM-QR- + ≥16 A-Z0-9 (matches firestore isOpaqueScanCode). */
 function mintScanCode(): string {
-  const rand =
+  let rand =
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
       ? crypto.randomUUID().replace(/-/g, '').slice(0, 16).toUpperCase()
-      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`.toUpperCase();
-  return `UM-QR-${rand}`;
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, '');
+  while (rand.length < 16) {
+    rand += Math.random().toString(36).slice(2).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+  return `UM-QR-${rand.slice(0, 16)}`;
 }
 
 /** Reject UM-QR-{uid[0:8]} (and similar) — rescuers must not guess PHI from public uids. */
@@ -198,7 +203,21 @@ export async function ensurePersonalQr(
         existing.stubLabel ?? 'QR personnel existant (mock)',
       );
     }
-    return liveResult({ scanCode: existing.data.scanCode, card: existing.data });
+    // Refresh index (subscriberActive + PHI) without reminting — keeps legacy QR rescuer-readable
+    const refreshed = await upsertMedicalCard({
+      ...existing.data,
+      subscriberActive: true,
+    });
+    if (refreshed.ok === false) {
+      return failResult(
+        { scanCode: existing.data.scanCode, card: existing.data },
+        refreshed.stubLabel ?? 'Échec refresh index QR',
+      );
+    }
+    return liveResult(
+      { scanCode: refreshed.data.scanCode, card: refreshed.data },
+      'QR personnel existant — index rafraîchi',
+    );
   }
 
   const scanCode = mintScanCode();
@@ -238,9 +257,9 @@ export function medicalCardDocId(ownerUid: string): string {
 
 /**
  * Module 13 — owner write.
- * - Existing med-{uid} remint: claim new index → update card → delete old index; rollback orphan index on fail.
- * - Missing med-{uid} (create / legacy): card first (index absent) → then index → delete old; no index-before-create.
- * - Inactive: reservation index without PHI; rescuer get blocked by rules until subscriberActive.
+ * Remint / create-with-new-code: index-first → card → delete old; claimedNewIndex rollback on fail.
+ * Same-code update: card then refresh owned index (reservation stub or full PHI).
+ * Inactive: reservation index without PHI; rescuer get also checks frozen users.subscriptionActive.
  */
 export async function upsertMedicalCard(
   card: Omit<MedicalCardDoc, 'updatedAt'>,
@@ -323,8 +342,8 @@ export async function upsertMedicalCard(
       }
     };
 
-    if (rotating && previousScanCode && cardExists) {
-      // Update path: index first (required by rules), then card, then drop old
+    if (rotating && previousScanCode) {
+      // Index-first for both update and legacy create (create rule allows owned leftover index)
       await assertIndexOwnedOrFree();
       await setDoc(newIndexRef, indexPayload);
       claimedNewIndex = payload.scanCode;
@@ -335,26 +354,17 @@ export async function upsertMedicalCard(
       } catch {
         /* non-fatal */
       }
-    } else if (rotating && previousScanCode && !cardExists) {
-      // Create path (legacy / missing med-{uid}): card FIRST — create needs index absent
-      await assertIndexOwnedOrFree();
-      await setDoc(cardRef, cardWritePayload(payload));
-      await setDoc(newIndexRef, indexPayload);
-      try {
-        await deleteDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, previousScanCode));
-      } catch {
-        /* non-fatal */
-      }
     } else if (cardExists) {
       await setDoc(cardRef, cardWritePayload(payload));
       await assertIndexOwnedOrFree();
-      // Keep reservation/full index owned — never delete on inactive (hijack prevention)
       await setDoc(newIndexRef, indexPayload);
     } else {
-      // Brand-new create: card then index (or card while owning leftover index)
+      // Brand-new: index-first then card; rollback index if card create fails
       await assertIndexOwnedOrFree();
-      await setDoc(cardRef, cardWritePayload(payload));
       await setDoc(newIndexRef, indexPayload);
+      claimedNewIndex = payload.scanCode;
+      await setDoc(cardRef, cardWritePayload(payload));
+      claimedNewIndex = null;
     }
 
     // Migrate: drop legacy uid-keyed doc only after canonical write succeeded
