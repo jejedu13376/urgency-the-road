@@ -127,7 +127,22 @@ Without the key → fallback YouTube **search results URL** only (no fake video 
 
 ---
 
-## D) Optional later
+## D) Multi-IA proxy (Module 6) — server keys only
+
+Code ships in `firebase/functions/` (HTTPS `multiIa`). **Do not** put LLM keys in `EXPO_PUBLIC_*`.
+
+Full steps + exact secret names: **`docs/MULTI-IA-PROXY.md`**.
+
+```bash
+cd firebase/functions && npm install && npm run build && cd ../..
+firebase deploy --config firebase/firebase.json --only functions:multiIa
+# then in app .env:
+# EXPO_PUBLIC_MULTI_IA_PROXY_URL=https://us-central1-<PROJECT_ID>.cloudfunctions.net/multiIa
+```
+
+Live votes require Module 15 sign-in (Firebase ID token). Without proxy URL → heuristic engines only.
+
+## E) Optional later
 
 - Payments: `EXPO_PUBLIC_STRIPE_CHECKOUT_BASE` / `EXPO_PUBLIC_PAYPAL_CHECKOUT_BASE` (Module 15).
 - OBD BLE: Dev Client + `react-native-ble-plx` (Module 5).
