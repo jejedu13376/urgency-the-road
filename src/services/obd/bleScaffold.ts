@@ -55,12 +55,12 @@ export async function scanBleDevices(): Promise<BleScanResult> {
   }
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const manager: any = await getSharedBleManager();
     const found: { id: string; name: string }[] = [];
     await new Promise<void>((resolve) => {
       let settled = false;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       let sub: { remove?: () => void } | null = null;
       let timer: ReturnType<typeof setTimeout> | null = null;
 

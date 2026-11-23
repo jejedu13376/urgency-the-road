@@ -3,7 +3,7 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 
-/** Room below status bar for permanent spinner (36) + margin and weather chip. */
+/** Room below status bar for weather chip / chrome. */
 const CHROME_BELOW_INSET = 48;
 /** SOS FAB sits at bottom ~92 with height 58 — clear last CTAs. */
 const SOS_FAB_CLEARANCE = 166;
@@ -24,7 +24,7 @@ export function Screen({
   refreshing?: boolean;
   onRefresh?: () => void;
   /**
-   * `tabs` — full chrome inset for WeatherBanner / spinner above custom header.
+   * `tabs` — full chrome inset for WeatherBanner above custom header.
    * `stack` — nested under modules Stack header (no double title, no chrome inset).
    */
   variant?: 'tabs' | 'stack';

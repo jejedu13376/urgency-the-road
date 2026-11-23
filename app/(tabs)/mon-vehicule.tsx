@@ -65,8 +65,14 @@ export default function MonVehiculeScreen() {
   const [remindersLabel, setRemindersLabel] = useState<string | null>(null);
 
   useEffect(() => {
-    if (active?.vin) setVin(active.vin);
-    if (active) setOdoDraft(String(active.odometerKm));
+    const t = setTimeout(() => {
+      // Sync drafts only when stable vehicle fields change — not on every
+      // new `active` object identity from cloud pull / storage hydrate.
+      if (active?.vin) setVin(active.vin);
+      if (active) setOdoDraft(String(active.odometerKm));
+    }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: id/vin/odo only
   }, [active?.id, active?.vin, active?.odometerKm]);
 
   // Reload on focus so returning from Entretien (M10) refreshes AsyncStorage rappels.
@@ -94,29 +100,32 @@ export default function MonVehiculeScreen() {
   );
 
   useEffect(() => {
-    if (!active?.make || !active?.model || !active?.year) {
+    let cancelled = false;
+    const t = setTimeout(() => {
+      if (!active?.make || !active?.model || !active?.year) {
+        setRecalls([]);
+        setRecallLabel(null);
+        setRecallsLoading(false);
+        return;
+      }
       setRecalls([]);
       setRecallLabel(null);
-      setRecallsLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setRecalls([]);
-    setRecallLabel(null);
-    setRecallsLoading(true);
-    void (async () => {
-      const res = await fetchRecallsByVehicle({
-        make: active.make,
-        model: active.model,
-        year: active.year,
-      });
-      if (cancelled) return;
-      setRecalls(res.items);
-      setRecallLabel(res.label);
-      setRecallsLoading(false);
-    })();
+      setRecallsLoading(true);
+      void (async () => {
+        const res = await fetchRecallsByVehicle({
+          make: active.make,
+          model: active.model,
+          year: active.year,
+        });
+        if (cancelled) return;
+        setRecalls(res.items);
+        setRecallLabel(res.label);
+        setRecallsLoading(false);
+      })();
+    }, 0);
     return () => {
       cancelled = true;
+      clearTimeout(t);
     };
   }, [active?.make, active?.model, active?.year]);
 

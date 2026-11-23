@@ -537,33 +537,11 @@ export function GpsFullMap() {
             weightT: msg.truck.weightT,
           }, { excludeLocations: excludes });
           if (reqId !== routeReqId.current) return;
-
-          let label = route.label;
-          if (msg.mode === 'camion' && route.ok) {
-            const mid = route.coords[Math.floor(route.coords.length / 2)] ?? [
-              from.lat,
-              from.lon,
-            ];
-            const bridges = await fetchNearbyBridgeClearances(
-              mid[0],
-              mid[1],
-              12000,
-              { heightM: msg.truck.heightM, weightT: msg.truck.weightT },
-            );
-            if (reqId !== routeReqId.current) return;
-            const risky = bridges.bridges.filter((b) => b.pass === 'no');
-            if (risky.length) {
-              label = `${route.label} · ⚠ ${risky.length} ouvrage(s) no-pass vs profil`;
-            } else if (bridges.label) {
-              label = `${route.label} · ${bridges.label}`;
-            }
-          }
-
-          if (reqId !== routeReqId.current) return;
-          const enriched = { ...route, label };
-          setLastRoute(enriched);
-          setHudNote(label);
-          injectRoute(enriched);
+          // No gabarit / maxheight alert spam in HUD — route label only (distance/time).
+          // Bridge pass/no-pass still shown as map layer pins via refreshLayers.
+          setLastRoute(route);
+          setHudNote(route.label);
+          injectRoute(route);
           void refreshLayers();
         })();
         return;

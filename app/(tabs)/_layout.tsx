@@ -1,9 +1,12 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { Text, type ColorValue } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fr } from '../../src/i18n/fr';
 import { colors } from '../../src/theme/colors';
 
-/** Short labels to avoid truncation on 5-tab bar (full titles stay in `title`). */
+/** Short labels so 5 tabs stay readable; full titles remain in `title` / a11y. */
 const SHORT: Record<string, string> = {
   [fr.tabMonVehicule]: 'Véhicule',
   [fr.tabDiagnostic]: 'Diag',
@@ -12,15 +15,31 @@ const SHORT: Record<string, string> = {
   [fr.tabMenu]: 'Menu',
 };
 
-function TabLabel({ label, focused }: { label: string; focused: boolean }) {
+const ICON_SIZE = 22;
+const LABEL_FONT = 11;
+const LABEL_LINE = 14;
+const PAD_TOP = 4;
+/** Icon + gap + label — must fit above safe-area padding so text is not clipped. */
+const TAB_CONTENT = ICON_SIZE + 4 + LABEL_LINE;
+
+function tint(color: ColorValue | undefined): string {
+  return typeof color === 'string' && color.length > 0 ? color : colors.muted;
+}
+
+function TabLabel({ label, color }: { label: string; color: ColorValue }) {
   const short = SHORT[label] ?? label;
   return (
     <Text
       numberOfLines={1}
+      allowFontScaling={false}
       style={{
-        fontSize: 11,
-        fontWeight: focused ? '800' : '600',
-        color: focused ? colors.signal : colors.muted,
+        fontSize: LABEL_FONT,
+        lineHeight: LABEL_LINE,
+        fontWeight: '700',
+        color: tint(color),
+        includeFontPadding: false,
+        textAlign: 'center',
+        marginTop: 2,
       }}
     >
       {short}
@@ -29,18 +48,38 @@ function TabLabel({ label, focused }: { label: string; focused: boolean }) {
 }
 
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
+  const bottomPad = Math.max(insets.bottom, 8);
+  const tabBarHeight = PAD_TOP + TAB_CONTENT + bottomPad;
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.signal,
         tabBarInactiveTintColor: colors.muted,
+        tabBarLabelPosition: 'below-icon',
+        tabBarLabelStyle: {
+          fontSize: LABEL_FONT,
+          lineHeight: LABEL_LINE,
+          fontWeight: '700',
+          marginTop: 0,
+          marginBottom: 0,
+        },
+        tabBarIconStyle: {
+          marginTop: 0,
+        },
+        tabBarItemStyle: {
+          paddingTop: 0,
+          paddingBottom: 0,
+        },
         tabBarStyle: {
           backgroundColor: colors.white,
           borderTopColor: colors.line,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 6,
+          borderTopWidth: 1,
+          height: tabBarHeight,
+          paddingBottom: bottomPad,
+          paddingTop: PAD_TOP,
         },
       }}
     >
@@ -48,35 +87,67 @@ export default function TabsLayout() {
         name="mon-vehicule"
         options={{
           title: fr.tabMonVehicule,
-          tabBarLabel: ({ focused }) => <TabLabel label={fr.tabMonVehicule} focused={focused} />,
+          tabBarAccessibilityLabel: fr.tabMonVehicule,
+          tabBarLabel: ({ color }) => <TabLabel label={fr.tabMonVehicule} color={color} />,
+          tabBarIcon: ({ color }) => (
+            <MaterialCommunityIcons name="car-estate" size={ICON_SIZE} color={tint(color)} />
+          ),
         }}
       />
       <Tabs.Screen
         name="diagnostic"
         options={{
           title: fr.tabDiagnostic,
-          tabBarLabel: ({ focused }) => <TabLabel label={fr.tabDiagnostic} focused={focused} />,
+          tabBarAccessibilityLabel: fr.tabDiagnostic,
+          tabBarLabel: ({ color }) => <TabLabel label={fr.tabDiagnostic} color={color} />,
+          tabBarIcon: ({ color }) => (
+            <MaterialCommunityIcons name="car-wrench" size={ICON_SIZE} color={tint(color)} />
+          ),
         }}
       />
       <Tabs.Screen
         name="carte"
         options={{
           title: fr.tabCarte,
-          tabBarLabel: ({ focused }) => <TabLabel label={fr.tabCarte} focused={focused} />,
+          tabBarAccessibilityLabel: fr.tabCarte,
+          tabBarLabel: ({ color }) => <TabLabel label={fr.tabCarte} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'map' : 'map-outline'}
+              size={ICON_SIZE}
+              color={tint(color)}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="fil"
         options={{
           title: fr.tabFil,
-          tabBarLabel: ({ focused }) => <TabLabel label={fr.tabFil} focused={focused} />,
+          tabBarAccessibilityLabel: fr.tabFil,
+          tabBarLabel: ({ color }) => <TabLabel label={fr.tabFil} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
+              size={ICON_SIZE}
+              color={tint(color)}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="menu"
         options={{
           title: fr.tabMenu,
-          tabBarLabel: ({ focused }) => <TabLabel label={fr.tabMenu} focused={focused} />,
+          tabBarAccessibilityLabel: fr.tabMenu,
+          tabBarLabel: ({ color }) => <TabLabel label={fr.tabMenu} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'grid' : 'grid-outline'}
+              size={ICON_SIZE}
+              color={tint(color)}
+            />
+          ),
         }}
       />
     </Tabs>
