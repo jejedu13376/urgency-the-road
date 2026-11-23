@@ -1,3 +1,5 @@
+import type { GpsMapI18n } from '../../i18n';
+
 /**
  * Self-contained Leaflet + OSM map HTML for WebView.
  * Tap destination → voiture/camion picker (truck SVG) → route + animate vehicle.
@@ -15,12 +17,15 @@ export type GpsMapBoot = {
   padRight: number;
   padBottom: number;
   padLeft: number;
+  i18n: GpsMapI18n;
 };
 
 export function buildGpsMapHtml(boot: GpsMapBoot): string {
   const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
+  const lang = boot.i18n.lang || 'fr';
+  const S = boot.i18n;
   return `<!DOCTYPE html>
-<html lang="fr">
+<html lang="${lang}">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
@@ -101,32 +106,33 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
 <div id="map"></div>
 <div class="hud">
   <div class="chip-row">
-    <button type="button" class="chip" id="btnCar"><span>Voiture</span><small>Itinéraire auto</small></button>
-    <button type="button" class="chip" id="btnTruck"><span>🚛 Camion</span><small>Profil truck</small></button>
+    <button type="button" class="chip" id="btnCar"><span>${escapeHtml(S.car)}</span><small>${escapeHtml(S.carSub)}</small></button>
+    <button type="button" class="chip" id="btnTruck"><span>${escapeHtml(S.truck)}</span><small>${escapeHtml(S.truckSub)}</small></button>
   </div>
-  <div class="status" id="status">Touchez la carte pour choisir la destination</div>
+  <div class="status" id="status">${escapeHtml(S.statusTap)}</div>
 </div>
 <div class="picker" id="picker">
-  <h3>Mode de navigation</h3>
-  <p id="pickerHint">Destination sélectionnée — voiture ou camion ?</p>
+  <h3>${escapeHtml(S.pickerTitle)}</h3>
+  <p id="pickerHint">${escapeHtml(S.pickerHint)}</p>
   <div class="pick-row">
     <button type="button" class="pick" id="pickCar">
       <svg class="icon" viewBox="0 0 64 64" aria-hidden="true"><rect x="8" y="28" width="48" height="16" rx="4" fill="#2C3A47"/><circle cx="18" cy="46" r="6" fill="#101820"/><circle cx="46" cy="46" r="6" fill="#101820"/><path d="M14 28 L22 16 H42 L50 28" fill="#C45C26"/></svg>
-      Voiture
+      ${escapeHtml(S.car)}
     </button>
     <button type="button" class="pick" id="pickTruck">
       <svg class="icon" viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="22" width="34" height="20" rx="3" fill="#1F6B4A"/><rect x="38" y="28" width="20" height="14" rx="2" fill="#C45C26"/><circle cx="16" cy="46" r="6" fill="#101820"/><circle cx="48" cy="46" r="6" fill="#101820"/><rect x="8" y="26" width="10" height="8" fill="#D7EDE3"/></svg>
-      Camion
+      ${escapeHtml(S.truck.replace(/^🚛\s*/, ''))}
     </button>
   </div>
 </div>
 <div class="bottom">
   <button type="button" class="ghost" id="btnRecenter">GPS</button>
-  <button type="button" class="go" id="btnGo" disabled>Démarrer</button>
+  <button type="button" class="go" id="btnGo" disabled>${escapeHtml(S.start)}</button>
 </div>
 <script>
 (function(){
   var BOOT = ${bootJson};
+  var I18N = BOOT.i18n || {};
   var mode = BOOT.mode === 'camion' ? 'camion' : 'voiture';
   var gpsOk = !!BOOT.gpsOk;
   var origin = { lat: BOOT.lat, lon: BOOT.lon };
@@ -215,7 +221,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     if (!originMarker) {
       originMarker = L.circleMarker([origin.lat, origin.lon], {
         radius: 7, color: '#C45C26', fillColor: '#F3D9C8', fillOpacity: 1, weight: 2
-      }).addTo(map).bindTooltip('Départ GPS');
+      }).addTo(map).bindTooltip(I18N.originTooltip || 'GPS');
     } else {
       originMarker.setLatLng([origin.lat, origin.lon]);
     }
@@ -224,11 +230,9 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
 
   syncChips();
   if (!gpsOk) {
-    setStatus('GPS appareil refusé — activez la localisation (bouton GPS). Pas de départ silencieux.');
+    setStatus(I18N.gpsDeniedSilent || '');
   } else {
-    setStatus(mode === 'camion'
-      ? 'Mode camion — touchez une destination'
-      : 'Mode voiture — touchez une destination');
+    setStatus(mode === 'camion' ? (I18N.modeTruckTap || '') : (I18N.modeCarTap || ''));
   }
 
   function stopAnim(){
@@ -245,12 +249,14 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
 
   function showPicker(latlng){
     if (!gpsOk) {
-      setStatus('GPS appareil requis avant itinéraire — tapez GPS');
+      setStatus(I18N.needGpsBeforeRoute || '');
       return;
     }
     pendingPick = latlng;
-    document.getElementById('pickerHint').textContent =
-      'Destination ' + latlng.lat.toFixed(4) + ', ' + latlng.lng.toFixed(4) + ' — voiture ou camion ?';
+    var tpl = I18N.pickerHintCoordsTpl || '';
+    document.getElementById('pickerHint').textContent = tpl
+      .replace('{lat}', latlng.lat.toFixed(4))
+      .replace('{lon}', latlng.lng.toFixed(4));
     document.getElementById('picker').classList.add('show');
   }
 
@@ -266,7 +272,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
 
   function setDestination(latlng){
     if (!gpsOk) {
-      setStatus('GPS appareil requis — pas d’itinéraire sans position réelle');
+      setStatus(I18N.needGpsNoRoute || '');
       return;
     }
     dest = { lat: latlng.lat, lon: latlng.lng };
@@ -278,11 +284,11 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   function requestRoute(){
     if (!dest) return;
     if (!gpsOk) {
-      setStatus('GPS appareil requis — autorisez la localisation');
+      setStatus(I18N.needGpsAuthorize || '');
       return;
     }
     clearRoute();
-    setStatus('Calcul itinéraire ' + (mode === 'camion' ? 'camion' : 'voiture') + '…');
+    setStatus(mode === 'camion' ? (I18N.calculatingTruck || '') : (I18N.calculatingCar || ''));
     post({
       type: 'route',
       mode: mode,
@@ -299,10 +305,16 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   window.__gpsApplyRoute = function(payload){
     try {
       if (!payload || !payload.ok || !payload.coords || !payload.coords.length) {
-        setStatus((payload && payload.label) || 'Itinéraire indisponible');
+        setStatus((payload && payload.label) || I18N.routeUnavailable || '');
         return;
       }
       clearRoute();
+      // Locale remount restore: reinject dest + pin so chips/Go/navigating keep working.
+      if (payload.to && payload.to.lat != null && payload.to.lon != null) {
+        dest = { lat: payload.to.lat, lon: payload.to.lon };
+        if (destMarker) map.removeLayer(destMarker);
+        destMarker = L.marker([dest.lat, dest.lon], { icon: destDivIcon(), zIndexOffset: 700 }).addTo(map);
+      }
       routeCoords = payload.coords;
       routeLine = L.polyline(routeCoords, {
         color: mode === 'camion' ? '#1F6B4A' : '#C45C26',
@@ -312,10 +324,10 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
       map.fitBounds(routeLine.getBounds(), { padding: [48, 48] });
       vehicleMarker = L.marker(routeCoords[0], { icon: vehicleDivIcon(), zIndexOffset: 800 }).addTo(map);
       document.getElementById('btnGo').disabled = false;
-      setStatus(payload.label || 'Itinéraire prêt');
+      setStatus(payload.label || I18N.routeReady || '');
       post({ type: 'routed', mode: mode, distanceKm: payload.distanceKm, durationMin: payload.durationMin, label: payload.label });
     } catch (e) {
-      setStatus('Affichage itinéraire KO');
+      setStatus(I18N.routeDisplayFail || '');
     }
   };
 
@@ -325,12 +337,10 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
       origin = { lat: lat, lon: lon };
       ensureOriginMarker();
       map.setView([lat, lon], Math.max(map.getZoom(), 13));
-      setStatus(mode === 'camion'
-        ? 'GPS appareil OK — mode camion, touchez une destination'
-        : 'GPS appareil OK — touchez une destination');
+      setStatus(mode === 'camion' ? (I18N.gpsOkTruck || '') : (I18N.gpsOkCar || ''));
     } else {
       ensureOriginMarker();
-      setStatus('GPS appareil refusé — activez la localisation (bouton GPS)');
+      setStatus(I18N.gpsDeniedBtn || '');
       clearRoute();
     }
   };
@@ -366,7 +376,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     vehicleMarker = L.marker(routeCoords[0], { icon: vehicleDivIcon(), zIndexOffset: 900 }).addTo(map);
     var i = 0;
     var step = Math.max(1, Math.floor(routeCoords.length / 120));
-    setStatus('Navigation ' + (mode === 'camion' ? 'camion' : 'voiture') + ' — animation sur l’itinéraire');
+    setStatus(mode === 'camion' ? (I18N.navigatingTruck || '') : (I18N.navigatingCar || ''));
     post({ type: 'navigating', mode: mode, to: dest });
     animTimer = setInterval(function(){
       i += step;
@@ -374,7 +384,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
         i = routeCoords.length - 1;
         vehicleMarker.setLatLng(routeCoords[i]);
         stopAnim();
-        setStatus('Arrivée — tapez Maps / Waze pour le guidage live');
+        setStatus(I18N.arrived || '');
         post({ type: 'arrived', mode: mode, to: dest });
         return;
       }
@@ -411,3 +421,12 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
 </body>
 </html>`;
 }
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+

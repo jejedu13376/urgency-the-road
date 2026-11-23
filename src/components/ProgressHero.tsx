@@ -1,25 +1,31 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useI18n } from '../context/I18nContext';
 import { useProgress } from '../context/ProgressContext';
 import { colors } from '../theme/colors';
 
-const BADGE_META: { id: string; label: string; hint: string }[] = [
-  { id: 'premier_pas', label: 'Premier pas', hint: '1 module' },
-  { id: 'explorateur', label: 'Explorateur', hint: '5 modules' },
-  { id: 'mecano_confirme', label: 'Mécano confirmé', hint: '10 modules' },
-  { id: 'maitre_17', label: 'Maître des 17', hint: '17/17' },
-];
-
 /** Progression vendeuse : barre 17 modules + streak + XP + badges visibles. */
 export function ProgressHero() {
+  const { t } = useI18n();
   const { ready, visited, streakDays, xp, completionPct, todayBonusClaimed, claimDailyBonus, badges } =
     useProgress();
   const nextBonus = 10 + Math.min(Math.max(streakDays, 1), 14) * 2;
 
+  const badgeMeta = [
+    { id: 'premier_pas', label: t('progress.badgePremier'), hint: t('progress.badgePremierHint') },
+    {
+      id: 'explorateur',
+      label: t('progress.badgeExplorateur'),
+      hint: t('progress.badgeExplorateurHint'),
+    },
+    { id: 'mecano_confirme', label: t('progress.badgeMecano'), hint: t('progress.badgeMecanoHint') },
+    { id: 'maitre_17', label: t('progress.badgeMaitre'), hint: t('progress.badgeMaitreHint') },
+  ];
+
   if (!ready) {
     return (
-      <View style={styles.wrap} accessibilityLabel="Chargement progression">
-        <Text style={styles.kicker}>Parcours vendeur Urgence Mécanique</Text>
-        <Text style={styles.title}>Chargement…</Text>
+      <View style={styles.wrap} accessibilityLabel={t('progress.loadingA11y')}>
+        <Text style={styles.kicker}>{t('progress.kicker')}</Text>
+        <Text style={styles.title}>{t('loading')}</Text>
         <View style={styles.track}>
           <View style={[styles.fill, { width: '8%' }]} />
         </View>
@@ -31,13 +37,13 @@ export function ProgressHero() {
     <View style={styles.wrap} accessibilityLabel={`Progression ${completionPct} pour cent`}>
       <View style={styles.top}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.kicker}>Parcours vendeur Urgence Mécanique</Text>
-          <Text style={styles.title}>{completionPct}% des 17 modules</Text>
+          <Text style={styles.kicker}>{t('progress.kicker')}</Text>
+          <Text style={styles.title}>{t('progress.pctOf17', { pct: completionPct })}</Text>
         </View>
         <View style={styles.streakBox}>
           <Text style={styles.streakFire}>🔥</Text>
           <Text style={styles.streakVal}>{streakDays}</Text>
-          <Text style={styles.streakLbl}>jours</Text>
+          <Text style={styles.streakLbl}>{t('progress.days')}</Text>
         </View>
       </View>
 
@@ -52,36 +58,42 @@ export function ProgressHero() {
         </View>
         <View style={styles.xpCard}>
           <Text style={styles.xpVal}>{visited.length}/17</Text>
-          <Text style={styles.xpLbl}>explorés</Text>
+          <Text style={styles.xpLbl}>{t('progress.explored')}</Text>
         </View>
         <View style={styles.xpCard}>
           <Text style={styles.xpVal}>+25</Text>
-          <Text style={styles.xpLbl}>/ module</Text>
+          <Text style={styles.xpLbl}>{t('progress.perModule')}</Text>
         </View>
       </View>
 
       <View style={styles.row}>
         <Text style={styles.meta}>
-          Streak actif · bonus jour {todayBonusClaimed ? 'réclamé' : `+${nextBonus} XP`}
+          {todayBonusClaimed
+            ? t('progress.streakMetaClaimed')
+            : t('progress.streakMetaNext', { xp: nextBonus })}
         </Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            todayBonusClaimed ? 'Bonus du jour déjà réclamé' : `Récupérer bonus plus ${nextBonus} XP`
+            todayBonusClaimed
+              ? t('progress.bonusClaimedA11y')
+              : t('progress.bonusClaimA11y', { xp: nextBonus })
           }
           style={[styles.bonus, todayBonusClaimed && styles.bonusDone]}
           disabled={todayBonusClaimed}
           onPress={() => claimDailyBonus()}
         >
           <Text style={styles.bonusTxt}>
-            {todayBonusClaimed ? 'Bonus du jour ✓' : `Récupérer +${nextBonus} XP`}
+            {todayBonusClaimed
+              ? t('progress.bonusClaimed')
+              : t('progress.bonusClaim', { xp: nextBonus })}
           </Text>
         </Pressable>
       </View>
 
-      <Text style={styles.badgesTitle}>Badges vendeur</Text>
+      <Text style={styles.badgesTitle}>{t('progress.badgesTitle')}</Text>
       <View style={styles.badgeGrid}>
-        {BADGE_META.map((b) => {
+        {badgeMeta.map((b) => {
           const unlocked = badges.includes(b.id);
           return (
             <View key={b.id} style={[styles.badge, unlocked && styles.badgeOn]}>

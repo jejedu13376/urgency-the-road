@@ -18,6 +18,7 @@ import { recordLearnedFailure } from '../../src/services/firebase/learnedFailure
 import { fetchRecallsByVehicle, type RecallHit } from '../../src/services/recalls/nhtsaRecalls';
 import { searchYoutubeVideos, type YoutubeVideoHit } from '../../src/services/youtube/youtubeSearch';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 const ALL_MODELS = listIaEngines();
 
@@ -25,6 +26,7 @@ type ChatMsg = { role: 'user' | 'assistant'; text: string; at: string };
 
 /** Module 6 — multi-IA conversationnelle + YouTube suggestions. */
 export default function MultiIaScreen() {
+  const { t } = useI18n();
   useModuleVisit(6);
   const { active } = useFleet();
   const [enabled, setEnabled] = useState<Record<string, boolean>>(() =>
@@ -134,9 +136,9 @@ export default function MultiIaScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Multi-IA' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.multiIa') }} />
       <Screen
-        variant="stack" title="Routeur multi-IA" subtitle="Module 6 — coach vocal + chat + YouTube">
+        variant="stack" title={t('moduleTitles.multiIa')} subtitle={t('moduleTitles.multiIaSub')}>
         <StubBanner text="Multi-IA : heuristique croisée ; LIVE via proxy serveur uniquement ; recalls NHTSA + YouTube" />
 
         {needVerify ? (

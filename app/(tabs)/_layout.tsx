@@ -3,17 +3,8 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Tabs } from 'expo-router';
 import { Text, type ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { fr } from '../../src/i18n/fr';
+import { useI18n } from '../../src/context/I18nContext';
 import { colors } from '../../src/theme/colors';
-
-/** Short labels so 5 tabs stay readable; full titles remain in `title` / a11y. */
-const SHORT: Record<string, string> = {
-  [fr.tabMonVehicule]: 'Véhicule',
-  [fr.tabDiagnostic]: 'Diag',
-  [fr.tabCarte]: 'Carte',
-  [fr.tabFil]: 'Fil',
-  [fr.tabMenu]: 'Menu',
-};
 
 const ICON_SIZE = 22;
 const LABEL_FONT = 11;
@@ -27,7 +18,6 @@ function tint(color: ColorValue | undefined): string {
 }
 
 function TabLabel({ label, color }: { label: string; color: ColorValue }) {
-  const short = SHORT[label] ?? label;
   return (
     <Text
       numberOfLines={1}
@@ -42,12 +32,13 @@ function TabLabel({ label, color }: { label: string; color: ColorValue }) {
         marginTop: 2,
       }}
     >
-      {short}
+      {label}
     </Text>
   );
 }
 
 export default function TabsLayout() {
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(insets.bottom, 8);
   const tabBarHeight = PAD_TOP + TAB_CONTENT + bottomPad;
@@ -86,9 +77,9 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="mon-vehicule"
         options={{
-          title: fr.tabMonVehicule,
-          tabBarAccessibilityLabel: fr.tabMonVehicule,
-          tabBarLabel: ({ color }) => <TabLabel label={fr.tabMonVehicule} color={color} />,
+          title: t('tabs.monVehicule'),
+          tabBarAccessibilityLabel: t('tabs.monVehicule'),
+          tabBarLabel: ({ color }) => <TabLabel label={t('tabs.monVehiculeShort')} color={color} />,
           tabBarIcon: ({ color }) => (
             <MaterialCommunityIcons name="car-estate" size={ICON_SIZE} color={tint(color)} />
           ),
@@ -97,9 +88,9 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="diagnostic"
         options={{
-          title: fr.tabDiagnostic,
-          tabBarAccessibilityLabel: fr.tabDiagnostic,
-          tabBarLabel: ({ color }) => <TabLabel label={fr.tabDiagnostic} color={color} />,
+          title: t('tabs.diagnostic'),
+          tabBarAccessibilityLabel: t('tabs.diagnostic'),
+          tabBarLabel: ({ color }) => <TabLabel label={t('tabs.diagnosticShort')} color={color} />,
           tabBarIcon: ({ color }) => (
             <MaterialCommunityIcons name="car-wrench" size={ICON_SIZE} color={tint(color)} />
           ),
@@ -108,9 +99,9 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="carte"
         options={{
-          title: fr.tabCarte,
-          tabBarAccessibilityLabel: fr.tabCarte,
-          tabBarLabel: ({ color }) => <TabLabel label={fr.tabCarte} color={color} />,
+          title: t('tabs.carte'),
+          tabBarAccessibilityLabel: t('tabs.carte'),
+          tabBarLabel: ({ color }) => <TabLabel label={t('tabs.carteShort')} color={color} />,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'map' : 'map-outline'}
@@ -123,9 +114,9 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="fil"
         options={{
-          title: fr.tabFil,
-          tabBarAccessibilityLabel: fr.tabFil,
-          tabBarLabel: ({ color }) => <TabLabel label={fr.tabFil} color={color} />,
+          title: t('tabs.fil'),
+          tabBarAccessibilityLabel: t('tabs.fil'),
+          tabBarLabel: ({ color }) => <TabLabel label={t('tabs.filShort')} color={color} />,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
@@ -138,9 +129,9 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="menu"
         options={{
-          title: fr.tabMenu,
-          tabBarAccessibilityLabel: fr.tabMenu,
-          tabBarLabel: ({ color }) => <TabLabel label={fr.tabMenu} color={color} />,
+          title: t('tabs.menu'),
+          tabBarAccessibilityLabel: t('tabs.menu'),
+          tabBarLabel: ({ color }) => <TabLabel label={t('tabs.menuShort')} color={color} />,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'grid' : 'grid-outline'}

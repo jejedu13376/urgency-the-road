@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, Stack } from 'expo-router';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Card } from '../../src/components/Card';
+import { LanguagePicker } from '../../src/components/LanguagePicker';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
+import { useI18n } from '../../src/context/I18nContext';
 import {
   DEFAULT_LOCAL_NOTIFS,
   DEFAULT_LOCAL_PREFS,
@@ -23,6 +25,7 @@ import { colors } from '../../src/theme/colors';
  */
 export default function ParametresHub() {
   const { profile } = useAuth();
+  const { t } = useI18n();
   const [prefs, setPrefs] = useState<LocalPrefs>(DEFAULT_LOCAL_PREFS);
   const [notifs, setNotifs] = useState<LocalNotifs>(DEFAULT_LOCAL_NOTIFS);
   const [ready, setReady] = useState(false);
@@ -64,98 +67,94 @@ export default function ParametresHub() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Paramètres' }} />
-      <Screen
-        variant="stack"
-        title="Paramètres"
-        subtitle="Préférences · notifications · compte"
-      >
-        <StubBanner text="MOCK local — préférences / notifications AsyncStorage (pas de push distant)" />
+      <Stack.Screen options={{ title: t('settings.title') }} />
+      <Screen variant="stack" title={t('settings.title')} subtitle={t('settings.subtitle')}>
+        <StubBanner text={t('settings.stub')} />
 
-        <Card title="Compte">
+        <Card title={t('language')}>
+          <LanguagePicker showTitle={false} />
+          <Text style={styles.hint}>{t('languageHint')}</Text>
+        </Card>
+
+        <Card title={t('settings.account')}>
           <Text style={styles.meta}>
             {profile?.email
-              ? `Connecté : ${profile.email}`
-              : 'Non connecté — ouvrez Compte pour auth / abonnements.'}
+              ? t('settings.connected', { email: profile.email })
+              : t('settings.notConnected')}
           </Text>
           <Link href="/modules/compte" asChild>
             <Pressable
               style={styles.linkRow}
               accessibilityRole="button"
-              accessibilityLabel="Ouvrir Compte et abonnements"
+              accessibilityLabel={t('settings.openCompteA11y')}
             >
               <Text style={styles.id}>M15</Text>
-              <Text style={styles.linkTxt}>Compte & abonnements →</Text>
+              <Text style={styles.linkTxt}>{t('settings.openCompte')}</Text>
             </Pressable>
           </Link>
           <Link href="/modules/bases" asChild>
             <Pressable
               style={styles.linkRow}
               accessibilityRole="button"
-              accessibilityLabel="Ouvrir Bases auto-évolutives"
+              accessibilityLabel={t('settings.openBasesA11y')}
             >
               <Text style={styles.id}>M14</Text>
-              <Text style={styles.linkTxt}>Bases auto-évolutives (OTA) →</Text>
+              <Text style={styles.linkTxt}>{t('settings.openBases')}</Text>
             </Pressable>
           </Link>
         </Card>
 
-        <Card title="Préférences">
+        <Card title={t('settings.prefs')}>
           {!ready ? (
-            <Text style={styles.meta}>Chargement…</Text>
+            <Text style={styles.meta}>{t('loading')}</Text>
           ) : (
             <>
               <ToggleRow
-                label="Unités métriques (km / L)"
+                label={t('settings.metric')}
                 value={prefs.metricUnits}
                 onChange={(v) => void patchPrefs({ metricUnits: v })}
               />
               <ToggleRow
-                label="Chrome sombre (stocké — thème pas encore branché)"
+                label={t('settings.darkChrome')}
                 value={prefs.darkChrome}
                 onChange={(v) => void patchPrefs({ darkChrome: v })}
               />
               <ToggleRow
-                label="Bandeau météo (onglets)"
+                label={t('settings.showWeather')}
                 value={prefs.showWeather}
                 onChange={(v) => void patchPrefs({ showWeather: v })}
               />
-              <Text style={styles.hint}>
-                « Bandeau météo » masque le chip sur les onglets. Sur /modules/* le bandeau est
-                déjà masqué pour ne pas chevaucher le header Stack.
-              </Text>
+              <Text style={styles.hint}>{t('settings.weatherHint')}</Text>
             </>
           )}
         </Card>
 
-        <Card title="Notifications">
+        <Card title={t('settings.notifs')}>
           {!ready ? (
-            <Text style={styles.meta}>Chargement…</Text>
+            <Text style={styles.meta}>{t('loading')}</Text>
           ) : (
             <>
               <ToggleRow
-                label="Rappels entretien / admin"
+                label={t('settings.notifEntretien')}
                 value={notifs.entretien}
                 onChange={(v) => void patchNotifs({ entretien: v })}
               />
               <ToggleRow
-                label="Alertes SOS / urgence"
+                label={t('settings.notifSos')}
                 value={notifs.sos}
                 onChange={(v) => void patchNotifs({ sos: v })}
               />
               <ToggleRow
-                label="Activité Fil mécanique"
+                label={t('settings.notifFil')}
                 value={notifs.fil}
                 onChange={(v) => void patchNotifs({ fil: v })}
               />
               <ToggleRow
-                label="Offres & marketing"
+                label={t('settings.notifMarketing')}
                 value={notifs.marketing}
                 onChange={(v) => void patchNotifs({ marketing: v })}
               />
-              <Text style={styles.hint}>
-                Réglages stockés sur l’appareil — aucun serveur de push branché.
-              </Text>
+              <Text style={styles.hint}>{t('settings.notifHint')}</Text>
             </>
           )}
         </Card>

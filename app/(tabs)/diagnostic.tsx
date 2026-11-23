@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { useFleet } from '../../src/context/FleetContext';
+import { useI18n } from '../../src/context/I18nContext';
 import { useProgress } from '../../src/context/ProgressContext';
 import { colors } from '../../src/theme/colors';
 
@@ -10,19 +11,25 @@ import { colors } from '../../src/theme/colors';
 export default function DiagnosticHub() {
   const { active } = useFleet();
   const { xp, completionPct } = useProgress();
+  const { t } = useI18n();
+  const steps = [
+    t('diagnostic.stepDiagnose'),
+    t('diagnostic.stepPart'),
+    t('diagnostic.stepRepair'),
+    t('diagnostic.stepQuote'),
+  ];
 
   return (
     <Screen
-      title="Diagnostic"
-      subtitle={`Modules 4 · 5 · 6${active ? ` · ${active.make} ${active.model}` : ''}`}
+      title={t('diagnostic.title')}
+      subtitle={`${t('diagnostic.subtitle')}${active ? ` · ${active.make} ${active.model}` : ''}`}
     >
-      <Card title="Parcours vendeur">
+      <Card title={t('diagnostic.parcours')}>
         <Text style={styles.meta}>
-          Photo / questions / OBD → pièce + prix → tutoriel YouTube → devis. Progression {completionPct}% ·{' '}
-          {xp} XP.
+          {t('diagnostic.parcoursMeta', { pct: completionPct, xp })}
         </Text>
         <View style={styles.funnel}>
-          {['Diagnostiquer', 'Pièce', 'Réparer', 'Devis'].map((s, i) => (
+          {steps.map((s, i) => (
             <View key={s} style={styles.funnelChip}>
               <Text style={styles.funnelTxt}>
                 {i + 1}. {s}
@@ -32,13 +39,13 @@ export default function DiagnosticHub() {
         </View>
       </Card>
 
-      <Card title="Accès rapide">
+      <Card title={t('diagnostic.quickAccess')}>
         <Link href="/modules/diagnostic-ia" asChild>
           <Pressable style={styles.item}>
             <Text style={styles.id}>M4</Text>
             <View style={styles.body}>
-              <Text style={styles.title}>Diagnostic IA photo / vidéo / questions</Text>
-              <Text style={styles.sub}>Photo / questions / acoustique — stubs IA ; YouTube live si clé</Text>
+              <Text style={styles.title}>{t('diagnostic.m4Title')}</Text>
+              <Text style={styles.sub}>{t('diagnostic.m4Sub')}</Text>
             </View>
           </Pressable>
         </Link>
@@ -46,8 +53,8 @@ export default function DiagnosticHub() {
           <Pressable style={styles.item}>
             <Text style={styles.id}>M5</Text>
             <View style={styles.body}>
-              <Text style={styles.title}>Valise OBD2 & poids lourds</Text>
-              <Text style={styles.sub}>DTC mock J1939 / OBD2 · capteurs temps réel simulés</Text>
+              <Text style={styles.title}>{t('diagnostic.m5Title')}</Text>
+              <Text style={styles.sub}>{t('diagnostic.m5Sub')}</Text>
             </View>
           </Pressable>
         </Link>
@@ -55,32 +62,32 @@ export default function DiagnosticHub() {
           <Pressable style={styles.item}>
             <Text style={styles.id}>M6</Text>
             <View style={styles.body}>
-              <Text style={styles.title}>Multi-IA & coach vocal</Text>
-              <Text style={styles.sub}>Routeur mock + synthèse vocale · Stop Voix</Text>
+              <Text style={styles.title}>{t('diagnostic.m6Title')}</Text>
+              <Text style={styles.sub}>{t('diagnostic.m6Sub')}</Text>
             </View>
           </Pressable>
         </Link>
       </Card>
 
-      <Card title="Enchaînement après diagnostic">
+      <Card title={t('diagnostic.after')}>
         <Link href="/modules/pieces" asChild>
           <Pressable style={styles.linkRow}>
-            <Text style={styles.linkTxt}>Catalogue pièces & devis pose (M3) →</Text>
+            <Text style={styles.linkTxt}>{t('diagnostic.linkPieces')}</Text>
           </Pressable>
         </Link>
         <Link href="/modules/tutoriels" asChild>
           <Pressable style={styles.linkRow}>
-            <Text style={styles.linkTxt}>Tutoriels YouTube (M11) — pas de vidéo embarquée →</Text>
+            <Text style={styles.linkTxt}>{t('diagnostic.linkTutoriels')}</Text>
           </Pressable>
         </Link>
         <Link href="/modules/bases" asChild>
           <Pressable style={styles.linkRow}>
-            <Text style={styles.linkTxt}>Enrichir la base de pannes (M14) →</Text>
+            <Text style={styles.linkTxt}>{t('diagnostic.linkBases')}</Text>
           </Pressable>
         </Link>
         <Link href="/(tabs)/fil" asChild>
           <Pressable style={styles.linkRow}>
-            <Text style={styles.linkTxt}>Partager sur le Fil mécanique (M12) →</Text>
+            <Text style={styles.linkTxt}>{t('diagnostic.linkFil')}</Text>
           </Pressable>
         </Link>
       </Card>

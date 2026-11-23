@@ -2,47 +2,64 @@ import { Link } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
+import { LanguagePicker } from '../../src/components/LanguagePicker';
 import { ProgressHero } from '../../src/components/ProgressHero';
 import { Screen } from '../../src/components/Screen';
+import { useI18n } from '../../src/context/I18nContext';
 import { useProgress } from '../../src/context/ProgressContext';
 import { MODULES } from '../../src/data/modulesMeta';
-import { NAV_SECTIONS } from '../../src/data/navSections';
-import { fr } from '../../src/i18n/fr';
+import { localizedModuleTitle, localizedNavSections } from '../../src/data/localizedNav';
 import { colors } from '../../src/theme/colors';
 import type { ModuleId } from '../../src/types/modules';
 
 /** Menu — sections claires + parcours vendeur 17 modules (ProgressHero). */
 export default function MenuScreen() {
+  const { t } = useI18n();
   const { visited, streakDays, xp, completionPct, badges } = useProgress();
   const done = new Set(visited);
   const next = MODULES.find((m) => !done.has(m.id as ModuleId));
+  const sections = localizedNavSections(t);
+  const nextTitle = next ? localizedModuleTitle(t, next.id).title : '';
+
+  const sellerStrip =
+    badges.length > 1
+      ? t('menu.sellerStripPlural', {
+          days: streakDays,
+          xp,
+          pct: completionPct,
+          badges: badges.length,
+        })
+      : t('menu.sellerStrip', {
+          days: streakDays,
+          xp,
+          pct: completionPct,
+          badges: badges.length,
+        });
 
   return (
-    <Screen title={fr.appName} subtitle="Sections · parcours vendeur — 17 modules">
+    <Screen title={t('appName')} subtitle={t('menu.subtitle')}>
+      <LanguagePicker compact />
       <BackendStatusBanner />
       <ProgressHero />
 
       <View style={styles.sellerStrip}>
-        <Text style={styles.sellerTxt}>
-          🔥 {streakDays} j · {xp} XP · {completionPct}% · {badges.length} badge
-          {badges.length > 1 ? 's' : ''}
-        </Text>
+        <Text style={styles.sellerTxt}>{sellerStrip}</Text>
         {next ? (
           <Text style={styles.sellerHint}>
-            Prochaine étape : M{next.id} {next.title} · +25 XP
+            {t('nextStep', { id: next.id, title: nextTitle })}
           </Text>
         ) : (
-          <Text style={styles.sellerHint}>Parcours complet — Maître des 17 débloqué.</Text>
+          <Text style={styles.sellerHint}>{t('parcoursComplete')}</Text>
         )}
       </View>
 
-      <Text style={styles.section}>{fr.navSectionsTitle}</Text>
-      {NAV_SECTIONS.map((sec) => (
+      <Text style={styles.section}>{t('menu.navSectionsTitle')}</Text>
+      {sections.map((sec) => (
         <Card key={sec.id} title={sec.title}>
           <Text style={styles.secSub}>{sec.subtitle}</Text>
           <Link href={sec.href as never} asChild>
             <Pressable style={styles.hubBtn}>
-              <Text style={styles.hubTxt}>Ouvrir {sec.title} →</Text>
+              <Text style={styles.hubTxt}>{t('openSection', { title: sec.title })}</Text>
             </Pressable>
           </Link>
           {sec.links.map((link) => (
@@ -59,10 +76,11 @@ export default function MenuScreen() {
         </Card>
       ))}
 
-      <Text style={styles.section}>Continuer le parcours</Text>
+      <Text style={styles.section}>{t('continueParcours')}</Text>
       <View style={styles.grid}>
         {MODULES.map((m) => {
           const ok = done.has(m.id as ModuleId);
+          const meta = localizedModuleTitle(t, m.id);
           return (
             <Link key={m.id} href={m.href as never} asChild>
               <Pressable style={[styles.tile, ok && styles.tileDone]}>
@@ -70,9 +88,9 @@ export default function MenuScreen() {
                   <Text style={styles.id}>M{m.id}</Text>
                   <Text style={styles.check}>{ok ? '✓' : '○'}</Text>
                 </View>
-                <Text style={styles.title}>{m.title}</Text>
-                <Text style={styles.short}>{m.short}</Text>
-                <Text style={styles.cta}>{ok ? 'Revoir' : 'Découvrir · +25 XP'}</Text>
+                <Text style={styles.title}>{meta.title}</Text>
+                <Text style={styles.short}>{meta.short}</Text>
+                <Text style={styles.cta}>{ok ? t('see') : t('discover')}</Text>
               </Pressable>
             </Link>
           );

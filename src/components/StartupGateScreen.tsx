@@ -8,19 +8,21 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useI18n } from '../context/I18nContext';
 import { useStartupGate } from '../context/StartupGateContext';
 import { colors } from '../theme/colors';
 
 /** Blocks all app content until password unlock (session only). */
 export function StartupGateScreen() {
   const { unlock } = useStartupGate();
+  const { t } = useI18n();
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const onSubmit = () => {
     const ok = unlock(value);
     if (!ok) {
-      setError('Mot de passe incorrect');
+      setError(t('gate.wrong'));
       setValue('');
     }
   };
@@ -31,24 +33,24 @@ export function StartupGateScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.card}>
-        <Text style={styles.brand}>Urgence Mécanique</Text>
-        <Text style={styles.title}>Accès sécurisé</Text>
-        <Text style={styles.sub}>Entrez le mot de passe pour ouvrir l’application.</Text>
+        <Text style={styles.brand}>{t('appName')}</Text>
+        <Text style={styles.title}>{t('gate.title')}</Text>
+        <Text style={styles.sub}>{t('gate.sub')}</Text>
         <TextInput
           value={value}
-          onChangeText={(t) => {
-            setValue(t);
+          onChangeText={(txt) => {
+            setValue(txt);
             setError(null);
           }}
           secureTextEntry
           autoCapitalize="none"
           autoCorrect={false}
-          placeholder="Mot de passe"
+          placeholder={t('gate.password')}
           placeholderTextColor={colors.muted}
           style={styles.input}
           onSubmitEditing={onSubmit}
           testID="startup-gate-input"
-          accessibilityLabel="Mot de passe de démarrage"
+          accessibilityLabel={t('gate.passwordA11y')}
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable
@@ -56,9 +58,9 @@ export function StartupGateScreen() {
           onPress={onSubmit}
           testID="startup-gate-submit"
           accessibilityRole="button"
-          accessibilityLabel="Déverrouiller"
+          accessibilityLabel={t('gate.unlock')}
         >
-          <Text style={styles.btnTxt}>Déverrouiller</Text>
+          <Text style={styles.btnTxt}>{t('gate.unlock')}</Text>
         </Pressable>
       </View>
     </KeyboardAvoidingView>

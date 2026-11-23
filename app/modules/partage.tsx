@@ -11,9 +11,11 @@ import {
   shareInstallLink,
 } from '../../src/services/share/installUrl';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 /** Module 16 — partage viral SMS / WhatsApp / email / share sheet + install URL wiring. */
 export default function PartageScreen() {
+  const { t } = useI18n();
   useModuleVisit(16);
   const install = resolveInstallUrl();
   const INSTALL_URL = install.url;
@@ -109,9 +111,9 @@ export default function PartageScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Partage' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.partage') }} />
       <Screen
-        variant="stack" title="Partage viral" subtitle="Module 16 — installation universelle">
+        variant="stack" title={t('moduleTitles.partage')} subtitle={t('moduleTitles.partageSub')}>
         <StubBanner
           text={
             canShareLink

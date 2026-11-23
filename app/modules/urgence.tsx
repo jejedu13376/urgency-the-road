@@ -32,6 +32,7 @@ import type {
   MedicalPublicPreview,
 } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 const FOUR_H = 4 * 60 * 60;
 
@@ -41,6 +42,7 @@ const FOUR_H = 4 * 60 * 60;
  * No electronic-beacon product; distinct from OBD valise + vehicle diagnostic hardware.
  */
 export default function UrgenceScreen() {
+  const { t } = useI18n();
   useModuleVisit(13);
   const { profile } = useAuth();
   const [seconds, setSeconds] = useState(0);
@@ -278,9 +280,9 @@ export default function UrgenceScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Urgence' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.urgence') }} />
       <Screen
-        variant="stack" title="Urgence & sécurité" subtitle="Module 13 — QR médical personnel">
+        variant="stack" title={t('moduleTitles.urgence')} subtitle={t('moduleTitles.urgenceSub')}>
         <BackendStatusBanner />
         <StubBanner
           text={

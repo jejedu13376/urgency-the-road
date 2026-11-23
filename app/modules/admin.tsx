@@ -7,6 +7,7 @@ import { StubBanner } from '../../src/components/StubBanner';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { adminKeys, loadJson, saveJson } from '../../src/services/admin/adminLocalStore';
 import { colors } from '../../src/theme/colors';
+import { useI18n } from '../../src/context/I18nContext';
 
 type FlagKey =
   | 'multiIa'
@@ -68,6 +69,7 @@ const INITIAL_ACCOUNTS: AccountRow[] = [
 
 /** Module 17b — Super-admin : comptes, modération, analytics, feature flags. */
 export default function AdminScreen() {
+  const { t } = useI18n();
   useModuleVisit(17);
   const [flags, setFlags] = useState<Record<FlagKey, boolean>>({
     multiIa: false,
@@ -148,9 +150,9 @@ export default function AdminScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Super-admin' }} />
+      <Stack.Screen options={{ title: t('moduleTitles.admin') }} />
       <Screen
-        variant="stack" title="Super-admin" subtitle="Module 17 — comptes · contenus · flags · abo">
+        variant="stack" title={t('moduleTitles.admin')} subtitle={t('moduleTitles.adminSub')}>
         <StubBanner text="Admin UI locale persistée · KPI cloud / backend Pro non branchés" />
         {persistLabel ? <Text style={styles.meta}>{persistLabel}</Text> : null}
 

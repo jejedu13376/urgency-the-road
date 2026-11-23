@@ -3,6 +3,8 @@ import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
 import { useFleet } from '../../context/FleetContext';
+import { useI18n } from '../../context/I18nContext';
+import { getGpsMapI18n } from '../../i18n';
 import { getDeviceCoords } from '../../services/geo/deviceLocation';
 import {
   fetchVehicleRoute,
@@ -146,6 +148,7 @@ function postGpsCmd(win: MapWindow | null, cmd: Record<string, unknown>) {
 export function GpsFullMap() {
   const insets = useSafeAreaInsets();
   const { active } = useFleet();
+  const { t, locale } = useI18n();
   const webRef = useRef<WebViewHandle | null>(null);
   const iframeWinRef = useRef<MapWindow | null>(null);
   const routeReqId = useRef(0);
@@ -159,6 +162,11 @@ export function GpsFullMap() {
   const [dest, setDest] = useState<{ lat: number; lon: number } | null>(null);
   const [modeLabel, setModeLabel] = useState<GpsVehicleMode>('voiture');
   const [gpsOk, setGpsOk] = useState(false);
+  /** Survive locale remount — re-inject into the new WebView on map `ready`. */
+  const lastRouteRef = useRef<VehicleRouteResult | null>(null);
+  const destRef = useRef<{ lat: number; lon: number } | null>(null);
+  lastRouteRef.current = lastRoute;
+  destRef.current = dest;
 
   const chromePads = useMemo<ChromePads>(
     () => ({
@@ -171,15 +179,19 @@ export function GpsFullMap() {
     [insets.top, insets.right, insets.bottom, insets.left],
   );
 
-  const injectRoute = useCallback((result: VehicleRouteResult) => {
-    if (Platform.OS === 'web') {
-      postGpsCmd(iframeWinRef.current, { cmd: 'applyRoute', payload: result });
-      return;
-    }
-    webRef.current?.injectJavaScript(
-      `window.__gpsApplyRoute && window.__gpsApplyRoute(${JSON.stringify(result)}); true;`,
-    );
-  }, []);
+  const injectRoute = useCallback(
+    (result: VehicleRouteResult, to?: { lat: number; lon: number } | null) => {
+      const payload = to ? { ...result, to } : result;
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, { cmd: 'applyRoute', payload });
+        return;
+      }
+      webRef.current?.injectJavaScript(
+        `window.__gpsApplyRoute && window.__gpsApplyRoute(${JSON.stringify(payload)}); true;`,
+      );
+    },
+    [],
+  );
 
   const setMapOrigin = useCallback((lat: number, lon: number, ok: boolean) => {
     if (Platform.OS === 'web') {
@@ -206,10 +218,13 @@ export function GpsFullMap() {
     );
   }, []);
 
-  /** Boot map once — never remount on vehicle class change. */
+  /** Boot map on mount + language change — never remount on vehicle class change. */
   useEffect(() => {
-    if (bootedRef.current) return;
     let cancelled = false;
+    bootedRef.current = false;
+    fleetKeyRef.current = null;
+    // Drop in-flight Valhalla work so a late response cannot paint the new WebView.
+    routeReqId.current += 1;
     void (async () => {
       const stored = await loadGpsNavPrefs();
       const isPl =
@@ -231,11 +246,12 @@ export function GpsFullMap() {
       prefsRef.current = initial;
       setModeLabel(initial.mode);
       setGpsOk(deviceOk);
+      // Keep lastRoute/dest across locale remount (Maps/Waze + polyline restore on `ready`).
       if (!deviceOk) {
         setHudNote(
           loc.ok === false
-            ? `GPS appareil refusé — ${loc.error}. Activez la localisation.`
-            : 'GPS appareil requis — autorisez la localisation.',
+            ? t('gps.gpsDeniedWithError', { error: loc.error ?? '' })
+            : t('gps.gpsRequired'),
         );
       }
       bootedRef.current = true;
@@ -248,6 +264,7 @@ export function GpsFullMap() {
           truckWidthM: initial.truckWidthM,
           truckPtacT: initial.truckPtacT,
           gpsOk: deviceOk,
+          i18n: getGpsMapI18n(),
           ...chromePads,
         }),
       );
@@ -255,9 +272,9 @@ export function GpsFullMap() {
     return () => {
       cancelled = true;
     };
-    // Boot once on mount only (vehicle updates use inject, not remount).
+    // Remount when locale changes so Leaflet HUD strings refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [locale]);
 
   /** Vehicle class / powertrain change → update icon without wiping map or clobbering GPS HUD. */
   useEffect(() => {
@@ -298,6 +315,21 @@ export function GpsFullMap() {
       const msg = parseMapMsg(raw);
       if (!msg) return;
 
+      if (msg.type === 'ready') {
+        setModeLabel(msg.mode);
+        const kept = lastRouteRef.current;
+        const keptDest = destRef.current;
+        if (kept?.ok && keptDest) {
+          setDest(keptDest);
+          setLastRoute(kept);
+          if (kept.label) setHudNote(kept.label);
+          // Defer one tick so WebView/iframe handlers are registered.
+          // Pass dest so Leaflet restores pin + internal `dest` (chips / Go / navigating).
+          setTimeout(() => injectRoute(kept, keptDest), 0);
+        }
+        return;
+      }
+
       if (msg.type === 'mode') {
         setModeLabel(msg.mode);
         void saveGpsNavPrefs({ mode: msg.mode }).then((p) => {
@@ -315,13 +347,13 @@ export function GpsFullMap() {
           if (!deviceOk) {
             setHudNote(
               loc.ok === false
-                ? `GPS appareil refusé — ${loc.error}`
-                : 'GPS appareil requis — autorisez la localisation',
+                ? t('gps.gpsDeniedWithError', { error: loc.error ?? '' })
+                : t('gps.needGpsAuthorize'),
             );
             setMapOrigin(46.5, 2.5, false);
             return;
           }
-          setHudNote('GPS appareil OK');
+          setHudNote(t('gps.gpsOk'));
           setMapOrigin(loc.data.lat, loc.data.lon, true);
         })();
         return;
@@ -329,7 +361,7 @@ export function GpsFullMap() {
 
       if (msg.type === 'route') {
         if (!gpsOk) {
-          setHudNote('Itinéraire bloqué — GPS appareil requis (pas de fallback Lille)');
+          setHudNote(t('gps.routeBlockedNoFallback'));
           return;
         }
         setDest(msg.to);
@@ -355,27 +387,23 @@ export function GpsFullMap() {
           // No gabarit / maxheight alert banner in HUD — route label only (distance/time).
           setLastRoute(route);
           setHudNote(route.label);
-          injectRoute(route);
+          injectRoute(route, msg.to);
         })();
         return;
       }
 
       if (msg.type === 'navigating' && msg.to) {
         setDest(msg.to);
-        setHudNote(
-          msg.mode === 'camion'
-            ? 'Navigation camion (animation sur carte)'
-            : 'Navigation voiture (animation sur carte)',
-        );
+        setHudNote(msg.mode === 'camion' ? t('gps.navTruckAnim') : t('gps.navCarAnim'));
         return;
       }
 
       if (msg.type === 'arrived' && msg.to) {
         setDest(msg.to);
-        setHudNote('Arrivée animée — tapez Maps / Waze pour le guidage live');
+        setHudNote(t('gps.arrivedHud'));
       }
     },
-    [gpsOk, injectRoute, setMapOrigin],
+    [gpsOk, injectRoute, setMapOrigin, t],
   );
 
   const onMessage = useCallback(
@@ -400,15 +428,16 @@ export function GpsFullMap() {
   if (!bootHtml) {
     return (
       <View style={[styles.fill, styles.boot]}>
-        <Text style={styles.bootTxt}>Chargement carte GPS…</Text>
+        <Text style={styles.bootTxt}>{t('gps.loading')}</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.fill} accessibilityLabel={`Carte GPS mode ${modeLabel}`}>
+    <View style={styles.fill} accessibilityLabel={t('gps.a11y', { mode: modeLabel })}>
       {Platform.OS === 'web' ? (
         <WebIframe
+          title={t('gps.iframeTitle')}
           html={bootHtml}
           onReady={(win) => {
             iframeWinRef.current = win;
@@ -484,14 +513,16 @@ export function GpsFullMap() {
 
 function WebIframe({
   html,
+  title,
   onReady,
 }: {
   html: string;
+  title: string;
   onReady: (win: MapWindow | null) => void;
 }) {
   return (
     <iframe
-      title="Carte GPS"
+      title={title}
       srcDoc={html}
       // No allow-same-origin → opaque unique origin; unpkg/Leaflet cannot read parent storage.
       sandbox="allow-scripts"
