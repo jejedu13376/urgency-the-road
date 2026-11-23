@@ -478,7 +478,9 @@ export function GpsFullMap() {
     // Overpass around a real device fix only — never France overview centroid.
     const origin = lastWatchRef.current ?? (gpsOk ? liveOriginRef.current : null);
     if (!origin || !bootHtml || !gpsOk) return;
-    const prefs = prefsRef.current ?? (await loadGpsNavPrefs());
+    // Reload storage so bridge PASS/NO-PASS matches profil-camion after a save.
+    const prefs = await loadGpsNavPrefs();
+    prefsRef.current = prefs;
     const truck = {
       heightM: prefs.truckHeightM,
       weightT: prefs.truckPtacT,
@@ -630,12 +632,21 @@ export function GpsFullMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Continuous LIVE GPS while Carte / GPS screen is focused — inject ticks, no remount. */
+  /** Continuous LIVE GPS while Carte / GPS screen is focused — inject ticks, no remount.
+   * Also reload gabarit from AsyncStorage (profil-camion may have updated while away). */
   useFocusEffect(
     useCallback(() => {
       let sub: { remove: () => void } | null = null;
       let cancelled = false;
       void (async () => {
+        const stored = await loadGpsNavPrefs();
+        if (cancelled) return;
+        prefsRef.current = stored;
+        setModeLabel(stored.mode);
+        if (bootedRef.current && bootHtml) {
+          applyModeInMap(stored.mode, stored);
+        }
+
         const next = await watchDevicePosition(
           (pos) => {
             if (cancelled) return;
@@ -773,7 +784,7 @@ export function GpsFullMap() {
         cancelled = true;
         sub?.remove();
       };
-    }, [injectLivePosition, setMapOrigin, injectHighlightWeigh, enqueueAlerts]),
+    }, [injectLivePosition, setMapOrigin, injectHighlightWeigh, enqueueAlerts, applyModeInMap, bootHtml]),
   );
 
   useEffect(() => {
@@ -902,18 +913,17 @@ export function GpsFullMap() {
         });
         const reqId = ++routeReqId.current;
         void (async () => {
-          const prefs = prefsRef.current;
-          await saveGpsNavPrefs({
+          // Prefer AsyncStorage / profil-camion gabarit — map BOOT dims can be stale
+          // after a profile save while Carte stays mounted. Never overwrite height/
+          // width/weight/length/axles/hazmat with boot values from the WebView.
+          const stored = await loadGpsNavPrefs();
+          const livePrefs = await saveGpsNavPrefs({
+            ...stored,
             mode: msg.mode,
-            truckHeightM: msg.truck.heightM,
-            truckWidthM: msg.truck.widthM,
-            truckPtacT: msg.truck.weightT,
-            truckLengthM: msg.truck.lengthM ?? prefs?.truckLengthM,
-            axleCount: msg.truck.axleCount ?? prefs?.axleCount,
-            hazmat: msg.truck.hazmat ?? prefs?.hazmat,
-          }).then((p) => {
-            prefsRef.current = p;
           });
+          prefsRef.current = livePrefs;
+          // Keep Leaflet BOOT in sync so a later chip/route does not re-post old dims.
+          applyModeInMap(msg.mode, livePrefs);
           if (reqId !== routeReqId.current) return;
 
           const from = liveOriginRef.current ?? msg.from;
@@ -930,14 +940,13 @@ export function GpsFullMap() {
             .slice(0, 8)
             .map((r) => ({ lat: r.lat, lon: r.lon }));
 
-          const livePrefs = prefsRef.current;
           const route = await fetchVehicleRoute(from, msg.to, msg.mode, {
-            heightM: msg.truck.heightM,
-            widthM: msg.truck.widthM,
-            weightT: msg.truck.weightT,
-            lengthM: msg.truck.lengthM ?? livePrefs?.truckLengthM,
-            axleCount: msg.truck.axleCount ?? livePrefs?.axleCount,
-            hazmat: msg.truck.hazmat ?? livePrefs?.hazmat,
+            heightM: livePrefs.truckHeightM,
+            widthM: livePrefs.truckWidthM,
+            weightT: livePrefs.truckPtacT,
+            lengthM: livePrefs.truckLengthM,
+            axleCount: livePrefs.axleCount,
+            hazmat: livePrefs.hazmat,
           }, { excludeLocations: excludes });
           if (reqId !== routeReqId.current) return;
           // Bridge/weight/weather fire IMMEDIATE overlays via trucker brief (not passive HUD).
@@ -1055,6 +1064,7 @@ export function GpsFullMap() {
       destSelection?.label,
       injectHighlightWeigh,
       refreshAqi,
+      applyModeInMap,
     ],
   );
 
