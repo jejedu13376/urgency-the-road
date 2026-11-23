@@ -260,6 +260,7 @@ export default function EntretienScreen() {
     <>
       <Stack.Screen options={{ title: 'Entretien' }} />
       <Screen
+        variant="stack"
         title="Entretien & carnet"
         subtitle={`Module 10 · ${active?.label ?? 'véhicule'} · ${km.toLocaleString('fr-FR')} km`}
       >
@@ -336,24 +337,28 @@ export default function EntretienScreen() {
           <Pressable style={styles.btnDark} onPress={addCarnet}>
             <Text style={styles.exportTxt}>Ajouter au carnet</Text>
           </Pressable>
-          {carnet.map((e) => (
-            <View key={e.id} style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{e.title}</Text>
-                <Text style={styles.meta}>
-                  {e.dateIso} · {e.km.toLocaleString('fr-FR')} km
-                  {e.invoiceRef ? ` · ${e.invoiceRef}` : ''}
-                </Text>
+          {carnet.length === 0 ? (
+            <Text style={styles.meta}>Carnet vide — ajoutez une intervention ci-dessus.</Text>
+          ) : (
+            carnet.map((e) => (
+              <View key={e.id} style={styles.row}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.name}>{e.title}</Text>
+                  <Text style={styles.meta}>
+                    {e.dateIso} · {e.km.toLocaleString('fr-FR')} km
+                    {e.invoiceRef ? ` · ${e.invoiceRef}` : ''}
+                  </Text>
+                </View>
+                {e.cost != null ? (
+                  <Text style={styles.cost}>
+                    {e.cost} {e.currency}
+                  </Text>
+                ) : (
+                  <Text style={styles.meta}>—</Text>
+                )}
               </View>
-              {e.cost != null ? (
-                <Text style={styles.cost}>
-                  {e.cost} {e.currency}
-                </Text>
-              ) : (
-                <Text style={styles.meta}>—</Text>
-              )}
-            </View>
-          ))}
+            ))
+          )}
           <Pressable style={styles.export} onPress={exportCarnet}>
             <Text style={styles.exportTxt}>Partager carnet (texte)</Text>
           </Pressable>

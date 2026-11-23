@@ -129,7 +129,8 @@ export async function createTextFeedPost(input: {
         comments: 0,
         createdAt: new Date().toISOString(),
       };
-      return mockResult(local, 'SOFT publish — permission/DEV (local mock)');
+      // Keep draft data for UI append, but ok:false — never fake live publish success.
+      return failResult(local, 'SOFT publish — permission/DEV (brouillon local, ok:false)');
     }
     return failResult(null, e instanceof Error ? e.message : 'Publication refusée');
   }

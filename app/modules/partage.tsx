@@ -110,7 +110,8 @@ export default function PartageScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Partage' }} />
-      <Screen title="Partage viral" subtitle="Module 16 — installation universelle">
+      <Screen
+        variant="stack" title="Partage viral" subtitle="Module 16 — installation universelle">
         <StubBanner
           text={
             canShareLink

@@ -3,7 +3,7 @@
 **App:** `jejedu13376/urgency-the-road`  
 **Shell:** Expo Router · tabs FR · onglet exact **« Mon véhicule »**  
 **Formations:** PAUSED (untouched)  
-**Updated:** 2026-11-23 — Tip `main` [#22](https://github.com/jejedu13376/urgency-the-road/pull/22) `6d1e127` · Deferred bugs [#19](https://github.com/jejedu13376/urgency-the-road/pull/19) `487204c` (PHI, fleet, appointments, rate-limit, activeId rematch) · Batch E [#21](https://github.com/jejedu13376/urgency-the-road/pull/21) · Batch C [#16](https://github.com/jejedu13376/urgency-the-road/pull/16) · Photon [#18](https://github.com/jejedu13376/urgency-the-road/pull/18) · Deploy blocked: `FIREBASE_TOKEN` / Multi-IA / `EXPO_TOKEN` · Expo Go local OK without deploy tokens
+**Updated:** 2026-11-23 — Soft-fail honesty + UI polish (appointments/hazards/GPS/OBD/feed/quotes → `ok:false`, Screen `variant=stack`, WeatherBanner prefs, SOS→Urgence, empty states, unit tests) · Soft-fail mock [#26](https://github.com/jejedu13376/urgency-the-road/pull/26) · Nav hubs [#28](https://github.com/jejedu13376/urgency-the-road/pull/28) · Deploy blocked: `FIREBASE_TOKEN` / Multi-IA / `EXPO_TOKEN` · Expo Go local OK without deploy tokens
 
 ## UX vendeur / addiction (leviers)
 
@@ -22,24 +22,36 @@
 | M | Écran | LIVE / coded | Still stub / blocked |
 | --- | --- | --- | --- |
 | 1 | `/(tabs)/mon-vehicule` | NHTSA VIN + camera scan · fluids heuristique · recalls | OEM deep fluids API |
-| 2 | `/modules/flotte` | Cascade + flotte AsyncStorage **uid-scoped** · Firestore pull + migrate **explicite** | — |
+| 2 | `/modules/flotte` | Cascade + flotte AsyncStorage **uid-scoped** · Firestore pull + migrate **explicite** · empty copy | — |
 | 3 | `/modules/pieces` | VIN/WMI catalogue local + buy search URLs · **OCR-lite collage texte** + saisie manuelle | Mondial OEM catalogue · OCR ML Kit / Document AI |
 | 4 | `/modules/diagnostic-ia` | Camera LIVE + Multi-IA **texte** · YouTube · **micro LIVE expo-audio + metering** | Vision pixels (API / modèle vision) |
-| 5 | `/modules/obd` | VIN→valise reco · BLE scaffold (ELM327 path coded) | **Hardware:** Dev Client + dongle BLE |
-| 6 | `/modules/multi-ia` | Heuristic + proxy-only client + NHTSA recalls | **Service:** `EXPO_PUBLIC_MULTI_IA_PROXY_URL` + provider secrets (deploy other workers) |
-| 7 | `/modules/gps` | Device GPS · Open-Meteo **forward** · Photon **reverse** · Maps/Waze/Apple · OSM maxheight advisory | Graphe ponts/PTAC commercial |
-| 8 | `/modules/routiers` | Overpass/Photon weigh + dépôts · radius · **opening_hours OSM advisory ON/OFF** | Feed ON/OFF juridiction payant (no free global live API) |
-| 9 | `/modules/garages` | Overpass/Photon around GPS · radius · tel/maps | Places proprietary API |
-| 10 | `/modules/entretien` | Rappels km/admin · carnet AsyncStorage · share texte/HTML-lite · **PDF imprimable expo-print** | PDF certifié signé (backend signature) |
+| 5 | `/modules/obd` | VIN→valise reco · BLE scaffold · soft-fail permission **sans** DTC mock live | **Hardware:** Dev Client + dongle BLE |
+| 6 | `/modules/multi-ia` | Heuristic + proxy-only client + NHTSA recalls · empty recalls copy | **Service:** `EXPO_PUBLIC_MULTI_IA_PROXY_URL` + provider secrets (deploy other workers) |
+| 7 | `/modules/gps` | Device GPS · Photon reverse · prefs/hazards soft → **ok:false** (pas de pins mock) | Graphe ponts/PTAC commercial |
+| 8 | `/modules/routiers` | Overpass/Photon weigh + dépôts · radius · **opening_hours OSM advisory ON/OFF** (+ unit tests) | Feed ON/OFF juridiction payant (no free global live API) |
+| 9 | `/modules/garages` | Overpass/Photon around GPS · rating soft → **ok:false** | Places proprietary API |
+| 10 | `/modules/entretien` | Rappels km/admin · carnet AsyncStorage · empty carnet copy · PDF non certifié | PDF certifié signé (backend signature) |
 | 11 | `/modules/tutoriels` | YouTube suggestions + redirection | — (cahier: pas de vidéo embarquée) |
-| 12 | `/(tabs)/fil` | Texte Firestore si Auth · likes/comments locaux · **pick vidéo locale** (méta) | Upload vidéo CDN |
-| 13 | `/modules/urgence` + SOS | SOS/112/QR · **GPS device only** (refuse fallback) | **Produit:** auth secours (badge / abo intervenant) |
+| 12 | `/(tabs)/fil` | Texte Firestore · publish soft **ok:false** · empty Fil card | Upload vidéo CDN |
+| 13 | `/modules/urgence` + SOS | SOS FAB → `/modules/urgence` · medical arrays normalized | **Produit:** auth secours (badge / abo intervenant) |
 | 14 | `/modules/bases` | learnedFailures owner-write + AsyncStorage journal + migrate Auth · OTA probe honnête | OTA EAS canal prod |
 | 15 | `/modules/compte` | Auth + bio + password rules · checkout URL scaffolding | **Service:** Stripe / PayPal / RevenueCat keys |
 | 16 | `/modules/partage` | Share sheet multi-canal · install URL resolve/open | `EXPO_PUBLIC_INSTALL_URL` prod |
-| 17 | `/modules/pro` + `/modules/admin` | RDV Firebase si Auth · **KPI / flags / avis persistés AsyncStorage** | **Backend:** Pro/Admin KPI cloud + atelier server |
+| 17 | `/modules/pro` + `/modules/admin` | RDV Firebase si Auth · soft empty/deny **sans** mock RDVs · KPI local | **Backend:** Pro/Admin KPI cloud + atelier server |
 
-### Batch E — software fills (this PR)
+### Soft-fail honesty + UI polish (this PR)
+
+| Area | What landed |
+| --- | --- |
+| Soft-fail | appointments / hazards / GPS prefs / OBD / feed publish / quotes / insurance / garage rating → `failResult` (`ok:false`) on permission/DEV — never fake live success |
+| Screen chrome | `Screen variant="stack"` on all modules — no double title / chrome inset under Stack header |
+| Weather | `showWeather` prefs wire + hide WeatherBanner on `/modules/*` |
+| SOS | FAB opens Urgence module (112 stays on-screen) |
+| Hubs | Paramètres prefs shared · Mon véhicule rappels from carnet local · Fournitures honest stub |
+| Empty UX | Fil / multi-ia recalls / entretien carnet / flotte |
+| Tests | `npm test` — `openingHours`, `parseQuoteTextAmounts`, soft-fail helpers |
+
+### Batch E — software fills (prior)
 
 | M | What landed |
 | --- | --- |

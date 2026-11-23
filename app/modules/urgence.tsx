@@ -113,11 +113,11 @@ export default function UrgenceScreen() {
     setFullName(c.fullName);
     setAddress(c.address ?? '');
     setBloodType(c.bloodType ?? '');
-    setAllergies(c.allergies.join(', '));
-    setConditions(c.conditions.join(', '));
-    setMedications(c.medications.join(', '));
-    setContactName(c.emergencyContacts[0]?.name ?? '');
-    setContactPhone(c.emergencyContacts[0]?.phone ?? '');
+    setAllergies((c.allergies ?? []).join(', '));
+    setConditions((c.conditions ?? []).join(', '));
+    setMedications((c.medications ?? []).join(', '));
+    setContactName(c.emergencyContacts?.[0]?.name ?? '');
+    setContactPhone(c.emergencyContacts?.[0]?.phone ?? '');
   };
 
   const saveCard = async () => {
@@ -207,7 +207,8 @@ export default function UrgenceScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Urgence' }} />
-      <Screen title="Urgence & sécurité" subtitle="Module 13 — QR médical personnel">
+      <Screen
+        variant="stack" title="Urgence & sécurité" subtitle="Module 13 — QR médical personnel">
         <BackendStatusBanner />
         <StubBanner
           text={
@@ -363,9 +364,15 @@ export default function UrgenceScreen() {
                   : '—'}
               </Text>
               <Text style={styles.line}>Groupe sanguin : {emergencyView.bloodType ?? '—'}</Text>
-              <Text style={styles.line}>Allergies : {emergencyView.allergies.join(', ') || '—'}</Text>
-              <Text style={styles.line}>Antécédents : {emergencyView.conditions.join(', ') || '—'}</Text>
-              <Text style={styles.line}>Traitements : {emergencyView.medications.join(', ') || '—'}</Text>
+              <Text style={styles.line}>
+                Allergies : {(emergencyView.allergies ?? []).join(', ') || '—'}
+              </Text>
+              <Text style={styles.line}>
+                Antécédents : {(emergencyView.conditions ?? []).join(', ') || '—'}
+              </Text>
+              <Text style={styles.line}>
+                Traitements : {(emergencyView.medications ?? []).join(', ') || '—'}
+              </Text>
             </View>
           ) : null}
         </Card>

@@ -213,7 +213,8 @@ export default function ProScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Espace Pro' }} />
-      <Screen title="Pro garagistes" subtitle="Module 17 — atelier · RDV · pièces · notes">
+      <Screen
+        variant="stack" title="Pro garagistes" subtitle="Module 17 — atelier · RDV · pièces · notes">
         <BackendStatusBanner />
         {label ? <StubBanner text={label} /> : null}
 

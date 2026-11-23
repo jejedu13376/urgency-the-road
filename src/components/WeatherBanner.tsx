@@ -1,19 +1,36 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getDeviceCoords } from '../services/geo/deviceLocation';
+import { loadLocalPrefs } from '../services/prefs/localPrefs';
 import { fetchWeather, type WeatherSnapshot } from '../services/weather/openMeteo';
 import { colors } from '../theme/colors';
 
-/** Top-right — leaves top-left free for permanent red spinner. */
+/** Top-right — leaves top-left free for permanent red spinner. Hidden on /modules/* (Stack header). */
 export function WeatherBanner() {
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
+  const onModules = pathname?.includes('/modules');
+  const [enabled, setEnabled] = useState(true);
   const [w, setW] = useState<WeatherSnapshot | null>(null);
   const now = new Date();
   const date = now.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' });
   const time = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
   useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const prefs = await loadLocalPrefs();
+      if (!cancelled) setEnabled(prefs.showWeather);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!enabled || onModules) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -46,7 +63,9 @@ export function WeatherBanner() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [enabled, onModules]);
+
+  if (!enabled || onModules) return null;
 
   const temp = w?.tempC ?? '…';
   const road = w?.road ?? 'ouvertes';
@@ -75,5 +94,5 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   main: { color: colors.white, fontSize: 11, fontWeight: '600' },
-  stub: { color: '#C9D3DC', fontSize: 9, marginTop: 2 },
+  stub: { color: colors.mist, fontSize: 9, marginTop: 2 },
 });

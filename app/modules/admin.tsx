@@ -149,7 +149,8 @@ export default function AdminScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Super-admin' }} />
-      <Screen title="Super-admin" subtitle="Module 17 — comptes · contenus · flags · abo">
+      <Screen
+        variant="stack" title="Super-admin" subtitle="Module 17 — comptes · contenus · flags · abo">
         <StubBanner text="Admin UI locale persistée · KPI cloud / backend Pro non branchés" />
         {persistLabel ? <Text style={styles.meta}>{persistLabel}</Text> : null}
 

@@ -154,11 +154,17 @@ export default function FlotteScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Flotte & cascade' }} />
-      <Screen title="Sélecteur cascade" subtitle="Module 2 — multi-flotte · Continent → pannes">
+      <Screen
+        variant="stack" title="Sélecteur cascade" subtitle="Module 2 — multi-flotte · Continent → pannes">
         <Card title={`Véhicules enregistrés (${vehicles.length})`}>
           <Text style={styles.hint}>
             Activez un véhicule en 1 clic (perso, pick-up, PL). Le véhicule actif alimente VIN / pièces / GPS.
           </Text>
+          {vehicles.length === 0 ? (
+            <Text style={styles.hint}>
+              Flotte vide — utilisez la cascade ci-dessous ou ajoutez un véhicule manuellement.
+            </Text>
+          ) : null}
           <View style={styles.syncRow}>
             <Text style={styles.syncBadge}>
               {syncSource === 'firestore' ? 'CLOUD' : syncSource === 'pending' ? 'SYNC…' : 'LOCAL'}

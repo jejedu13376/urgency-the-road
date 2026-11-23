@@ -96,6 +96,7 @@ export default function GaragesScreen() {
     <>
       <Stack.Screen options={{ title: 'Garages GPS' }} />
       <Screen
+        variant="stack"
         title="Autour de moi"
         subtitle={`Module 9 · ${places.length} pin(s)${isPl ? ' · contexte PL' : ''}`}
       >

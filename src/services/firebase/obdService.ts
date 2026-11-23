@@ -44,9 +44,22 @@ export async function readObdSnapshot(
     return liveResult({ ...payload, id: ref.id, source: 'stub' });
   } catch (e) {
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult(payload, 'SOFT OBD — permission/DEV (mock lecture)');
+      // Never present mock DTCs as a successful signed-in read.
+      return failResult(
+        {
+          ...payload,
+          dtcCodes: [],
+          sensors: {},
+          connected: false,
+          source: 'mock',
+        },
+        'SOFT OBD — permission/DEV (pas de lecture mock présentée comme live)',
+      );
     }
-    return failResult(payload, e instanceof Error ? e.message : 'OBD write refusé');
+    return failResult(
+      { ...payload, dtcCodes: [], sensors: {}, connected: false },
+      e instanceof Error ? e.message : 'OBD write refusé',
+    );
   }
 }
 
@@ -77,10 +90,7 @@ export async function listObdHistory(
     );
   } catch (e) {
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult(
-        [mockReading(uid ?? 'mock', vehicleId, 'J1939')],
-        'SOFT OBD history — permission/DEV',
-      );
+      return failResult([], 'SOFT OBD history — permission/DEV (vide, ok:false)');
     }
     return failResult([], e instanceof Error ? e.message : 'OBD history refusée');
   }

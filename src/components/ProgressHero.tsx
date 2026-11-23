@@ -11,12 +11,24 @@ const BADGE_META: { id: string; label: string; hint: string }[] = [
 
 /** Progression vendeuse : barre 17 modules + streak + XP + badges visibles. */
 export function ProgressHero() {
-  const { visited, streakDays, xp, completionPct, todayBonusClaimed, claimDailyBonus, badges } =
+  const { ready, visited, streakDays, xp, completionPct, todayBonusClaimed, claimDailyBonus, badges } =
     useProgress();
   const nextBonus = 10 + Math.min(Math.max(streakDays, 1), 14) * 2;
 
+  if (!ready) {
+    return (
+      <View style={styles.wrap} accessibilityLabel="Chargement progression">
+        <Text style={styles.kicker}>Parcours vendeur Urgence Mécanique</Text>
+        <Text style={styles.title}>Chargement…</Text>
+        <View style={styles.track}>
+          <View style={[styles.fill, { width: '8%' }]} />
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} accessibilityLabel={`Progression ${completionPct} pour cent`}>
       <View style={styles.top}>
         <View style={{ flex: 1 }}>
           <Text style={styles.kicker}>Parcours vendeur Urgence Mécanique</Text>
@@ -53,6 +65,10 @@ export function ProgressHero() {
           Streak actif · bonus jour {todayBonusClaimed ? 'réclamé' : `+${nextBonus} XP`}
         </Text>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            todayBonusClaimed ? 'Bonus du jour déjà réclamé' : `Récupérer bonus plus ${nextBonus} XP`
+          }
           style={[styles.bonus, todayBonusClaimed && styles.bonusDone]}
           disabled={todayBonusClaimed}
           onPress={() => claimDailyBonus()}
@@ -91,7 +107,7 @@ const styles = StyleSheet.create({
   },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   kicker: {
-    color: '#9BB0C2',
+    color: colors.mist,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.4,
@@ -108,38 +124,44 @@ const styles = StyleSheet.create({
   },
   streakFire: { fontSize: 14 },
   streakVal: { color: colors.white, fontWeight: '900', fontSize: 18, lineHeight: 20 },
-  streakLbl: { color: '#FFE8D6', fontSize: 10, fontWeight: '700' },
-  track: { height: 8, backgroundColor: '#2A3848', borderRadius: 8, overflow: 'hidden' },
+  streakLbl: { color: colors.signalSoft, fontSize: 10, fontWeight: '700' },
+  track: { height: 8, backgroundColor: colors.slate, borderRadius: 8, overflow: 'hidden' },
   fill: { height: '100%', backgroundColor: colors.signal, borderRadius: 8 },
   xpRow: { flexDirection: 'row', gap: 8 },
   xpCard: {
     flex: 1,
-    backgroundColor: '#243040',
+    backgroundColor: colors.slate,
     borderRadius: 10,
     paddingVertical: 8,
     alignItems: 'center',
   },
   xpVal: { color: colors.white, fontWeight: '900', fontSize: 15 },
-  xpLbl: { color: '#9BB0C2', fontSize: 10, fontWeight: '700', marginTop: 2 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  meta: { color: '#C5D2DE', fontSize: 12, flex: 1 },
+  xpLbl: { color: colors.mist, fontSize: 10, fontWeight: '700', marginTop: 2 },
+  row: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  meta: { color: colors.mist, fontSize: 12, flexGrow: 1, flexShrink: 1, minWidth: 120 },
   bonus: { backgroundColor: colors.garage, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8 },
-  bonusDone: { backgroundColor: '#3A4A3F' },
+  bonusDone: { backgroundColor: colors.slate },
   bonusTxt: { color: colors.white, fontWeight: '700', fontSize: 11 },
-  badgesTitle: { color: '#9BB0C2', fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  badgesTitle: { color: colors.mist, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
   badgeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   badge: {
     width: '48%',
     flexGrow: 1,
-    backgroundColor: '#243040',
+    backgroundColor: colors.slate,
     borderRadius: 8,
     padding: 8,
     borderWidth: 1,
-    borderColor: '#2A3848',
+    borderColor: colors.asphalt,
   },
-  badgeOn: { borderColor: colors.garage, backgroundColor: '#1E3328' },
-  badgeName: { color: '#8A9AAB', fontWeight: '800', fontSize: 11 },
-  badgeNameOn: { color: '#B8E0C8' },
-  badgeHint: { color: '#6B7785', fontSize: 10, marginTop: 2 },
-  badgeHintOn: { color: '#7A9A88' },
+  badgeOn: { borderColor: colors.garage, backgroundColor: colors.garage },
+  badgeName: { color: colors.muted, fontWeight: '800', fontSize: 11 },
+  badgeNameOn: { color: colors.white },
+  badgeHint: { color: colors.muted, fontSize: 10, marginTop: 2 },
+  badgeHintOn: { color: colors.garageSoft },
 });

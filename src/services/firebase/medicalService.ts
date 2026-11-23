@@ -447,7 +447,16 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
     for (const id of [medicalCardDocId(uid), uid]) {
       const snap = await getDoc(doc(fb.db, COLLECTIONS.medicalCards, id));
       if (snap.exists()) {
-        return liveResult({ id: snap.id, ...(snap.data() as Omit<MedicalCardDoc, 'id'>) });
+        const raw = snap.data() as Omit<MedicalCardDoc, 'id'>;
+        // Normalize arrays — incomplete Firestore docs must not crash hydrateForm .join().
+        return liveResult({
+          id: snap.id,
+          ...raw,
+          allergies: raw.allergies ?? [],
+          conditions: raw.conditions ?? [],
+          medications: raw.medications ?? [],
+          emergencyContacts: raw.emergencyContacts ?? [],
+        });
       }
     }
     return liveResult(null);

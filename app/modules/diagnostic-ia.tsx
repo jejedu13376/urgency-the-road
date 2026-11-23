@@ -405,6 +405,7 @@ export default function DiagnosticIaScreen() {
     <>
       <Stack.Screen options={{ title: 'Diagnostic IA' }} />
       <Screen
+        variant="stack"
         title="Diagnostic intelligent"
         subtitle={`Module 4 · ${active?.make ?? '—'} ${active?.model ?? ''}`.trim()}
       >

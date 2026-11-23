@@ -5,6 +5,8 @@ import { colors } from '../theme/colors';
 
 /** Room below status bar for permanent spinner (36) + margin and weather chip. */
 const CHROME_BELOW_INSET = 48;
+/** SOS FAB sits at bottom ~92 with height 58 — clear last CTAs. */
+const SOS_FAB_CLEARANCE = 166;
 
 export function Screen({
   title,
@@ -13,6 +15,7 @@ export function Screen({
   scroll = true,
   refreshing,
   onRefresh,
+  variant = 'tabs',
 }: {
   title: string;
   subtitle?: string;
@@ -20,9 +23,15 @@ export function Screen({
   scroll?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
+  /**
+   * `tabs` — full chrome inset for WeatherBanner / spinner above custom header.
+   * `stack` — nested under modules Stack header (no double title, no chrome inset).
+   */
+  variant?: 'tabs' | 'stack';
 }) {
   const insets = useSafeAreaInsets();
-  const headerPadTop = insets.top + CHROME_BELOW_INSET;
+  const isStack = variant === 'stack';
+  const headerPadTop = isStack ? 8 : insets.top + CHROME_BELOW_INSET;
 
   const body = scroll ? (
     <ScrollView
@@ -42,10 +51,18 @@ export function Screen({
 
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
-      <View style={[styles.header, { paddingTop: headerPadTop }]}>
-        <Text style={styles.title}>{title}</Text>
-        {subtitle ? <Text style={styles.sub}>{subtitle}</Text> : null}
-      </View>
+      {isStack ? (
+        subtitle ? (
+          <View style={styles.stackSubWrap}>
+            <Text style={styles.sub}>{subtitle}</Text>
+          </View>
+        ) : null
+      ) : (
+        <View style={[styles.header, { paddingTop: headerPadTop }]}>
+          <Text style={styles.title}>{title}</Text>
+          {subtitle ? <Text style={styles.sub}>{subtitle}</Text> : null}
+        </View>
+      )}
       {body}
     </SafeAreaView>
   );
@@ -60,7 +77,15 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.line,
     backgroundColor: colors.white,
   },
+  stackSubWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+    backgroundColor: colors.white,
+  },
   title: { fontSize: 22, fontWeight: '800', color: colors.ink, letterSpacing: -0.3 },
-  sub: { marginTop: 4, color: colors.muted, fontSize: 13 },
-  content: { padding: 16, paddingBottom: 40, gap: 12 },
+  sub: { marginTop: 0, color: colors.muted, fontSize: 13 },
+  content: { padding: 16, paddingBottom: SOS_FAB_CLEARANCE, gap: 12 },
 });

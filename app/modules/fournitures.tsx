@@ -19,10 +19,11 @@ export default function FournituresHub() {
     <>
       <Stack.Screen options={{ title: 'Je fournis / L’app fournit' }} />
       <Screen
+        variant="stack"
         title="Je fournis / L’app fournit"
         subtitle="Documents · pièces · services — qui apporte quoi"
       >
-        <StubBanner text="MOCK — aperçu fournitures depuis mocks locaux (partage / pièces / pro)" />
+        <StubBanner text="MOCK local — aperçu fournitures (catalogue / lieux mocks). Pas d’API Places ni OEM." />
 
         <Card title="Vous fournissez">
           <Text style={styles.meta}>

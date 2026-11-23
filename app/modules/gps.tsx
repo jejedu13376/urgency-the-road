@@ -191,7 +191,8 @@ export default function GpsScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Double GPS' }} />
-      <Screen title="Navigation" subtitle="Module 7 — PL & voiture · transfert Maps / Waze / Apple">
+      <Screen
+        variant="stack" title="Navigation" subtitle="Module 7 — PL & voiture · transfert Maps / Waze / Apple">
         <BackendStatusBanner />
         <StubBanner text={label ?? 'GPS — geocode Open-Meteo + handoff apps'} />
 

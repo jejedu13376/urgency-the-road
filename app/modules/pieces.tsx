@@ -90,6 +90,7 @@ export default function PiecesScreen() {
     <>
       <Stack.Screen options={{ title: 'Pièces & devis' }} />
       <Screen
+        variant="stack"
         title="Achats & devis"
         subtitle={`Module 3 · VIN ${active?.vin ?? '—'} · ${active?.make ?? ''} ${active?.model ?? ''}`}
       >

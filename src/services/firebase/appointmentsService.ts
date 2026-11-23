@@ -63,19 +63,23 @@ export async function listAppointmentsForGarage(
         limit(40),
       ),
     );
-    if (snap.empty) return mockResult(mockStore, 'MOCK appointments — Firestore vide');
+    // Empty Firestore = honest empty — never inject mock RDVs as live success.
+    if (snap.empty) {
+      return liveResult([], 'RDV Firestore vide — aucun rendez-vous (pas de mock)');
+    }
     return liveResult(
       snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AppointmentDoc, 'id'>) })),
     );
   } catch (e) {
-    // Soft-fail permissions / DEV → mock so Pro screen still loads.
+    // Soft-fail: ok:false + empty — Pro UI loads without fake RDVs.
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult(
-        mockStore.filter((a) => a.garageOwnerUid === garageOwnerUid || garageOwnerUid === 'garage-pro-1'),
-        'SOFT appointments — permission/DEV (mock, UI charge)',
+      return failResult(
+        [],
+        isPermissionDenied(e)
+          ? 'SOFT appointments — permission refusée (liste vide, UI charge)'
+          : 'SOFT appointments — DEV (liste vide, pas de mock live)',
       );
     }
-    // Other signed-in errors: empty + ok:false — never fake live RDVs.
     return failResult([], e instanceof Error ? e.message : 'Lecture RDV refusée');
   }
 }
@@ -115,7 +119,10 @@ export async function createAppointment(
   } catch (e) {
     if (isPermissionDenied(e) || isDevSoftAuth()) {
       mockStore = [payload, ...mockStore];
-      return mockResult(payload, 'SOFT appointment create — permission/DEV (local mock)');
+      return failResult(
+        payload,
+        'SOFT appointment create — permission/DEV (brouillon local, ok:false)',
+      );
     }
     return failResult(payload, e instanceof Error ? e.message : 'Création RDV échouée');
   }
@@ -141,10 +148,10 @@ export async function updateAppointment(
       if (idx < 0) {
         const soft = { id, ...patch } as AppointmentDoc;
         mockStore = [soft, ...mockStore];
-        return mockResult(soft, 'SOFT appointment update — permission/DEV');
+        return failResult(soft, 'SOFT appointment update — permission/DEV (ok:false)');
       }
       mockStore[idx] = { ...mockStore[idx], ...patch };
-      return mockResult(mockStore[idx], 'SOFT appointment update — permission/DEV');
+      return failResult(mockStore[idx], 'SOFT appointment update — permission/DEV (ok:false)');
     }
     return failResult(null, e instanceof Error ? e.message : 'Mise à jour RDV refusée');
   }

@@ -89,7 +89,8 @@ export default function TutorielsScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Tutoriels' }} />
-      <Screen title="Tutoriels" subtitle="Module 11 — aucune vidéo embarquée">
+      <Screen
+        variant="stack" title="Tutoriels" subtitle="Module 11 — aucune vidéo embarquée">
         <StubBanner text="Pas de fichier vidéo dans l’app : suggestions YouTube + redirection Watch / recherche" />
 
         <Card title="Rechercher une opération">
