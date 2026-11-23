@@ -122,11 +122,18 @@ export async function signUpEmail(
 }
 
 /** True when a Firebase user is signed in with a verified email (or mock/unconfigured). */
-export function isCurrentEmailVerified(): boolean {
+export async function isCurrentEmailVerified(): Promise<boolean> {
   if (!isFirebaseConfigured()) return true;
-  const u = getFirebase()?.auth.currentUser;
+  const fb = getFirebase();
+  const u = fb?.auth.currentUser;
   if (!u) return false;
-  return Boolean(u.emailVerified);
+  try {
+    await u.reload();
+    await u.getIdToken(true);
+  } catch {
+    // fall through to cached flag
+  }
+  return Boolean(fb?.auth.currentUser?.emailVerified);
 }
 
 /** Resend Firebase verification email to the signed-in user. */

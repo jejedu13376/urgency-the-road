@@ -103,26 +103,28 @@ function heuristicVote(engine: IaEngineId, prompt: string, context: string): IaE
   };
 }
 
-async function authBearerForProxy(): Promise<string | undefined> {
+/**
+ * Reload Auth user + force-refresh ID token so emailVerified is fresh after the
+ * user clicks the verification link (without requiring full sign-out).
+ */
+async function refreshAuthUserForProxy(): Promise<{
+  bearer?: string;
+  needsVerification: boolean;
+}> {
   try {
     const fb = getFirebase();
     const user = fb?.auth.currentUser;
-    if (!user) return undefined;
-    // Server requires email_verified — skip LIVE until verified (avoid useless 401s).
-    if (!user.emailVerified) return undefined;
-    const token = await user.getIdToken();
-    return token ? `Bearer ${token}` : undefined;
+    if (!user) return { needsVerification: false };
+    await user.reload();
+    const fresh = fb.auth.currentUser;
+    if (!fresh) return { needsVerification: false };
+    if (!fresh.emailVerified) return { needsVerification: true };
+    const token = await fresh.getIdToken(true);
+    return token
+      ? { bearer: `Bearer ${token}`, needsVerification: false }
+      : { needsVerification: false };
   } catch {
-    return undefined;
-  }
-}
-
-function signedInNeedsEmailVerification(): boolean {
-  try {
-    const user = getFirebase()?.auth.currentUser;
-    return Boolean(user && !user.emailVerified);
-  } catch {
-    return false;
+    return { needsVerification: false };
   }
 }
 
@@ -134,19 +136,17 @@ async function liveProxyVote(
   engine: IaEngineId,
   prompt: string,
   context: string,
+  bearer: string | undefined,
 ): Promise<IaEngineVote | null> {
   const base = proxyUrl();
-  if (!base) return null;
-  // Proxy requires Firebase ID token — without it, skip live and use heuristic.
-  const auth = await authBearerForProxy();
-  if (!auth) return null;
+  if (!base || !bearer) return null;
   const t0 = Date.now();
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 8000);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      Authorization: auth,
+      Authorization: bearer,
     };
     const res = await fetch(base, {
       method: 'POST',
@@ -206,8 +206,9 @@ async function engineVote(
   engine: IaEngineId,
   prompt: string,
   context: string,
+  bearer: string | undefined,
 ): Promise<IaEngineVote> {
-  const viaProxy = await liveProxyVote(engine, prompt, context);
+  const viaProxy = await liveProxyVote(engine, prompt, context, bearer);
   if (viaProxy) return viaProxy;
   return heuristicVote(engine, prompt, context);
 }
@@ -293,8 +294,13 @@ export async function runMultiIaDiagnostic(opts: {
     };
   }
 
+  // One reload + force token refresh for the whole diagnostic (not per engine).
+  const authState = proxyUrl()
+    ? await refreshAuthUserForProxy()
+    : { needsVerification: false as boolean, bearer: undefined as string | undefined };
+
   const settled = await Promise.allSettled(
-    enabled.map((engine) => engineVote(engine, prompt, context)),
+    enabled.map((engine) => engineVote(engine, prompt, context, authState.bearer)),
   );
 
   const engines: IaEngineVote[] = settled.map((s, i) => {
@@ -314,7 +320,7 @@ export async function runMultiIaDiagnostic(opts: {
   const liveCount = engines.filter((e) => e.source === 'live' && e.ok).length;
   const heuristicCount = engines.filter((e) => e.source === 'heuristic' && e.ok).length;
   const hasProxy = Boolean(proxyUrl());
-  const emailVerificationRequired = signedInNeedsEmailVerification();
+  const emailVerificationRequired = authState.needsVerification;
   const ms = Date.now() - t0;
 
   let label: string;

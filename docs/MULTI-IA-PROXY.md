@@ -136,7 +136,7 @@ App: Module 15 sign-in → Module 6 Multi-IA → run diagnostic → expect `sour
   | --- | ---: | --- |
   | Per-UID / window | 30 / 60s | `MULTI_IA_RATE_LIMIT_MAX`, `MULTI_IA_RATE_LIMIT_WINDOW_MS` |
   | Per-UID / UTC day | 200 | `MULTI_IA_DAILY_MAX` |
-  | Per-IP hash / window | 60 / 60s | `MULTI_IA_IP_RATE_LIMIT_MAX` (uses `req.ip` / **rightmost** XFF hop — never leftmost) |
+  | Per-IP hash / window | 60 / 60s | `MULTI_IA_IP_RATE_LIMIT_MAX` (socket peer or **rightmost** XFF — never `req.ip` / leftmost) |
   | **Global / UTC day** | **2000** | `MULTI_IA_GLOBAL_DAILY_MAX` |
   - One Module 6 diagnostic can fire up to 6 parallel POSTs — keep UID window ≥ ~12.
 - Unauthenticated `GET` returns generic health + engine **names** only — **not** which keys are configured. Authenticated `GET` may include `enginesConfigured`.

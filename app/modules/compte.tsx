@@ -106,7 +106,7 @@ export default function CompteScreen() {
         return;
       }
       await refresh();
-      const verified = isCurrentEmailVerified();
+      const verified = await isCurrentEmailVerified();
       setAuthMsg(
         verified
           ? (r.stubLabel ?? `Connecté ${r.data.email}`)

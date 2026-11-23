@@ -74,23 +74,24 @@ function clientSafeMessage(code: unknown, status: number): string {
 
 /**
  * Trusted client IP for rate keys.
- * Never use the leftmost X-Forwarded-For hop (client-spoofable on CF gen2 / Cloud Run).
- * Prefer Express `req.ip` (trust proxy → connecting peer), else rightmost XFF hop
- * (platform-appended), else socket remoteAddress.
+ * Do NOT use Express `req.ip` under Functions Framework `trust proxy` — that is the
+ * leftmost XFF hop (client-spoofable). Prefer socket peer, else rightmost XFF only.
  */
 function clientIp(req: {
-  ip?: string;
   get: (h: string) => string | undefined;
   socket?: { remoteAddress?: string };
+  rawRequest?: { socket?: { remoteAddress?: string } };
 }): string {
-  if (typeof req.ip === 'string' && req.ip.trim()) return req.ip.trim();
+  const remote =
+    req.socket?.remoteAddress?.trim() ||
+    req.rawRequest?.socket?.remoteAddress?.trim() ||
+    '';
+  if (remote) return remote;
   const hops = (req.get('x-forwarded-for') ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
   if (hops.length) return hops[hops.length - 1]!;
-  const remote = req.socket?.remoteAddress?.trim();
-  if (remote) return remote;
   return 'unknown';
 }
 
