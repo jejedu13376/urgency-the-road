@@ -80,12 +80,16 @@ service cloud.firestore {
         || isAdmin()
       );
       allow list: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
+      // Create: index must be absent, OR already owned by caller (recovery / remint leftover)
       allow create: if signedIn()
         && (id == uid() || id == ('med-' + uid()))
         && request.resource.data.ownerUid == uid()
         && request.resource.data.scanCode is string
         && request.resource.data.scanCode.size() >= 8
-        && !exists(/databases/$(database)/documents/medicalScanIndex/$(request.resource.data.scanCode));
+        && (
+          !exists(/databases/$(database)/documents/medicalScanIndex/$(request.resource.data.scanCode))
+          || get(/databases/$(database)/documents/medicalScanIndex/$(request.resource.data.scanCode)).data.ownerUid == uid()
+        );
       // scanCode rotate only after owner already claimed medicalScanIndex/{newCode}
       allow update: if signedIn()
         && (id == uid() || id == ('med-' + uid()))
@@ -108,11 +112,12 @@ service cloud.firestore {
     /**
      * Doc id MUST equal scanCode. list denied → rescuer cannot dump all cards.
      * cardId must be caller's uid or med-{uid} (no pointing index at victim card).
+     * Rescuer get only when subscriberActive == true (inactive = reservation stub, no PHI).
      */
     match /medicalScanIndex/{scanCode} {
       // resource == null on missing docs — needed for collision getDoc before create
       allow get: if (resource == null && signedIn())
-        || isActiveRescuer()
+        || (isActiveRescuer() && resource.data.subscriberActive == true)
         || (signedIn() && resource.data.ownerUid == uid())
         || isAdmin();
       allow list: if false;
