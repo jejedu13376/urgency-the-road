@@ -104,28 +104,41 @@ function parseMapMsg(raw: string): MapMsg | null {
   return msg as MapMsg;
 }
 
-/** Keep WebView on the inline map document — block navigations to external pages. */
+/**
+ * Keep WebView on the inline map document.
+ * Resource loads (OSM tiles / unpkg) are not top-level navigations — block those URLs here.
+ */
 function allowMapDocumentLoad(url: string): boolean {
   if (!url || url === 'about:blank' || url === 'about:srcdoc') return true;
   if (url.startsWith('data:text/html')) return true;
+  // baseUrl used by RN WebView for the inline HTML document only
   if (url === 'https://localhost/' || url === 'https://localhost') return true;
   return false;
 }
 
+/** Origins allowed to host the inline map document (not a catch-all *). */
+const MAP_ORIGIN_WHITELIST = ['about:blank', 'about:srcdoc', 'https://localhost'];
+
 type MapWindow = Window & {
-  __gpsApplyRoute?: (payload: VehicleRouteResult) => void;
-  __gpsSetOrigin?: (lat: number, lon: number, ok?: boolean) => void;
-  __gpsApplyMode?: (
-    mode: GpsVehicleMode,
-    truck?: { heightM?: number; widthM?: number; weightT?: number },
-  ) => void;
-  __gpsSetChrome?: (p: {
-    padTop?: number;
-    padRight?: number;
-    padBottom?: number;
-    padLeft?: number;
-  }) => void;
+  postMessage: (message: unknown, targetOrigin: string) => void;
 };
+
+type ChromePads = {
+  padTop: number;
+  padRight: number;
+  padBottom: number;
+  padLeft: number;
+};
+
+/** Parent → sandboxed map iframe (opaque/null origin — no contentWindow API access). */
+function postGpsCmd(win: MapWindow | null, cmd: Record<string, unknown>) {
+  if (!win) return;
+  try {
+    win.postMessage(JSON.stringify({ __gps: 1, ...cmd }), '*');
+  } catch {
+    /* ignore */
+  }
+}
 
 /**
  * Full-bleed GPS map (OSM/Leaflet). Only HUD overlays — no hub cards.
@@ -139,6 +152,8 @@ export function GpsFullMap() {
   const routeReqId = useRef(0);
   const prefsRef = useRef<GpsNavPrefs | null>(null);
   const bootedRef = useRef(false);
+  /** Skip first vehicle-effect run (map boot) — only react to real fleet changes. */
+  const fleetKeyRef = useRef<string | null>(null);
   const [bootHtml, setBootHtml] = useState<string | null>(null);
   const [hudNote, setHudNote] = useState<string | null>(null);
   const [lastRoute, setLastRoute] = useState<VehicleRouteResult | null>(null);
@@ -146,7 +161,7 @@ export function GpsFullMap() {
   const [modeLabel, setModeLabel] = useState<GpsVehicleMode>('voiture');
   const [gpsOk, setGpsOk] = useState(false);
 
-  const chromePads = useMemo(
+  const chromePads = useMemo<ChromePads>(
     () => ({
       padTop: Math.max(insets.top, 8) + 4,
       padRight: Math.max(insets.right, 8),
@@ -159,11 +174,7 @@ export function GpsFullMap() {
 
   const injectRoute = useCallback((result: VehicleRouteResult) => {
     if (Platform.OS === 'web') {
-      try {
-        iframeWinRef.current?.__gpsApplyRoute?.(result);
-      } catch {
-        /* ignore */
-      }
+      postGpsCmd(iframeWinRef.current, { cmd: 'applyRoute', payload: result });
       return;
     }
     webRef.current?.injectJavaScript(
@@ -173,11 +184,7 @@ export function GpsFullMap() {
 
   const setMapOrigin = useCallback((lat: number, lon: number, ok: boolean) => {
     if (Platform.OS === 'web') {
-      try {
-        iframeWinRef.current?.__gpsSetOrigin?.(lat, lon, ok);
-      } catch {
-        /* ignore */
-      }
+      postGpsCmd(iframeWinRef.current, { cmd: 'setOrigin', lat, lon, ok });
       return;
     }
     webRef.current?.injectJavaScript(
@@ -192,11 +199,7 @@ export function GpsFullMap() {
       weightT: prefs.truckPtacT,
     };
     if (Platform.OS === 'web') {
-      try {
-        iframeWinRef.current?.__gpsApplyMode?.(mode, truck);
-      } catch {
-        /* ignore */
-      }
+      postGpsCmd(iframeWinRef.current, { cmd: 'applyMode', mode, truck });
       return;
     }
     webRef.current?.injectJavaScript(
@@ -257,26 +260,36 @@ export function GpsFullMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Vehicle class / powertrain change → update mode/icon without wiping the map. */
+  /** Vehicle class / powertrain change → update icon without wiping map or clobbering GPS HUD. */
   useEffect(() => {
     if (!bootedRef.current || !bootHtml) return;
+    const key = `${active?.vehicleClass ?? ''}|${active?.powertrain ?? ''}`;
+    // First run is map-ready, not a fleet change — seed key and exit.
+    if (fleetKeyRef.current === null) {
+      fleetKeyRef.current = key;
+      return;
+    }
+    if (fleetKeyRef.current === key) return;
+    fleetKeyRef.current = key;
+
     const isPl =
       active?.vehicleClass === 'poids_lourd' || active?.powertrain === 'poids_lourd_diesel';
     void (async () => {
       const prefs = prefsRef.current ?? (await loadGpsNavPrefs());
-      const nextMode: GpsVehicleMode = isPl ? 'camion' : prefs.mode;
-      const saved = await saveGpsNavPrefs({
-        ...prefs,
-        mode: isPl ? 'camion' : prefs.mode,
-      });
-      prefsRef.current = saved;
+      // Respect stored voiture/camion — never force camion over an explicit voiture choice.
+      const nextMode: GpsVehicleMode = prefs.mode;
       setModeLabel(nextMode);
-      applyModeInMap(nextMode, saved);
-      setHudNote(
-        isPl
-          ? 'Véhicule PL actif — profil camion (carte conservée)'
-          : 'Profil véhicule mis à jour — carte conservée',
-      );
+      applyModeInMap(nextMode, prefs);
+      setHudNote((prev) => {
+        if (prev && /GPS appareil/i.test(prev)) return prev;
+        if (isPl && nextMode === 'voiture') {
+          return 'Véhicule PL — mode voiture conservé (choix enregistré)';
+        }
+        if (isPl && nextMode === 'camion') {
+          return 'Véhicule PL actif — profil camion (carte conservée)';
+        }
+        return 'Profil véhicule mis à jour — carte conservée';
+      });
     })();
   }, [active?.vehicleClass, active?.powertrain, bootHtml, applyModeInMap]);
 
@@ -284,11 +297,7 @@ export function GpsFullMap() {
   useEffect(() => {
     if (!bootHtml) return;
     if (Platform.OS === 'web') {
-      try {
-        iframeWinRef.current?.__gpsSetChrome?.(chromePads);
-      } catch {
-        /* ignore */
-      }
+      postGpsCmd(iframeWinRef.current, { cmd: 'setChrome', pads: chromePads });
       return;
     }
     webRef.current?.injectJavaScript(
@@ -441,9 +450,10 @@ export function GpsFullMap() {
       ) : (
         <MapWebView
           ref={webRef}
-          originWhitelist={['about:blank', 'about:srcdoc']}
+          originWhitelist={MAP_ORIGIN_WHITELIST}
           source={{
             html: bootHtml,
+            // Must match whitelist so the inline document loads (not Linking.openURL).
             baseUrl: 'https://localhost/',
           }}
           style={styles.fill}
@@ -516,6 +526,9 @@ function WebIframe({
     <iframe
       title="Carte GPS"
       srcDoc={html}
+      // No allow-same-origin → opaque unique origin; unpkg/Leaflet cannot read parent storage.
+      sandbox="allow-scripts"
+      referrerPolicy="no-referrer"
       style={{ border: 'none', width: '100%', height: '100%', flex: 1 }}
       ref={(node) => {
         onReady((node?.contentWindow as MapWindow | null) ?? null);
