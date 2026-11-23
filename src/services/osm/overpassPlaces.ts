@@ -166,10 +166,17 @@ export type NearbyWeighResult = {
   error?: string;
 };
 
-function regionFromCountry(country?: string): WeighStationDoc['region'] {
+export function regionFromCountry(country?: string): WeighStationDoc['region'] {
   const c = (country ?? '').toUpperCase();
   if (['US', 'CA', 'MX'].includes(c)) return 'NA';
   if (['AU', 'NZ'].includes(c)) return 'AU';
+  return 'EU';
+}
+
+/** Coarse region from WGS84 — used when OSM/Photon omit country tags. */
+export function regionFromLatLon(lat: number, lon: number): WeighStationDoc['region'] {
+  if (lat < -10 && lon > 110 && lon < 180) return 'AU';
+  if (lat > 15 && lon > -170 && lon < -50) return 'NA';
   return 'EU';
 }
 
@@ -196,17 +203,17 @@ out center tags 30;`;
       if (!c) continue;
       const tags = el.tags ?? {};
       const name = tags.name ?? tags.operator ?? `Pesage OSM #${el.id}`;
-      // OSM rarely has live ON/OFF — mark unknown openness honestly (litUp false unless tagged open)
-      const taggedOpen = tags.opening_hours === '24/7' || tags.access === 'yes';
+      // Static OSM tags (access=yes, 24/7) are NOT a live ON/OFF feed — stay unknown.
+      const country = tags['addr:country'] ?? tags['is_in:country_code'];
       stations.push({
         id: `osm-w-${el.type}-${el.id}`,
         name,
         address: addressOf(tags),
         lat: c.lat,
         lon: c.lon,
-        region: regionFromCountry(tags['addr:country']),
-        status: taggedOpen ? 'open' : 'unknown',
-        litUp: taggedOpen,
+        region: country ? regionFromCountry(country) : regionFromLatLon(c.lat, c.lon),
+        status: 'unknown',
+        litUp: false,
         heightLimitM: tags.maxheight ? Number.parseFloat(tags.maxheight) || undefined : undefined,
         weightLimitT: tags.maxweight ? Number.parseFloat(tags.maxweight) || undefined : undefined,
         updatedAt: new Date().toISOString(),
@@ -221,7 +228,7 @@ out center tags 30;`;
       source: 'overpass',
       label:
         stations.length > 0
-          ? `LIVE Overpass OSM · ${stations.length} balance(s) · statut ON/OFF rarement tagué (unknown = pas de faux ON)`
+          ? `LIVE Overpass OSM · ${stations.length} balance(s) · statut UNKNOWN (pas de feed ON/OFF live)`
           : 'Overpass pesage vide — fallback mock',
       error: stations.length ? undefined : 'Aucune weighbridge OSM proche',
     };

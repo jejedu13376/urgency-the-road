@@ -41,8 +41,9 @@ const LAW_BY_REGION: Record<WeighStationDoc['region'], { title: string; lines: s
 };
 
 function statusBadge(w: WeighStationDoc): { lit: boolean; text: string } {
-  if (w.litUp && w.status === 'open') return { lit: true, text: 'ON / OUVERTE' };
-  if (w.status === 'closed' || w.litUp === false) return { lit: false, text: 'OFF / FERMÉE' };
+  if (w.status === 'open' && w.litUp) return { lit: true, text: 'ON / OUVERTE' };
+  if (w.status === 'closed') return { lit: false, text: 'OFF / FERMÉE' };
+  // unknown / untagged OSM — never label as OFF (no live feed)
   return { lit: false, text: 'UNKNOWN (pas de feed ON/OFF live)' };
 }
 
@@ -77,16 +78,14 @@ export default function RoutiersScreen() {
   const visible = useMemo(() => {
     let list = stations;
     if (regionFilter !== 'all') list = list.filter((w) => w.region === regionFilter);
-    if (filter === 'on') return list.filter((w) => w.litUp && w.status === 'open');
-    if (filter === 'off') return list.filter((w) => w.status === 'closed' || w.litUp === false);
-    if (filter === 'unknown') {
-      return list.filter((w) => w.status === 'unknown' || (!w.litUp && w.status !== 'closed'));
-    }
+    if (filter === 'on') return list.filter((w) => w.status === 'open' && w.litUp);
+    if (filter === 'off') return list.filter((w) => w.status === 'closed');
+    if (filter === 'unknown') return list.filter((w) => w.status !== 'open' && w.status !== 'closed');
     return list;
   }, [stations, filter, regionFilter]);
 
-  const onCount = stations.filter((w) => w.litUp && w.status === 'open').length;
-  const offCount = stations.filter((w) => w.status === 'closed' || w.litUp === false).length;
+  const onCount = stations.filter((w) => w.status === 'open' && w.litUp).length;
+  const offCount = stations.filter((w) => w.status === 'closed').length;
   const unknownCount = stations.length - onCount - offCount;
   const originLat = meta?.lat ?? 50.63;
   const originLon = meta?.lon ?? 3.06;

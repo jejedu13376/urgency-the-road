@@ -7,6 +7,7 @@ import { FALLBACK_LAT, FALLBACK_LON, getDeviceCoords } from '../geo/deviceLocati
 import {
   fetchNearbyTruckDepots,
   fetchNearbyWeighStations,
+  regionFromLatLon,
   withDistance,
 } from '../osm/overpassPlaces';
 import { fetchPhotonWeighHints } from '../osm/photonPlaces';
@@ -91,7 +92,7 @@ export async function listWeighStations(): Promise<
       address: s.address,
       lat: s.lat,
       lon: s.lon,
-      region: 'NA',
+      region: regionFromLatLon(s.lat, s.lon),
       status: 'unknown',
       litUp: false,
       updatedAt: new Date().toISOString(),

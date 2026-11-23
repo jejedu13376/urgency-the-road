@@ -152,7 +152,7 @@ function scalePrice(n: number, mult: number): number {
 export function buildVinPartsCatalog(vin?: string, opts?: { isHeavyTruck?: boolean }): PartDoc[] {
   const clean = vin ? normalizeVin(vin) : '';
   const hint = clean.length >= 3 ? hintFromWmi(clean) : null;
-  const pricing = pricingForMakeHint(hint?.make);
+  const pricing = pricingForMakeHint(hint?.make, hint?.country);
   const makeKey = hint?.make?.split(/[\s/]/)[0] ?? undefined;
 
   const base = [

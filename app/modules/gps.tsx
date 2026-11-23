@@ -94,18 +94,16 @@ export default function GpsScreen() {
   };
 
   const open = (app: 'google' | 'waze' | 'apple') => {
-    const target = picked
-      ? `${picked.lat},${picked.lon}`
-      : encodeURIComponent(dest);
+    const useCoords = picked != null;
     const urls = {
-      google: picked
-        ? `https://www.google.com/maps/dir/?api=1&destination=${picked.lat},${picked.lon}`
-        : `https://www.google.com/maps/dir/?api=1&destination=${target}`,
-      waze: picked
-        ? `https://waze.com/ul?ll=${picked.lat}%2C${picked.lon}&navigate=yes`
+      google: useCoords
+        ? `https://www.google.com/maps/dir/?api=1&destination=${picked!.lat},${picked!.lon}`
+        : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}`,
+      waze: useCoords
+        ? `https://waze.com/ul?ll=${picked!.lat}%2C${picked!.lon}&navigate=yes`
         : `https://waze.com/ul?q=${encodeURIComponent(dest)}&navigate=yes`,
-      apple: picked
-        ? `http://maps.apple.com/?daddr=${picked.lat},${picked.lon}`
+      apple: useCoords
+        ? `http://maps.apple.com/?daddr=${picked!.lat},${picked!.lon}`
         : `http://maps.apple.com/?daddr=${encodeURIComponent(dest)}`,
     };
     void Linking.openURL(urls[app]);
@@ -230,7 +228,13 @@ export default function GpsScreen() {
         <Card title="Destination & transfert">
           <TextInput
             value={dest}
-            onChangeText={setDest}
+            onChangeText={(t) => {
+              setDest(t);
+              // Invalidate stale geocode pick when the user edits the destination text
+              setPicked(null);
+              setGeoHits([]);
+              setGeoLabel(null);
+            }}
             style={styles.input}
             placeholder="Adresse ou lieu"
             placeholderTextColor={colors.muted}
