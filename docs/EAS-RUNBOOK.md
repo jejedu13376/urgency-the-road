@@ -57,7 +57,7 @@ npx eas-cli build:configure
 
 ```powershell
 npx eas-cli build -p android --profile preview
-# npm script equivalent:
+# npm script (uses the `eas` binary from the eas-cli package):
 npm run eas:preview:android
 ```
 
@@ -107,7 +107,8 @@ Preview APK is production-like JS **without** requiring a Metro server, but **li
 
 ```powershell
 npx eas-cli build -p android --profile development
-# or: npm run eas:devclient:android
+# or npm script (bin = `eas`, not `eas-cli`):
+npm run eas:devclient:android
 ```
 
 Then:
@@ -119,6 +120,10 @@ npx expo start --dev-client
 Details: `docs/BLE-DEV-CLIENT.md`.
 
 ---
+
+## npm scripts note
+
+`package.json` `eas:*` scripts invoke the **`eas`** binary (provided by the `eas-cli` npm package). Do not call a nonexistent `eas-cli` binary from scripts; `npx eas-cli …` is fine for one-off CLI.
 
 ## Verify profiles (already committed)
 

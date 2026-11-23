@@ -40,10 +40,10 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "eas:whoami": "eas-cli whoami",
-    "eas:configure": "eas-cli build:configure",
-    "eas:preview:android": "eas-cli build -p android --profile preview",
-    "eas:devclient:android": "eas-cli build -p android --profile development"
+    "eas:whoami": "eas whoami",
+    "eas:configure": "eas build:configure",
+    "eas:preview:android": "eas build -p android --profile preview",
+    "eas:devclient:android": "eas build -p android --profile development"
   },
   "private": true
 }
