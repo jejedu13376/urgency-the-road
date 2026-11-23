@@ -4,7 +4,7 @@
  * - emergency_full: active rescuer get(medicalScanIndex/{scanCode}) only — never list all cards
  * Printed QR sticker/card only — not AirTag/NFC beacon.
  */
-import { deleteDoc, deleteField, doc, getDoc, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { getFirebase, getSignedInUid } from '../../firebase/config';
 import type {
   MedicalCardDoc,
@@ -89,9 +89,13 @@ type ScanIndexDoc = {
   updatedAt: string;
 };
 
-/** Full replace payload — empty optionals become deleteField so merge cannot keep stale PHI. */
+/**
+ * Full-replace payload for setDoc (no merge).
+ * Omit empty optionals — deleteField() is invalid without merge/updateDoc,
+ * and a full overwrite already drops keys that are not present.
+ */
 function cardWritePayload(card: MedicalCardDoc): Record<string, unknown> {
-  return {
+  const payload: Record<string, unknown> = {
     ownerUid: card.ownerUid,
     scanCode: card.scanCode,
     fullName: card.fullName,
@@ -101,14 +105,18 @@ function cardWritePayload(card: MedicalCardDoc): Record<string, unknown> {
     emergencyContacts: card.emergencyContacts ?? [],
     subscriberActive: card.subscriberActive ?? true,
     updatedAt: card.updatedAt,
-    address: card.address?.trim() ? card.address.trim() : deleteField(),
-    bloodType: card.bloodType?.trim() ? card.bloodType.trim() : deleteField(),
-    notes: card.notes?.trim() ? card.notes.trim() : deleteField(),
   };
+  const address = card.address?.trim();
+  const bloodType = card.bloodType?.trim();
+  const notes = card.notes?.trim();
+  if (address) payload.address = address;
+  if (bloodType) payload.bloodType = bloodType;
+  if (notes) payload.notes = notes;
+  return payload;
 }
 
 function indexFromCard(card: MedicalCardDoc): Record<string, unknown> {
-  return {
+  const payload: Record<string, unknown> = {
     scanCode: card.scanCode,
     ownerUid: card.ownerUid,
     cardId: card.id,
@@ -118,10 +126,14 @@ function indexFromCard(card: MedicalCardDoc): Record<string, unknown> {
     medications: card.medications ?? [],
     emergencyContacts: card.emergencyContacts ?? [],
     updatedAt: card.updatedAt,
-    address: card.address?.trim() ? card.address.trim() : deleteField(),
-    bloodType: card.bloodType?.trim() ? card.bloodType.trim() : deleteField(),
-    notes: card.notes?.trim() ? card.notes.trim() : deleteField(),
   };
+  const address = card.address?.trim();
+  const bloodType = card.bloodType?.trim();
+  const notes = card.notes?.trim();
+  if (address) payload.address = address;
+  if (bloodType) payload.bloodType = bloodType;
+  if (notes) payload.notes = notes;
+  return payload;
 }
 
 /** Ensure one personal QR per subscriber (unique scanCode + index doc). */
@@ -230,7 +242,7 @@ export async function upsertMedicalCard(
       }
     }
 
-    // Full set (not merge) so cleared PHI fields are removed via deleteField
+    // Full set (not merge) so omitted empty PHI keys are removed from the doc
     await setDoc(cardRef, cardWritePayload(payload));
 
     // Migrate: drop legacy uid-keyed doc after canonical write
