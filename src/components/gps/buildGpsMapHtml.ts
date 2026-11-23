@@ -149,6 +149,15 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     });
   }
 
+  // Block in-document <a> navigations (Leaflet attribution) — stay on map HTML only.
+  document.addEventListener('click', function(ev){
+    var t = ev.target;
+    while (t && t !== document) {
+      if (t.tagName === 'A') { ev.preventDefault(); return false; }
+      t = t.parentNode;
+    }
+  }, true);
+
   var map = L.map('map', { zoomControl: false, attributionControl: true }).setView([origin.lat, origin.lon], 13);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,

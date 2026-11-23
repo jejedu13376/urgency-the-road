@@ -28,13 +28,71 @@ const MapWebView = RNWebView as unknown as React.ComponentType<{
   source?: { html: string; baseUrl?: string };
   style?: object;
   onMessage?: (ev: WebViewMessageEvent) => void;
+  onShouldStartLoadWithRequest?: (req: { url: string }) => boolean;
   javaScriptEnabled?: boolean;
   domStorageEnabled?: boolean;
   allowFileAccess?: boolean;
+  allowUniversalAccessFromFileURLs?: boolean;
   mixedContentMode?: string;
   setSupportMultipleWindows?: boolean;
   geolocationEnabled?: boolean;
+  mediaPlaybackRequiresUserAction?: boolean;
 }>;
+
+const ALLOWED_MSG_TYPES = new Set([
+  'ready',
+  'mode',
+  'route',
+  'routed',
+  'navigating',
+  'arrived',
+  'recenter',
+]);
+
+function isFiniteCoord(n: unknown): n is number {
+  return typeof n === 'number' && Number.isFinite(n);
+}
+
+/** Parse + schema-check map postMessage payloads (reject forged / garbage). */
+function parseMapMsg(raw: string): MapMsg | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const msg = parsed as Record<string, unknown>;
+  if (typeof msg.type !== 'string' || !ALLOWED_MSG_TYPES.has(msg.type)) return null;
+
+  if (msg.type === 'mode' || msg.type === 'ready' || msg.type === 'routed') {
+    if (msg.mode !== 'voiture' && msg.mode !== 'camion') return null;
+  }
+  if (msg.type === 'route') {
+    const from = msg.from as { lat?: unknown; lon?: unknown } | undefined;
+    const to = msg.to as { lat?: unknown; lon?: unknown } | undefined;
+    const truck = msg.truck as Record<string, unknown> | undefined;
+    if (!from || !to || !truck) return null;
+    if (!isFiniteCoord(from.lat) || !isFiniteCoord(from.lon)) return null;
+    if (!isFiniteCoord(to.lat) || !isFiniteCoord(to.lon)) return null;
+    if (msg.mode !== 'voiture' && msg.mode !== 'camion') return null;
+  }
+  if ((msg.type === 'navigating' || msg.type === 'arrived') && msg.to) {
+    const to = msg.to as { lat?: unknown; lon?: unknown };
+    if (!isFiniteCoord(to.lat) || !isFiniteCoord(to.lon)) return null;
+    if (msg.mode !== 'voiture' && msg.mode !== 'camion') return null;
+  }
+  return msg as MapMsg;
+}
+
+/** Keep WebView on the inline map document — block navigations to external pages. */
+function allowMapDocumentLoad(url: string): boolean {
+  if (!url || url === 'about:blank' || url === 'about:srcdoc') return true;
+  if (url.startsWith('data:text/html')) return true;
+  // baseUrl https://localhost/ — initial document only, not external sites
+  if (url === 'https://localhost/' || url === 'https://localhost') return true;
+  return false;
+}
 
 type MapWindow = Window & {
   __gpsApplyRoute?: (payload: VehicleRouteResult) => void;
@@ -135,12 +193,8 @@ export function GpsFullMap() {
 
   const handleMapMsg = useCallback(
     (raw: string) => {
-      let msg: MapMsg;
-      try {
-        msg = JSON.parse(raw) as MapMsg;
-      } catch {
-        return;
-      }
+      const msg = parseMapMsg(raw);
+      if (!msg) return;
 
       if (msg.type === 'mode') {
         setModeLabel(msg.mode);
@@ -265,19 +319,23 @@ export function GpsFullMap() {
       ) : (
         <MapWebView
           ref={webRef}
-          originWhitelist={['*']}
+          originWhitelist={['about:blank', 'about:srcdoc']}
           source={{
             html: bootHtml,
-            baseUrl: Platform.OS === 'android' ? 'https://localhost' : undefined,
+            // HTTPS base so Leaflet/OSM tile + CDN subresources stay mixed-content clean
+            baseUrl: 'https://localhost/',
           }}
           style={styles.fill}
           onMessage={onMessage}
+          onShouldStartLoadWithRequest={(req) => allowMapDocumentLoad(req.url)}
           javaScriptEnabled
           domStorageEnabled
-          allowFileAccess
-          mixedContentMode="always"
+          allowFileAccess={false}
+          allowUniversalAccessFromFileURLs={false}
+          mixedContentMode="never"
           setSupportMultipleWindows={false}
-          geolocationEnabled
+          geolocationEnabled={false}
+          mediaPlaybackRequiresUserAction
         />
       )}
       {hudNote ? (
