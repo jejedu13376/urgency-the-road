@@ -303,13 +303,17 @@ export function GpsFullMap() {
       loadCrowdReports(),
       listRoadHazards(),
     ]);
+    // Display may merge cloud pins; Valhalla excludes use LOCAL only (see route handler).
     const reports = mergeCloudHazards(localReports, cloudHazards.data ?? []);
     reportsRef.current = reports;
     injectLayers({
-      bridges: bridges.bridges,
+      bridges: bridges.bridges.map((b) => ({
+        ...b,
+        name: String(b.name ?? '').slice(0, 80),
+      })),
       weigh: (weigh.stations ?? []).slice(0, 20).map((s) => ({
         id: s.id,
-        name: s.name,
+        name: String(s.name ?? '').slice(0, 80),
         lat: s.lat,
         lon: s.lon,
         status: s.status,
@@ -320,7 +324,9 @@ export function GpsFullMap() {
         kind: r.kind,
         lat: r.lat,
         lon: r.lon,
-        note: r.note,
+        // Strip markup before map HTML — defense in depth vs tooltip XSS.
+        note: r.note ? r.note.replace(/[<>&"'`]/g, '').slice(0, 80) : undefined,
+        source: r.source,
       })),
     });
     const bits = [bridges.label, weigh.label].filter(Boolean);
@@ -512,8 +518,17 @@ export function GpsFullMap() {
           if (reqId !== routeReqId.current) return;
 
           const from = liveOriginRef.current ?? msg.from;
+          // Soft-fail cloud excludes until Firestore rules validate kind/coords/expiry.
+          // Only LOCAL crowd reports may steer Valhalla (device-authored, rate-limited).
           const excludes = reportsRef.current
-            .filter((r) => r.kind === 'police' || r.kind === 'accident' || r.kind === 'danger')
+            .filter(
+              (r) =>
+                r.source === 'local' &&
+                (r.kind === 'police' || r.kind === 'accident' || r.kind === 'danger') &&
+                Number.isFinite(r.lat) &&
+                Number.isFinite(r.lon),
+            )
+            .slice(0, 8)
             .map((r) => ({ lat: r.lat, lon: r.lon }));
 
           const route = await fetchVehicleRoute(from, msg.to, msg.mode, {

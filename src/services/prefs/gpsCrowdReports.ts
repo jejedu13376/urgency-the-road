@@ -86,7 +86,11 @@ export async function addCrowdReport(input: {
   return { ok: true, report };
 }
 
-/** Merge cloud hazards that still look fresh into the local pin set (no fake live). */
+/**
+ * Merge cloud hazards for **display pins only**.
+ * Do NOT feed cloud entries into Valhalla excludeLocations — Firestore rules do not
+ * validate kind/coords/expiresAt yet (route-steering risk). Soft-fail cloud for routing.
+ */
 export function mergeCloudHazards(
   local: CrowdReport[],
   cloud: {
@@ -99,8 +103,11 @@ export function mergeCloudHazards(
     expiresAt?: string;
   }[],
 ): CrowdReport[] {
+  const now = Date.now();
   const mapped: CrowdReport[] = cloud
     .map((h) => {
+      if (!Number.isFinite(h.lat) || !Number.isFinite(h.lon)) return null;
+      if (h.lat < -90 || h.lat > 90 || h.lon < -180 || h.lon > 180) return null;
       const kind = (['police', 'accident', 'danger', 'obstacle', 'travaux', 'autre'] as const).includes(
         h.kind as CrowdReportKind,
       )
@@ -108,22 +115,28 @@ export function mergeCloudHazards(
         : h.kind === 'radar'
           ? 'police'
           : 'autre';
-      const created = Date.parse(h.createdAt) || Date.now();
-      const expiresAt =
-        h.expiresAt ?? new Date(created + CROWD_REPORT_TTL_MS).toISOString();
+      const created = Date.parse(h.createdAt);
+      const createdMs = Number.isFinite(created) ? created : now;
+      // Never trust attacker-chosen far-future expiry — clamp to created+TTL (or now+TTL).
+      const claimed = h.expiresAt ? Date.parse(h.expiresAt) : NaN;
+      const maxExp = createdMs + CROWD_REPORT_TTL_MS;
+      const expiresMs = Number.isFinite(claimed)
+        ? Math.min(claimed, maxExp)
+        : maxExp;
+      if (expiresMs <= now) return null;
       return {
-        id: `cloud-${h.id}`,
+        id: `cloud-${String(h.id).slice(0, 64)}`,
         kind,
         lat: h.lat,
         lon: h.lon,
-        note: h.note,
-        createdAt: h.createdAt,
-        expiresAt,
+        note: h.note ? String(h.note).replace(/[<>&"'`]/g, '').slice(0, 80) : undefined,
+        createdAt: new Date(createdMs).toISOString(),
+        expiresAt: new Date(expiresMs).toISOString(),
         source: 'cloud' as const,
       };
     })
-    .filter((r) => Date.parse(r.expiresAt) > Date.now());
+    .filter((r): r is CrowdReport => r != null);
   const byId = new Map<string, CrowdReport>();
   for (const r of [...local, ...mapped]) byId.set(r.id, r);
-  return prune([...byId.values()]);
+  return prune([...byId.values()], now);
 }

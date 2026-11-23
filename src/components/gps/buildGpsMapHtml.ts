@@ -366,6 +366,26 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     setDestination(L.latLng(lat, lon), label || '');
   };
 
+  /** Escape untrusted OSM/crowd strings before any HTML sink (DivIcon / tooltips). */
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+  /** Leaflet tooltip via textContent — never innerHTML with raw notes/names. */
+  function tipEl(text){
+    var el = document.createElement('span');
+    el.textContent = String(text == null ? '' : text);
+    return el;
+  }
+  function finiteLatLon(lat, lon){
+    return typeof lat === 'number' && isFinite(lat) && typeof lon === 'number' && isFinite(lon)
+      && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+  }
+
   window.__gpsSetLayers = function(payload){
     try {
       layerGroup.clearLayers();
@@ -374,33 +394,38 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
       var weigh = payload.weigh || [];
       var reports = payload.reports || [];
       bridges.forEach(function(b){
-        var pass = b.pass || 'unknown';
+        if (!finiteLatLon(b.lat, b.lon)) return;
+        var pass = b.pass === 'ok' || b.pass === 'no' ? b.pass : 'unknown';
         var cls = pass === 'ok' ? 'bridge-ok' : pass === 'no' ? 'bridge-no' : 'bridge-unk';
-        var h = b.maxheightM != null ? (b.maxheightM + 'm') : '?';
-        var w = b.maxweightT != null ? ('/' + b.maxweightT + 't') : '';
-        var html = '<div class="layer-pin ' + cls + '">' + h + w + '</div>';
+        var h = typeof b.maxheightM === 'number' && isFinite(b.maxheightM) ? (b.maxheightM + 'm') : '?';
+        var w = typeof b.maxweightT === 'number' && isFinite(b.maxweightT) ? ('/' + b.maxweightT + 't') : '';
+        var html = '<div class="layer-pin ' + cls + '">' + esc(h + w) + '</div>';
         L.marker([b.lat, b.lon], {
           icon: L.divIcon({ className: '', html: html, iconSize: [48, 28], iconAnchor: [24, 14] }),
           zIndexOffset: 400,
-        }).bindTooltip((b.name || 'Ouvrage') + ' · ' + (pass === 'ok' ? 'PASS' : pass === 'no' ? 'NO-PASS' : 'UNKNOWN'), { direction: 'top' })
+        }).bindTooltip(tipEl((b.name || 'Ouvrage') + ' · ' + (pass === 'ok' ? 'PASS' : pass === 'no' ? 'NO-PASS' : 'UNKNOWN')), { direction: 'top' })
           .addTo(layerGroup);
       });
       weigh.forEach(function(s){
+        if (!finiteLatLon(s.lat, s.lon)) return;
         var on = !!s.litUp || s.status === 'open';
         var html = '<div class="layer-pin ' + (on ? 'weigh-on' : 'weigh-off') + '">' + (on ? 'ON' : '?') + '</div>';
         L.marker([s.lat, s.lon], {
           icon: L.divIcon({ className: '', html: html, iconSize: [32, 28], iconAnchor: [16, 14] }),
           zIndexOffset: 450,
-        }).bindTooltip((s.name || 'Pesage') + (on ? ' · scale ON (advisory OSM)' : ' · statut inconnu / fermé'), { direction: 'top' })
+        }).bindTooltip(tipEl((s.name || 'Pesage') + (on ? ' · scale ON (advisory OSM)' : ' · statut inconnu / fermé')), { direction: 'top' })
           .addTo(layerGroup);
       });
       reports.forEach(function(r){
-        var label = (r.kind || 'alerte').slice(0, 3).toUpperCase();
-        var html = '<div class="layer-pin report">' + label + '</div>';
+        if (!finiteLatLon(r.lat, r.lon)) return;
+        var kind = String(r.kind || 'alerte').replace(/[^a-z0-9_-]/gi, '').slice(0, 12) || 'alerte';
+        var label = kind.slice(0, 3).toUpperCase();
+        var html = '<div class="layer-pin report">' + esc(label) + '</div>';
+        var tip = kind + (r.note ? ' — ' + String(r.note).slice(0, 80) : '') + ' · expire crowd';
         L.marker([r.lat, r.lon], {
           icon: L.divIcon({ className: '', html: html, iconSize: [36, 28], iconAnchor: [18, 14] }),
           zIndexOffset: 500,
-        }).bindTooltip((r.kind || 'signalement') + (r.note ? ' — ' + r.note : '') + ' · expire crowd', { direction: 'top' })
+        }).bindTooltip(tipEl(tip), { direction: 'top' })
           .addTo(layerGroup);
       });
     } catch (e) {}
