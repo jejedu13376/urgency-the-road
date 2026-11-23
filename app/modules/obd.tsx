@@ -187,11 +187,12 @@ export default function ObdScreen() {
         setLiveBle(false);
         return;
       }
-      // Live path: connect + AT init with selected protocol (OBD2/EOBD/J1939)
+      // Live path: connect + AT init with selected protocol (OBD2/EOBD/J1939).
+      // On failed switch with restore, r.ok + r.deviceId keep UI on the prior live session.
       const r = await connectAndInitElm(id, protocol);
       setBleMsg(r.message);
       if (r.ok) {
-        setConnectedId(id);
+        setConnectedId(r.deviceId ?? id);
         setLiveBle(true);
       } else {
         setConnectedId(null);

@@ -233,10 +233,19 @@ async function restorePriorSession(prior: SessionState): Promise<boolean> {
  * Device switch: cancel prior radio only after snapshotting it; keep tracking until the new
  * connect+discovery+AT init succeed. On failure, cancel the half-open target and restore prior.
  */
+export type ConnectElmResult = {
+  ok: boolean;
+  message: string;
+  /** Device that owns the published session after this call (target or restored prior). */
+  deviceId?: string;
+  /** True when the prior live session was kept/restored after a failed switch. */
+  restored?: boolean;
+};
+
 export async function connectAndInitElm(
   deviceId: string,
   protocol: ObdProtocol,
-): Promise<{ ok: boolean; message: string }> {
+): Promise<ConnectElmResult> {
   const cap = getBleCapability();
   if (!cap.available) {
     return { ok: false, message: `BLE natif absent — ${cap.pathToLive}` };
@@ -259,17 +268,37 @@ export async function connectAndInitElm(
     let disconnectSub: { remove?: () => void } | null = null;
     const id = ++sessionSeq;
 
-    const fail = async (message: string): Promise<{ ok: false; message: string }> => {
+    const fail = async (message: string): Promise<ConnectElmResult> => {
       // Never leave an untracked live link after a failed connect/discovery/init.
       await releaseAttempt(manager, deviceId, monitorSub, disconnectSub);
       if (cancelledPrior && prior) {
         const restored = await restorePriorSession(prior);
-        if (!restored) session = null;
-      } else if (prior && prior.deviceId === deviceId) {
+        if (restored && session) {
+          // UI must keep connectedId/liveBle on the restored prior — not clear them.
+          return {
+            ok: true,
+            restored: true,
+            deviceId: session.deviceId,
+            message: `Switch échoué — session restaurée sur ${session.deviceId.slice(0, 8)}… (${message})`,
+          };
+        }
+        session = null;
+        return { ok: false, message };
+      }
+      if (prior && prior.deviceId === deviceId) {
         // Failed same-device reconnect — session is gone.
         session = null;
+        return { ok: false, message };
       }
-      // else: prior untouched (we never cancelled a different device)
+      // Prior never cancelled (e.g. manager init failed) — keep UI aligned with live session.
+      if (session) {
+        return {
+          ok: true,
+          restored: true,
+          deviceId: session.deviceId,
+          message: `Connexion échouée — session live conservée (${session.deviceId.slice(0, 8)}…). ${message}`,
+        };
+      }
       return { ok: false, message };
     };
 
@@ -397,6 +426,7 @@ export async function connectAndInitElm(
       session = pending;
       return {
         ok: true,
+        deviceId,
         message: `Valise BLE connectée (${deviceId.slice(0, 8)}…) · init ${protocol} OK · ${log.length} AT`,
       };
     } catch (e) {

@@ -73,8 +73,8 @@ export async function getSharedBleManager(): Promise<unknown> {
 
 /**
  * Request Android BLE runtime permissions.
- * API 31+: SCAN + CONNECT + FINE_LOCATION (scan needs location when neverForLocation is unset).
- * Older: FINE_LOCATION.
+ * API 31+ with app.json `neverForLocation: true`: only BLUETOOTH_SCAN + BLUETOOTH_CONNECT.
+ * API < 31: ACCESS_FINE_LOCATION (legacy scan requirement).
  */
 export async function ensureAndroidBlePermissions(): Promise<{ ok: boolean; message?: string }> {
   if (Platform.OS !== 'android') return { ok: true };
@@ -84,25 +84,17 @@ export async function ensureAndroidBlePermissions(): Promise<{ ok: boolean; mess
 
   try {
     if (api >= 31) {
+      // Matches react-native-ble-plx plugin neverForLocation: true — no location needed to scan.
       const result = await PermissionsAndroid.requestMultiple([
         PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
         PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
       ]);
       const scanOk = result[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN] === 'granted';
       const connectOk = result[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT] === 'granted';
-      const locOk = result[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] === 'granted';
       if (!scanOk || !connectOk) {
         return {
           ok: false,
           message: 'Permissions Bluetooth refusées (BLUETOOTH_SCAN / BLUETOOTH_CONNECT requis Android 12+).',
-        };
-      }
-      if (!locOk) {
-        return {
-          ok: false,
-          message:
-            'Permission localisation refusée — requise pour le scan BLE Android 12+ (sans neverForLocation).',
         };
       }
       return { ok: true };
