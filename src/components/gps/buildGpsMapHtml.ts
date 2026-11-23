@@ -1,8 +1,26 @@
 /**
- * Self-contained Leaflet + OSM map HTML for WebView.
+ * Self-contained Leaflet map HTML for WebView.
+ * Base layers: Esri World Imagery ↔ multi-color roads (Carto Voyager if key, else OSM).
  * Vehicle DivIcon = LIVE GPS (parent injects ticks) — not a canned polyline demo.
  * Voiture/camion = top chips only (once). Tap / search = destination only → Valhalla.
  */
+
+/** Carto raster basemaps need a free key since 2026-09-25 — carto.com/basemaps/apikey */
+function roadsTileUrl(): { url: string; kind: 'carto' | 'osm' } {
+  const raw = (process.env.EXPO_PUBLIC_CARTO_BASEMAPS_API_KEY ?? '').trim();
+  const key = raw.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (key) {
+    return {
+      kind: 'carto',
+      url: `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${key}`,
+    };
+  }
+  return {
+    kind: 'osm',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  };
+}
+
 export type GpsMapBoot = {
   lat: number;
   lon: number;
@@ -20,12 +38,14 @@ export type GpsMapBoot = {
 
 export function buildGpsMapHtml(boot: GpsMapBoot): string {
   const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
+  const roads = roadsTileUrl();
+  const roadsUrlJson = JSON.stringify(roads.url);
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://unpkg.com/leaflet@1.9.4/ 'unsafe-inline'; style-src https://unpkg.com/leaflet@1.9.4/ 'unsafe-inline'; img-src https://tile.openstreetmap.org https://*.tile.openstreetmap.org data: blob:; connect-src https://unpkg.com; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://unpkg.com/leaflet@1.9.4/ 'unsafe-inline'; style-src https://unpkg.com/leaflet@1.9.4/ 'unsafe-inline'; img-src https://server.arcgisonline.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org data: blob:; connect-src https://unpkg.com; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
 <style>
@@ -75,6 +95,17 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     border:0;border-radius:13px;padding:12px 11px;font:650 11px system-ui,sans-serif;
     background:rgba(255,255,255,.94);color:var(--ink);
   }
+  /* Small basemap toggle — bottom-right (replaces old Leaflet zoom/attribution chrome). */
+  .layer-toggle{
+    position:absolute;z-index:1000;
+    right:calc(10px + var(--pad-right));
+    bottom:calc(14px + var(--pad-bottom));
+    border:0;border-radius:13px;padding:11px 12px;min-width:52px;
+    font:700 11px/1.1 system-ui,sans-serif;letter-spacing:.02em;
+    background:rgba(255,255,255,.94);color:var(--ink);
+    box-shadow:0 2px 10px rgba(0,0,0,.22);
+  }
+  .layer-toggle small{display:block;font-weight:550;opacity:.7;margin-top:3px;font-size:9px}
   .vehicle-wrap{
     width:42px;height:42px;display:flex;align-items:center;justify-content:center;
     transition:transform .18s linear;
@@ -104,7 +135,6 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   .layer-pin.weigh-on{background:#B08900;border:2px solid #fff}
   .layer-pin.weigh-off{background:var(--muted)}
   .layer-pin.report{background:#3B5BDB}
-  .leaflet-bottom.leaflet-right{bottom:calc(72px + var(--pad-bottom)) !important;right:calc(8px + var(--pad-right)) !important}
   .route-line{transition:opacity .35s ease}
 </style>
 </head>
@@ -121,9 +151,11 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   <button type="button" class="go" id="btnGo" disabled>itinéraire</button>
   <button type="button" class="ghost" id="btnRecenter">GPS</button>
 </div>
+<button type="button" class="layer-toggle" id="btnLayer" aria-label="Changer fond de carte"><span id="layerLabel">Sat</span><small id="layerHint">→ Routes</small></button>
 <script>
 (function(){
   var BOOT = ${bootJson};
+  var ROADS_URL = ${roadsUrlJson};
   var mode = BOOT.mode === 'camion' ? 'camion' : 'voiture';
   var gpsOk = !!BOOT.gpsOk;
   var origin = { lat: BOOT.lat, lon: BOOT.lon };
@@ -136,6 +168,9 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   var followLive = false;
   var layerGroup = null;
   var lastPanAt = 0;
+  var baseKind = 'esri';
+  var esriLayer = null;
+  var roadsLayer = null;
 
   function applyChrome(p){
     var r = document.documentElement.style;
@@ -207,14 +242,48 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     }
   }, true);
 
-  var map = L.map('map', { zoomControl: false, attributionControl: true, preferCanvas: true })
+  /* No Leaflet chrome: zoom +/- and attribution banner hidden.
+     Pinch/scroll zoom still works. Tile credit lives in GpsDestinationMenu sources.
+     Base layers: Esri World Imagery ↔ Carto Voyager (or OSM if no Carto key). */
+  var map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true })
     .setView([origin.lat, origin.lon], gpsOk ? 14 : 5);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  esriLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     maxZoom: 19,
-    attribution: '&copy; OpenStreetMap'
-  }).addTo(map);
-  L.control.zoom({ position: 'bottomright' }).addTo(map);
+    attribution: ''
+  });
+  roadsLayer = L.tileLayer(ROADS_URL, {
+    maxZoom: 19,
+    attribution: ''
+  });
+  esriLayer.addTo(map);
   layerGroup = L.layerGroup().addTo(map);
+
+  function syncLayerBtn(){
+    var label = document.getElementById('layerLabel');
+    var hint = document.getElementById('layerHint');
+    if (baseKind === 'esri') {
+      label.textContent = 'Sat';
+      hint.textContent = '→ Routes';
+    } else {
+      label.textContent = 'Routes';
+      hint.textContent = '→ Sat';
+    }
+  }
+
+  function setBaseLayer(next){
+    if (next === baseKind) return;
+    if (next === 'roads') {
+      map.removeLayer(esriLayer);
+      roadsLayer.addTo(map);
+      baseKind = 'roads';
+    } else {
+      map.removeLayer(roadsLayer);
+      esriLayer.addTo(map);
+      baseKind = 'esri';
+    }
+    syncLayerBtn();
+  }
+  syncLayerBtn();
 
   function ensureVehicleMarker(){
     if (!gpsOk) {
@@ -476,6 +545,10 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   document.getElementById('btnRecenter').onclick = function(){
     followLive = true;
     post({ type: 'recenter' });
+  };
+  document.getElementById('btnLayer').onclick = function(ev){
+    if (ev && ev.stopPropagation) ev.stopPropagation();
+    setBaseLayer(baseKind === 'esri' ? 'roads' : 'esri');
   };
 
   layersReady = true;
