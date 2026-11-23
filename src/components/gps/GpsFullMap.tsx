@@ -34,7 +34,7 @@ import {
 import { listRoadHazards, reportHazard } from '../../services/firebase/hazardsService';
 import {
   estimateProgressKm,
-  nextManeuverAt,
+  upcomingTurnAt,
 } from '../../services/gps/routeManeuvers';
 import {
   loadNavSpeechMuted,
@@ -42,7 +42,6 @@ import {
   speakArrival,
   speakNav,
   speakUpcomingTurn,
-  speakWeighAlert,
   stopNavSpeech,
 } from '../../services/gps/navSpeech';
 import {
@@ -290,13 +289,16 @@ export function GpsFullMap() {
   const alertQueueRef = useRef<RouteAlert[]>([]);
   const shownAlertIdsRef = useRef<Set<string>>(new Set());
   const navigatingRef = useRef(false);
+  const navDestRef = useRef<{ lat: number; lon: number } | null>(null);
   const activeTripIdRef = useRef<string | null>(null);
   const lastRouteRef = useRef<VehicleRouteResult | null>(null);
   const weighStationsRef = useRef<
     { id: string; name: string; lat: number; lon: number }[]
   >([]);
-  const lastWeighAlertIdRef = useRef<string | null>(null);
-  const lastManeuverSpokenRef = useRef<string | null>(null);
+  /** Weigh stations already announced this nav session (by id). */
+  const announcedWeighIdsRef = useRef<Set<string>>(new Set());
+  /** Speak-once keys: `far-turn-N` / `near-turn-N` — never distance-dependent. */
+  const spokenTurnBandsRef = useRef<Set<string>>(new Set());
   const aqiOnRef = useRef(false);
 
   const enqueueAlerts = useCallback((alerts: RouteAlert[]) => {
@@ -636,6 +638,30 @@ export function GpsFullMap() {
 
             // During nav: weigh approach alerts + TTS turns — IMMEDIATE overlay, not passive.
             if (navigatingRef.current) {
+              const dest = navDestRef.current;
+              if (dest) {
+                const toDestKm = haversineKm(pos.lat, pos.lon, dest.lat, dest.lon);
+                // ~60 m arrival radius — complete trip history + stop nav TTS/alerts.
+                if (toDestKm <= 0.06) {
+                  navigatingRef.current = false;
+                  navDestRef.current = null;
+                  injectHighlightWeigh(null);
+                  setHudNote('Arrivée — GPS live toujours actif');
+                  speakArrival(
+                    lastRouteRef.current?.durationMin,
+                    lastRouteRef.current?.distanceKm,
+                  );
+                  const tripId = activeTripIdRef.current;
+                  if (tripId) {
+                    void completeTrip(tripId).then(() => {
+                      activeTripIdRef.current = null;
+                      void loadTripHistory().then(setTripHistory);
+                    });
+                  }
+                  return;
+                }
+              }
+
               const route = lastRouteRef.current;
               if (route?.ok && route.maneuvers?.length) {
                 const progressKm = estimateProgressKm(
@@ -644,53 +670,55 @@ export function GpsFullMap() {
                   pos.lon,
                   haversineKm,
                 );
-                const next = nextManeuverAt(route.maneuvers, progressKm);
+                const next = upcomingTurnAt(route.maneuvers, progressKm);
                 if (next) {
-                  const remain = Math.max(0, next.beginKm + next.lengthKm - progressKm);
-                  const key = `${next.instruction}|${Math.round(remain * 10)}`;
-                  if (
-                    remain <= 0.8 &&
-                    lastManeuverSpokenRef.current !== next.instruction
-                  ) {
-                    lastManeuverSpokenRef.current = next.instruction;
+                  const remain = next.distanceKm;
+                  const nearKey = `near-${next.key}`;
+                  const farKey = `far-${next.key}`;
+                  if (remain <= 0.8 && !spokenTurnBandsRef.current.has(nearKey)) {
+                    spokenTurnBandsRef.current.add(nearKey);
+                    spokenTurnBandsRef.current.add(farKey); // skip far if we enter near first
                     speakUpcomingTurn(next.instruction, remain);
                   } else if (
                     remain <= 2.5 &&
                     remain > 0.8 &&
-                    lastManeuverSpokenRef.current !== key
+                    !spokenTurnBandsRef.current.has(farKey)
                   ) {
-                    lastManeuverSpokenRef.current = key;
+                    spokenTurnBandsRef.current.add(farKey);
                     speakUpcomingTurn(next.instruction, remain);
                   }
                 }
               }
 
+              // Announce every distinct scale in range (no break after first).
+              // Voice comes only from overlay (avoid double speak).
+              let highlightId: string | null = null;
+              let highlightDist = Infinity;
               for (const s of weighStationsRef.current) {
                 const d = haversineKm(pos.lat, pos.lon, s.lat, s.lon);
-                if (d <= 3.2) {
-                  const alertId = `weigh-nav-${s.id}`;
-                  if (lastWeighAlertIdRef.current !== alertId) {
-                    lastWeighAlertIdRef.current = alertId;
-                    injectHighlightWeigh(s.id);
-                    const rounded = d <= 2.2 ? 2 : 3;
-                    enqueueAlerts([
-                      {
-                        id: alertId,
-                        kind: 'weigh',
-                        title: `Balance à ${rounded} km`,
-                        detail: `${s.name} · OSM weigh_station / weighbridge (CA/US/EU) — overlay immédiat`,
-                        voice: `Attention, balance à ${rounded} kilomètres.`,
-                        severity: 'warn',
-                        lat: s.lat,
-                        lon: s.lon,
-                        distanceKm: Math.round(d * 10) / 10,
-                      },
-                    ]);
-                    speakWeighAlert(rounded, s.name);
-                  }
-                  break;
+                if (d > 3.2) continue;
+                if (d < highlightDist) {
+                  highlightDist = d;
+                  highlightId = s.id;
                 }
+                if (announcedWeighIdsRef.current.has(s.id)) continue;
+                announcedWeighIdsRef.current.add(s.id);
+                const rounded = d <= 2.2 ? 2 : 3;
+                enqueueAlerts([
+                  {
+                    id: `weigh-nav-${s.id}`,
+                    kind: 'weigh',
+                    title: `Balance à ${rounded} km`,
+                    detail: `${s.name} · OSM weigh_station / weighbridge (CA/US/EU) — overlay immédiat`,
+                    voice: `Attention, balance à ${rounded} kilomètres.`,
+                    severity: 'warn',
+                    lat: s.lat,
+                    lon: s.lon,
+                    distanceKm: Math.round(d * 10) / 10,
+                  },
+                ]);
               }
+              if (highlightId) injectHighlightWeigh(highlightId);
             }
           },
           (err) => {
@@ -889,9 +917,11 @@ export function GpsFullMap() {
       if (msg.type === 'navigating' && msg.to) {
         setTripEnded(null);
         navigatingRef.current = true;
-        lastManeuverSpokenRef.current = null;
-        lastWeighAlertIdRef.current = null;
-        shownAlertIdsRef.current = new Set();
+        navDestRef.current = { lat: msg.to.lat, lon: msg.to.lon };
+        // Reset per-nav speak/announce state — do NOT clear shownAlertIdsRef or
+        // re-run trucker brief (route handler already queued overlays once).
+        spokenTurnBandsRef.current = new Set();
+        announcedWeighIdsRef.current = new Set();
         setHudNote(
           msg.mode === 'camion'
             ? 'Navigation camion — alertes gabarit/météo en overlay immédiat'
@@ -926,13 +956,15 @@ export function GpsFullMap() {
               ? `Navigation camion démarrée. ${route.distanceKm} kilomètres, environ ${route.durationMin} minutes.`
               : `Navigation démarrée. ${route.distanceKm} kilomètres, environ ${route.durationMin} minutes.`,
           );
-          void runTruckerBrief(originPt.lat, originPt.lon);
         }
         return;
       }
 
       if (msg.type === 'arrived' && msg.to) {
+        // Idempotent — HTML + RN watch may both detect ~60–80 m arrival.
+        if (!navigatingRef.current && !activeTripIdRef.current) return;
         navigatingRef.current = false;
+        navDestRef.current = null;
         injectHighlightWeigh(null);
         setTripEnded({
           lat: msg.to.lat,
@@ -943,9 +975,9 @@ export function GpsFullMap() {
         setHudNote('Arrivée — note vocale trajet dispo');
         speakArrival(lastRouteRef.current?.durationMin, lastRouteRef.current?.distanceKm);
         const tripId = activeTripIdRef.current;
+        activeTripIdRef.current = null;
         if (tripId) {
           void completeTrip(tripId).then(() => {
-            activeTripIdRef.current = null;
             void loadTripHistory().then(setTripHistory);
           });
         }

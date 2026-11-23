@@ -7,11 +7,19 @@ export type RouteManeuver = {
   instruction: string;
   /** Distance along this maneuver (km). */
   lengthKm: number;
-  /** Cumulative distance from route start to end of maneuver (km). */
+  /** Cumulative distance from route start to start of maneuver (km). */
   beginKm: number;
   type?: number;
   beginShapeIndex?: number;
   endShapeIndex?: number;
+};
+
+export type UpcomingTurn = {
+  instruction: string;
+  /** Distance remaining until this turn (km). */
+  distanceKm: number;
+  /** Stable id for speak-once bands (not distance-dependent). */
+  key: string;
 };
 
 type RawManeuver = {
@@ -58,7 +66,29 @@ export function parseValhallaManeuvers(body: unknown): RouteManeuver[] {
   return out;
 }
 
-/** Pick the next maneuver ahead of `progressKm` along the route. */
+/**
+ * Next turn ahead of `progressKm` — the maneuver whose start is still ahead.
+ * Speaks that instruction (not the current "Continuer" segment).
+ */
+export function upcomingTurnAt(
+  maneuvers: RouteManeuver[],
+  progressKm: number,
+): UpcomingTurn | null {
+  if (!maneuvers.length) return null;
+  for (let i = 0; i < maneuvers.length; i++) {
+    const m = maneuvers[i];
+    if (m.beginKm > progressKm + 0.02) {
+      return {
+        instruction: m.instruction,
+        distanceKm: Math.max(0, m.beginKm - progressKm),
+        key: `turn-${i}`,
+      };
+    }
+  }
+  return null;
+}
+
+/** @deprecated Prefer upcomingTurnAt — kept for callers that need current segment. */
 export function nextManeuverAt(
   maneuvers: RouteManeuver[],
   progressKm: number,

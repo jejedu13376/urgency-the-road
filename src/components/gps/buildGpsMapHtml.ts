@@ -641,6 +641,16 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     }
   };
 
+  function haversineKmHtml(aLat, aLon, bLat, bLon){
+    var R = 6371;
+    var dLat = (bLat - aLat) * Math.PI / 180;
+    var dLon = (bLon - aLon) * Math.PI / 180;
+    var lat1 = aLat * Math.PI / 180;
+    var lat2 = bLat * Math.PI / 180;
+    var h = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)*Math.sin(dLon/2);
+    return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
+  }
+
   window.__gpsUpdatePosition = function(lat, lon, ok, heading, speed){
     gpsOk = ok !== false;
     if (!gpsOk) {
@@ -656,12 +666,13 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       lastPanAt = now;
       map.panTo([lat, lon], { animate: true, duration: 0.55, easeLinearity: 0.3 });
     }
-    // Post-trip voice logbook: only after an explicit startNavigation trip.
+    // Post-trip voice logbook + trip history: only after an explicit startNavigation trip.
     if (navTripActive && dest && !arrivedPosted) {
       var distM = haversineM(origin, dest);
       if (distM <= 80) {
         arrivedPosted = true;
         navTripActive = false;
+        followLive = false;
         setStatus('Arrivée — note vocale trajet dispo');
         post({ type: 'arrived', mode: mode, to: { lat: dest.lat, lon: dest.lon } });
       }
