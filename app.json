@@ -75,7 +75,7 @@
         {
           "photosPermission": "Urgence Mécanique accède à vos photos/vidéos pour le fil mécanique et les devis (fichiers locaux, pas de CDN).",
           "cameraPermission": "Urgence Mécanique utilise la caméra pour VIN, diagnostic et devis.",
-          "microphonePermission": false
+          "microphonePermission": "Urgence Mécanique utilise le micro pour l’analyseur acoustique moteur (Module 4)."
         }
       ]
     ],

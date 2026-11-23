@@ -64,14 +64,27 @@ export function parseQuoteTextAmounts(text: string): ParsedQuoteAmounts {
       if (v != null && v > 0) lineAmounts.push(v);
     }
     if (lineAmounts.length) {
-      if (isPart && partPrice == null) partPrice = lineAmounts[0];
-      if (isLabor && laborPrice == null) laborPrice = lineAmounts[0];
+      if (isPart && isLabor) {
+        // Combined line (ex. « Pièce 189 · Main d’œuvre 120 ») — never assign the same amount twice.
+        if (partPrice == null) partPrice = lineAmounts[0];
+        if (laborPrice == null) {
+          laborPrice = lineAmounts.length >= 2 ? lineAmounts[1] : undefined;
+        }
+      } else if (isPart && partPrice == null) {
+        partPrice = lineAmounts[0];
+      } else if (isLabor && laborPrice == null) {
+        laborPrice = lineAmounts[0];
+      }
     }
   }
 
   if (partPrice == null && laborPrice == null && amounts.length >= 2) {
     partPrice = amounts[0];
     laborPrice = amounts[1];
+  } else if (partPrice != null && laborPrice == null && amounts.length >= 2) {
+    // Piece taken from a combined line with only one local amount — use next global amount for MO.
+    const next = amounts.find((a) => a !== partPrice);
+    if (next != null) laborPrice = next;
   } else if (partPrice == null && amounts.length === 1) {
     partPrice = amounts[0];
   }

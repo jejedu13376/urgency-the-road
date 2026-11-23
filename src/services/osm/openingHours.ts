@@ -52,14 +52,15 @@ export function advisoryFromOpeningHours(
   const oh = raw.trim();
   const lower = oh.toLowerCase();
 
-  if (lower === '24/7' || lower === '24 hours' || lower.includes('24/7')) {
+  // Exact whole-rule only — mixed rules containing « 24/7 » stay unknown (no false always-open).
+  if (lower === '24/7' || lower === '24 hours') {
     return {
       status: 'open',
       litUp: true,
       note: `OSM opening_hours « ${oh} » → advisory OPEN (statique, pas feed live)`,
     };
   }
-  if (lower === 'closed' || lower.startsWith('closed')) {
+  if (lower === 'closed') {
     return {
       status: 'closed',
       litUp: false,

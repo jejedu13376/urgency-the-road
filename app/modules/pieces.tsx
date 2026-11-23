@@ -284,7 +284,7 @@ export default function PiecesScreen() {
           <TextInput
             value={pasteText}
             onChangeText={setPasteText}
-            placeholder="Ex. Pièce plaquettes 189,00 € · Main d’œuvre 120 €"
+            placeholder="Ex. Pièce plaquettes 189,00 € ; Main d’œuvre 120 €"
             placeholderTextColor={colors.muted}
             style={styles.pasteInput}
             multiline

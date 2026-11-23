@@ -28,9 +28,10 @@ export async function pickLocalVideo(): Promise<LocalVideoPick> {
   }
 
   const asset = res.assets[0];
+  // expo-image-picker documents duration in milliseconds.
   const durationSec =
-    typeof asset.duration === 'number' && Number.isFinite(asset.duration)
-      ? Math.round(asset.duration / (asset.duration > 1000 ? 1000 : 1))
+    typeof asset.duration === 'number' && Number.isFinite(asset.duration) && asset.duration >= 0
+      ? Math.max(0, Math.round(asset.duration / 1000))
       : undefined;
 
   return {
