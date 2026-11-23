@@ -39,6 +39,17 @@ async function writeStore(store: LocalMedicalStore): Promise<void> {
   );
 }
 
+/** True when `a` is a strictly newer ISO timestamp than `b`. */
+export function isIsoNewer(a?: string, b?: string): boolean {
+  if (!a) return false;
+  if (!b) return true;
+  const ta = Date.parse(a);
+  const tb = Date.parse(b);
+  if (Number.isNaN(ta)) return false;
+  if (Number.isNaN(tb)) return true;
+  return ta > tb;
+}
+
 export async function saveMedicalCardLocal(card: MedicalCardDoc): Promise<MedicalCardDoc> {
   const code = card.scanCode.trim().toUpperCase();
   if (!code.startsWith('UM-QR-')) {
@@ -56,6 +67,11 @@ export async function saveMedicalCardLocal(card: MedicalCardDoc): Promise<Medica
   const store = await readStore();
   store.byScanCode[code] = normalized;
   if (normalized.ownerUid) {
+    const prev = store.byOwnerUid[normalized.ownerUid];
+    // Drop rotated ids so an old printed QR cannot unlock PHI from cache.
+    if (prev && prev !== code) {
+      delete store.byScanCode[prev];
+    }
     store.byOwnerUid[normalized.ownerUid] = code;
   }
   await writeStore(store);
@@ -79,6 +95,20 @@ export async function loadMedicalCardByOwnerUid(
   const code = store.byOwnerUid[ownerUid];
   if (!code) return null;
   return store.byScanCode[code] ?? null;
+}
+
+/** Remove a cached fiche by scanCode (cloud says missing / rotated away). */
+export async function removeMedicalCardByScanCode(scanCode: string): Promise<void> {
+  const code = scanCode.trim().toUpperCase();
+  if (!code) return;
+  const store = await readStore();
+  const card = store.byScanCode[code];
+  if (!card) return;
+  delete store.byScanCode[code];
+  if (card.ownerUid && store.byOwnerUid[card.ownerUid] === code) {
+    delete store.byOwnerUid[card.ownerUid];
+  }
+  await writeStore(store);
 }
 
 /** Test / reset helper — clears on-device medical QR cache. */

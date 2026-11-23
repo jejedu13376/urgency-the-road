@@ -97,8 +97,6 @@ export default function UrgenceScreen() {
   const [label, setLabel] = useState<string | undefined>();
   const [coords, setCoords] = useState<DeviceCoords | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
-  /** Raw scanned value (UM-QR-* or legacy UMQR1:) — PHI never taken from QR bytes. */
-  const [scanRaw, setScanRaw] = useState('');
 
   // Align with firestore.rules ownerIsActiveSubscriber — flag only, never plan name / !profile.
   const subscriberActive = profile?.subscriptionActive === true;
@@ -264,11 +262,9 @@ export default function UrgenceScreen() {
     setLabel(res.stubLabel);
   };
 
-  const resolveScanInput = () => scanRaw.trim() || scanCode.trim();
-
   const onPublicScan = async () => {
     setEmergencyView(null);
-    const res = await scanMedicalPublic(resolveScanInput());
+    const res = await scanMedicalPublic(scanCode);
     setPublicView(res.data);
     setScanMsg(res.stubLabel ?? (res.data ? 'Vue publique limitée' : 'QR inconnu'));
   };
@@ -289,7 +285,7 @@ export default function UrgenceScreen() {
       profile?.role === 'rescuer'
         ? { ...profile, rescuerBadgeId: badgeId || profile.rescuerBadgeId }
         : profile;
-    const res = await scanMedicalEmergency(resolveScanInput(), rescuer ?? null);
+    const res = await scanMedicalEmergency(scanCode, rescuer ?? null);
     // ok:false demo can still carry flagged PHI for UX — never present as live.
     setEmergencyView(res.data);
     const demoFlag =
@@ -306,7 +302,7 @@ export default function UrgenceScreen() {
   };
 
   const onCameraScan = (raw: string) => {
-    setScanRaw(raw);
+    // Visible scanCode is the single source of truth (opaque id / legacy → scanCode).
     setScanCode(extractScanCode(raw));
     setScanMsg('QR lu — choisissez vue publique ou vue urgence (hors ligne OK).');
   };
@@ -443,10 +439,7 @@ export default function UrgenceScreen() {
           <Text style={styles.label}>Code QR scanné</Text>
           <TextInput
             value={scanCode}
-            onChangeText={(t) => {
-              setScanCode(t);
-              setScanRaw(t);
-            }}
+            onChangeText={setScanCode}
             style={styles.input}
             placeholder="UM-QR-…"
             placeholderTextColor={colors.muted}

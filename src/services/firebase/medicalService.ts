@@ -14,8 +14,10 @@ import type {
 } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
 import {
+  isIsoNewer,
   loadMedicalCardByOwnerUid,
   loadMedicalCardByScanCode,
+  removeMedicalCardByScanCode,
   saveMedicalCardLocal,
 } from '../urgence/medicalLocalStore';
 import { parseScannedQrValue } from '../urgence/offlineQr';
@@ -236,9 +238,17 @@ export async function ensurePersonalQr(
   }
   if (existing.data?.scanCode) {
     if (existing.source === 'mock') {
-      return flaggedDemoResult(
+      const label = existing.stubLabel ?? '';
+      // ok:false DEMO already returned above — remaining mock is real on-device LOCAL.
+      if (/DEMO/i.test(label)) {
+        return flaggedDemoResult(
+          { scanCode: existing.data.scanCode, card: existing.data },
+          label || 'DEMO QR personnel existant (ok:false, pas live)',
+        );
+      }
+      return mockResult(
         { scanCode: existing.data.scanCode, card: existing.data },
-        existing.stubLabel ?? 'DEMO QR personnel existant (ok:false, pas live)',
+        label || 'LOCAL QR personnel (appareil)',
       );
     }
     // Refresh index (subscriberActive + PHI) without reminting — keeps legacy QR rescuer-readable
@@ -476,6 +486,14 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
           medications: raw.medications ?? [],
           emergencyContacts: raw.emergencyContacts ?? [],
         };
+        const local = await loadMedicalCardByOwnerUid(uid);
+        // Do not clobber newer offline edits that never reached the cloud.
+        if (local && isIsoNewer(local.updatedAt, card.updatedAt)) {
+          return mockResult(
+            local,
+            'LOCAL medical — fiche appareil plus récente que le cloud',
+          );
+        }
         await saveMedicalCardLocal(card);
         return liveResult(card);
       }
@@ -552,18 +570,17 @@ export async function scanMedicalEmergency(
       ? parsed.scanCode
       : scanInput.trim().toUpperCase();
 
-  // (1) On-device store — authoritative offline source (owner save / prior sync).
   const local = code.startsWith('UM-QR-') ? await loadMedicalCardByScanCode(code) : null;
-  if (local) {
-    return mockResult(
-      toEmergencyView(local),
-      'LOCAL vue urgence — fiche appareil hors ligne',
-    );
-  }
 
   const fb = getFirebase();
   if (!fb) {
-    // Only the exact demo scan code returns flagged demo PHI — never any UM-QR-* prefix.
+    // Offline: device store only — never invent PHI for arbitrary codes.
+    if (local) {
+      return mockResult(
+        toEmergencyView(local),
+        'LOCAL vue urgence — fiche appareil hors ligne',
+      );
+    }
     if (code === MOCK_CARD.scanCode.toUpperCase()) {
       return flaggedDemoResult(
         toEmergencyView({ ...MOCK_CARD }),
@@ -576,10 +593,12 @@ export async function scanMedicalEmergency(
   }
 
   try {
-    // Exact document get by scanCode — not a collection list
+    // Online: cloud index wins — avoid stale / rotated cache when network works.
     const snap = await getDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, code));
     if (!snap.exists()) {
-      // Demo code only when Firebase empty — flagged ok:false, never invent for other codes.
+      if (local) {
+        await removeMedicalCardByScanCode(code);
+      }
       if (code === MOCK_CARD.scanCode.toUpperCase()) {
         return flaggedDemoResult(
           toEmergencyView({ ...MOCK_CARD }),
@@ -621,7 +640,13 @@ export async function scanMedicalEmergency(
     });
     return liveResult(view);
   } catch (e) {
-    // Soft-fail: ok:false + null — NEVER surface MOCK_CARD as live PHI.
+    // Network / soft fail — fall back to on-device fiche if present.
+    if (local) {
+      return mockResult(
+        toEmergencyView(local),
+        'LOCAL vue urgence — cloud indisponible, fiche appareil',
+      );
+    }
     if (isPermissionDenied(e) || softDev) {
       return failResult(
         null,
