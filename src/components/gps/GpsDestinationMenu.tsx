@@ -46,7 +46,7 @@ type Props = {
 };
 
 const DATA_SOURCES_FR =
-  'Sources : OpenStreetMap (tuiles), Open-Meteo / Photon (adresses), Valhalla (itinéraires), Overpass (ouvrages / pesage). Données communautaires — pas de Google Maps.';
+  'Sources : Esri World Imagery (tuiles), Open-Meteo / Photon (adresses), Valhalla (itinéraires), Overpass / OpenStreetMap (ouvrages / pesage). Pas de Google Maps.';
 
 export function GpsDestinationMenu({
   visible,

@@ -25,7 +25,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://unpkg.com/leaflet@1.9.4/ 'unsafe-inline'; style-src https://unpkg.com/leaflet@1.9.4/ 'unsafe-inline'; img-src https://tile.openstreetmap.org https://*.tile.openstreetmap.org data: blob:; connect-src https://unpkg.com; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://unpkg.com/leaflet@1.9.4/ 'unsafe-inline'; style-src https://unpkg.com/leaflet@1.9.4/ 'unsafe-inline'; img-src https://server.arcgisonline.com data: blob:; connect-src https://unpkg.com; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
 <style>
@@ -104,7 +104,6 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   .layer-pin.weigh-on{background:#B08900;border:2px solid #fff}
   .layer-pin.weigh-off{background:var(--muted)}
   .layer-pin.report{background:#3B5BDB}
-  .leaflet-bottom.leaflet-right{bottom:calc(72px + var(--pad-bottom)) !important;right:calc(8px + var(--pad-right)) !important}
   .route-line{transition:opacity .35s ease}
 </style>
 </head>
@@ -207,13 +206,14 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     }
   }, true);
 
-  var map = L.map('map', { zoomControl: false, attributionControl: true, preferCanvas: true })
+  /* No Leaflet chrome bottom-right: zoom +/- and attribution banner hidden.
+     Pinch/scroll zoom still works. Tile credit lives in GpsDestinationMenu sources. */
+  var map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true })
     .setView([origin.lat, origin.lon], gpsOk ? 14 : 5);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     maxZoom: 19,
-    attribution: '&copy; OpenStreetMap'
+    attribution: ''
   }).addTo(map);
-  L.control.zoom({ position: 'bottomright' }).addTo(map);
   layerGroup = L.layerGroup().addTo(map);
 
   function ensureVehicleMarker(){
