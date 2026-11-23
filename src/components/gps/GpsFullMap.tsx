@@ -12,6 +12,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
+import { useAuth } from '../../context/AuthContext';
 import { useFleet } from '../../context/FleetContext';
 import { getDeviceCoords, watchDevicePosition } from '../../services/geo/deviceLocation';
 import { geocodePlace, type GeocodeHit } from '../../services/geo/openMeteoGeocode';
@@ -165,6 +166,7 @@ function postGpsCmd(win: MapWindow | null, cmd: Record<string, unknown>) {
 export function GpsFullMap() {
   const insets = useSafeAreaInsets();
   const { active } = useFleet();
+  const { profile } = useAuth();
   const webRef = useRef<WebViewHandle | null>(null);
   const iframeWinRef = useRef<MapWindow | null>(null);
   const routeReqId = useRef(0);
@@ -173,7 +175,10 @@ export function GpsFullMap() {
   const fleetKeyRef = useRef<string | null>(null);
   const liveOriginRef = useRef<{ lat: number; lon: number } | null>(null);
   const reportsRef = useRef<CrowdReport[]>([]);
+  /** Last local police pin — cloud publish only via explicit Publier. */
+  const lastLocalPoliceRef = useRef<CrowdReport | null>(null);
   const [bootHtml, setBootHtml] = useState<string | null>(null);
+  const [canPublishPolice, setCanPublishPolice] = useState(false);
   const [hudNote, setHudNote] = useState<string | null>(null);
   const [lastRoute, setLastRoute] = useState<VehicleRouteResult | null>(null);
   const [modeLabel, setModeLabel] = useState<GpsVehicleMode>('voiture');
@@ -608,6 +613,7 @@ export function GpsFullMap() {
     [proposeDestination],
   );
 
+  /** One-tap Police = AsyncStorage local pin only — never auto-upload GPS/uid. */
   const dropPoliceReport = useCallback(() => {
     const origin = liveOriginRef.current;
     if (!origin || !gpsOk) {
@@ -625,19 +631,46 @@ export function GpsFullMap() {
         setHudNote(local.error);
         return;
       }
-      // Soft cloud — ok:false is fine; pins stay local.
-      void reportHazard({
-        reporterUid: 'local',
-        kind: 'radar',
-        lat: origin.lat,
-        lon: origin.lon,
-        note: 'Police (crowd)',
-        expiresAt: local.report.expiresAt,
-      });
-      setHudNote('Police signalé (local · ~45 min) — pas d’outil de harcèlement');
+      lastLocalPoliceRef.current = local.report;
+      setCanPublishPolice(true);
+      setHudNote(
+        profile?.uid
+          ? 'Police local (~45 min) — tapez Publier pour cloud (login OK)'
+          : 'Police local uniquement (~45 min) — pas d’envoi cloud (connectez-vous pour Publier)',
+      );
       void refreshLayers();
     })();
-  }, [gpsOk, refreshLayers]);
+  }, [gpsOk, profile?.uid, refreshLayers]);
+
+  /** Explicit cloud publish — same gate as Module 7 GPS sheet (login + intentional). */
+  const publishPoliceCloud = useCallback(() => {
+    const pin = lastLocalPoliceRef.current;
+    if (!pin) {
+      setHudNote('Rien à publier — tapez Police d’abord (local)');
+      return;
+    }
+    if (!profile?.uid) {
+      setHudNote('Publier cloud — connexion requise');
+      return;
+    }
+    void (async () => {
+      const r = await reportHazard({
+        reporterUid: profile.uid,
+        kind: 'radar',
+        lat: pin.lat,
+        lon: pin.lon,
+        note: pin.note ?? 'Police',
+        expiresAt: pin.expiresAt,
+      });
+      if (r.ok === false) {
+        setHudNote(r.stubLabel ?? 'Publication cloud refusée — pin reste local');
+        return;
+      }
+      setCanPublishPolice(false);
+      setHudNote('Police publié cloud (explicite) — pin local conservé');
+      void refreshLayers();
+    })();
+  }, [profile?.uid, refreshLayers]);
 
   if (!bootHtml) {
     return (
@@ -756,6 +789,11 @@ export function GpsFullMap() {
         <Pressable style={styles.reportBtn} onPress={dropPoliceReport}>
           <Text style={styles.reportTxt}>Police</Text>
         </Pressable>
+        {canPublishPolice ? (
+          <Pressable style={styles.publishBtn} onPress={publishPoliceCloud}>
+            <Text style={styles.reportTxt}>Publier</Text>
+          </Pressable>
+        ) : null}
         {lastRoute?.ok ? (
           <Text style={styles.etaTxt} numberOfLines={1}>
             ~{lastRoute.durationMin} min · {lastRoute.distanceKm} km
@@ -836,6 +874,12 @@ const styles = StyleSheet.create({
   },
   reportBtn: {
     backgroundColor: 'rgba(59,91,219,0.95)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 11,
+  },
+  publishBtn: {
+    backgroundColor: 'rgba(31,107,74,0.95)',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 11,
