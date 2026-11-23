@@ -165,13 +165,16 @@ function mergeByFingerprint(remote: LearnedFailure[], local: LearnedFailure[]): 
   return [...remote, ...extras].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 }
 
-/** After list succeeds: drop local rows that are on Firestore; keep failures. */
-async function pruneLocalAfterListOk(
-  localBefore: LearnedFailure[],
-  mig: MigrateResult,
-): Promise<void> {
+/**
+ * After list succeeds: drop only known-migrated ids from the *current* journal.
+ * Re-read AsyncStorage so concurrent recordLearnedFailure appends after localBefore
+ * are not wiped by rebuilding from a stale snapshot.
+ */
+async function pruneLocalAfterListOk(mig: MigrateResult): Promise<void> {
   const removable = new Set([...mig.alreadyRemote, ...mig.uploadedLocalIds]);
-  const keep = localBefore.filter((r) => !removable.has(r.id));
+  if (!removable.size) return;
+  const current = await readLocalJournal();
+  const keep = current.filter((r) => !removable.has(r.id));
   await writeLocalJournal(keep);
 }
 
@@ -228,8 +231,8 @@ export async function listLearnedFailures(max = 20): Promise<ServiceResult<Learn
       };
     });
 
-    // List succeeded — now safe to prune AsyncStorage of migrated rows
-    await pruneLocalAfterListOk(localBefore, mig);
+    // List succeeded — prune only migrated ids from current journal (not stale snapshot)
+    await pruneLocalAfterListOk(mig);
     const pendingLocal = await readLocalJournal();
 
     const merged = mergeByFingerprint(items, pendingLocal).slice(0, cap);
