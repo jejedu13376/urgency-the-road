@@ -1,15 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
 import { useFleet } from '../../context/FleetContext';
-import { getDeviceCoords } from '../../services/geo/deviceLocation';
+import { getDeviceCoords, watchDevicePosition } from '../../services/geo/deviceLocation';
+import { geocodePlace, type GeocodeHit } from '../../services/geo/openMeteoGeocode';
 import {
   fetchVehicleRoute,
-  mapsHandoffUrls,
   type VehicleRouteResult,
 } from '../../services/geo/valhallaRoute';
-import { fetchNearbyBridgeClearances } from '../../services/osm/overpassPlaces';
+import { listRoadHazards, reportHazard } from '../../services/firebase/hazardsService';
+import {
+  fetchNearbyBridgeClearances,
+  fetchNearbyWeighStations,
+} from '../../services/osm/overpassPlaces';
+import {
+  addCrowdReport,
+  loadCrowdReports,
+  mergeCloudHazards,
+  type CrowdReport,
+} from '../../services/prefs/gpsCrowdReports';
 import {
   loadGpsNavPrefs,
   saveGpsNavPrefs,
@@ -111,12 +131,10 @@ function parseMapMsg(raw: string): MapMsg | null {
 function allowMapDocumentLoad(url: string): boolean {
   if (!url || url === 'about:blank' || url === 'about:srcdoc') return true;
   if (url.startsWith('data:text/html')) return true;
-  // baseUrl used by RN WebView for the inline HTML document only
   if (url === 'https://localhost/' || url === 'https://localhost') return true;
   return false;
 }
 
-/** Origins allowed to host the inline map document (not a catch-all *). */
 const MAP_ORIGIN_WHITELIST = ['about:blank', 'about:srcdoc', 'https://localhost'];
 
 type MapWindow = Window & {
@@ -130,7 +148,6 @@ type ChromePads = {
   padLeft: number;
 };
 
-/** Parent → sandboxed map iframe (opaque/null origin — no contentWindow API access). */
 function postGpsCmd(win: MapWindow | null, cmd: Record<string, unknown>) {
   if (!win) return;
   try {
@@ -141,8 +158,8 @@ function postGpsCmd(win: MapWindow | null, cmd: Record<string, unknown>) {
 }
 
 /**
- * Full-bleed GPS map (OSM/Leaflet). Only HUD overlays — no hub cards.
- * Tap → voiture/camion (logo camion) → Valhalla route → vehicle icon animates.
+ * Full-bleed GPS map (OSM/Leaflet). Vehicle marker = LIVE device GPS.
+ * No Maps/Waze branding chips. Tap / search → voiture/camion → Valhalla.
  */
 export function GpsFullMap() {
   const insets = useSafeAreaInsets();
@@ -152,62 +169,164 @@ export function GpsFullMap() {
   const routeReqId = useRef(0);
   const prefsRef = useRef<GpsNavPrefs | null>(null);
   const bootedRef = useRef(false);
-  /** Skip first vehicle-effect run (map boot) — only react to real fleet changes. */
   const fleetKeyRef = useRef<string | null>(null);
+  const liveOriginRef = useRef<{ lat: number; lon: number } | null>(null);
+  const reportsRef = useRef<CrowdReport[]>([]);
   const [bootHtml, setBootHtml] = useState<string | null>(null);
   const [hudNote, setHudNote] = useState<string | null>(null);
   const [lastRoute, setLastRoute] = useState<VehicleRouteResult | null>(null);
-  const [dest, setDest] = useState<{ lat: number; lon: number } | null>(null);
   const [modeLabel, setModeLabel] = useState<GpsVehicleMode>('voiture');
   const [gpsOk, setGpsOk] = useState(false);
+  const [searchQ, setSearchQ] = useState('');
+  const [searchHits, setSearchHits] = useState<GeocodeHit[]>([]);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const chromePads = useMemo<ChromePads>(
     () => ({
       padTop: Math.max(insets.top, 8) + 4,
       padRight: Math.max(insets.right, 8),
-      // Status bar / safe area + SOS FAB clearance (right FAB at bottom ~92)
       padBottom: Math.max(insets.bottom, 8) + SOS_FAB_CLEARANCE,
       padLeft: Math.max(insets.left, 8),
     }),
     [insets.top, insets.right, insets.bottom, insets.left],
   );
 
-  const injectRoute = useCallback((result: VehicleRouteResult) => {
-    if (Platform.OS === 'web') {
-      postGpsCmd(iframeWinRef.current, { cmd: 'applyRoute', payload: result });
-      return;
-    }
-    webRef.current?.injectJavaScript(
-      `window.__gpsApplyRoute && window.__gpsApplyRoute(${JSON.stringify(result)}); true;`,
-    );
+  const injectJs = useCallback((script: string) => {
+    if (Platform.OS === 'web') return;
+    webRef.current?.injectJavaScript(`${script}; true;`);
   }, []);
 
-  const setMapOrigin = useCallback((lat: number, lon: number, ok: boolean) => {
-    if (Platform.OS === 'web') {
-      postGpsCmd(iframeWinRef.current, { cmd: 'setOrigin', lat, lon, ok });
-      return;
-    }
-    webRef.current?.injectJavaScript(
-      `window.__gpsSetOrigin && window.__gpsSetOrigin(${lat},${lon},${ok ? 'true' : 'false'}); true;`,
-    );
-  }, []);
+  const injectRoute = useCallback(
+    (result: VehicleRouteResult) => {
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, { cmd: 'applyRoute', payload: result });
+        return;
+      }
+      injectJs(`window.__gpsApplyRoute && window.__gpsApplyRoute(${JSON.stringify(result)})`);
+    },
+    [injectJs],
+  );
 
-  const applyModeInMap = useCallback((mode: GpsVehicleMode, prefs: GpsNavPrefs) => {
-    const truck = {
-      heightM: prefs.truckHeightM,
-      widthM: prefs.truckWidthM,
-      weightT: prefs.truckPtacT,
-    };
-    if (Platform.OS === 'web') {
-      postGpsCmd(iframeWinRef.current, { cmd: 'applyMode', mode, truck });
-      return;
-    }
-    webRef.current?.injectJavaScript(
-      `window.__gpsApplyMode && window.__gpsApplyMode(${JSON.stringify(mode)}, ${JSON.stringify(truck)}); true;`,
-    );
-  }, []);
+  const injectLivePosition = useCallback(
+    (lat: number, lon: number, ok: boolean, heading: number | null, speed: number | null) => {
+      liveOriginRef.current = { lat, lon };
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, {
+          cmd: 'updatePosition',
+          lat,
+          lon,
+          ok,
+          heading,
+          speed,
+        });
+        return;
+      }
+      injectJs(
+        `window.__gpsUpdatePosition && window.__gpsUpdatePosition(${lat},${lon},${ok ? 'true' : 'false'},${
+          heading == null ? 'null' : heading
+        },${speed == null ? 'null' : speed})`,
+      );
+    },
+    [injectJs],
+  );
 
-  /** Boot map once — never remount on vehicle class change. */
+  const setMapOrigin = useCallback(
+    (lat: number, lon: number, ok: boolean) => {
+      liveOriginRef.current = { lat, lon };
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, { cmd: 'setOrigin', lat, lon, ok });
+        return;
+      }
+      injectJs(
+        `window.__gpsSetOrigin && window.__gpsSetOrigin(${lat},${lon},${ok ? 'true' : 'false'})`,
+      );
+    },
+    [injectJs],
+  );
+
+  const applyModeInMap = useCallback(
+    (mode: GpsVehicleMode, prefs: GpsNavPrefs) => {
+      const truck = {
+        heightM: prefs.truckHeightM,
+        widthM: prefs.truckWidthM,
+        weightT: prefs.truckPtacT,
+      };
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, { cmd: 'applyMode', mode, truck });
+        return;
+      }
+      injectJs(
+        `window.__gpsApplyMode && window.__gpsApplyMode(${JSON.stringify(mode)}, ${JSON.stringify(truck)})`,
+      );
+    },
+    [injectJs],
+  );
+
+  const injectLayers = useCallback(
+    (payload: {
+      bridges: unknown[];
+      weigh: unknown[];
+      reports: unknown[];
+    }) => {
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, { cmd: 'setLayers', payload });
+        return;
+      }
+      injectJs(`window.__gpsSetLayers && window.__gpsSetLayers(${JSON.stringify(payload)})`);
+    },
+    [injectJs],
+  );
+
+  const proposeDestination = useCallback(
+    (lat: number, lon: number, label: string) => {
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, { cmd: 'proposeDestination', lat, lon, label });
+        return;
+      }
+      injectJs(
+        `window.__gpsProposeDestination && window.__gpsProposeDestination(${lat},${lon},${JSON.stringify(label)})`,
+      );
+    },
+    [injectJs],
+  );
+
+  const refreshLayers = useCallback(async () => {
+    const origin = liveOriginRef.current;
+    if (!origin || !bootHtml) return;
+    const prefs = prefsRef.current ?? (await loadGpsNavPrefs());
+    const truck = { heightM: prefs.truckHeightM, weightT: prefs.truckPtacT };
+    const [bridges, weigh, localReports, cloudHazards] = await Promise.all([
+      fetchNearbyBridgeClearances(origin.lat, origin.lon, 18000, truck),
+      fetchNearbyWeighStations(origin.lat, origin.lon, 60000),
+      loadCrowdReports(),
+      listRoadHazards(),
+    ]);
+    const reports = mergeCloudHazards(localReports, cloudHazards.data ?? []);
+    reportsRef.current = reports;
+    injectLayers({
+      bridges: bridges.bridges,
+      weigh: (weigh.stations ?? []).slice(0, 20).map((s) => ({
+        id: s.id,
+        name: s.name,
+        lat: s.lat,
+        lon: s.lon,
+        status: s.status,
+        litUp: s.litUp,
+      })),
+      reports: reports.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        lat: r.lat,
+        lon: r.lon,
+        note: r.note,
+      })),
+    });
+    const bits = [bridges.label, weigh.label].filter(Boolean);
+    if (bits.length) setHudNote((prev) => prev ?? bits[0]);
+  }, [bootHtml, injectLayers]);
+
+  /** Boot map once — never remount on vehicle class / GPS ticks. */
   useEffect(() => {
     if (bootedRef.current) return;
     let cancelled = false;
@@ -220,16 +339,16 @@ export function GpsFullMap() {
           ? await saveGpsNavPrefs({ mode: 'camion' })
           : stored;
 
-      // Never treat Lille fallback as silent device origin.
       const loc = await getDeviceCoords({ allowFallback: false });
       if (cancelled) return;
 
       const deviceOk = loc.ok === true && loc.data?.source === 'device';
       const origin = deviceOk
         ? { lat: loc.data.lat, lon: loc.data.lon }
-        : { lat: 46.5, lon: 2.5 }; // neutral FR overview — not claimed as GPS
+        : { lat: 46.5, lon: 2.5 };
 
       prefsRef.current = initial;
+      liveOriginRef.current = origin;
       setModeLabel(initial.mode);
       setGpsOk(deviceOk);
       if (!deviceOk) {
@@ -256,15 +375,45 @@ export function GpsFullMap() {
     return () => {
       cancelled = true;
     };
-    // Boot once on mount only (vehicle updates use inject, not remount).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Vehicle class / powertrain change → update icon without wiping map or clobbering GPS HUD. */
+  /** Continuous LIVE GPS while Carte / GPS screen is focused — inject ticks, no remount. */
+  useFocusEffect(
+    useCallback(() => {
+      let sub: { remove: () => void } | null = null;
+      let cancelled = false;
+      void (async () => {
+        sub = await watchDevicePosition(
+          (pos) => {
+            if (cancelled) return;
+            setGpsOk(true);
+            injectLivePosition(pos.lat, pos.lon, true, pos.headingDeg, pos.speedMps);
+          },
+          (err) => {
+            if (cancelled) return;
+            setGpsOk(false);
+            setHudNote(`GPS live — ${err}`);
+          },
+        );
+      })();
+      return () => {
+        cancelled = true;
+        sub?.remove();
+      };
+    }, [injectLivePosition]),
+  );
+
+  useEffect(() => {
+    if (!bootHtml || !gpsOk) return;
+    void refreshLayers();
+    const t = setInterval(() => void refreshLayers(), 90_000);
+    return () => clearInterval(t);
+  }, [bootHtml, gpsOk, modeLabel, refreshLayers]);
+
   useEffect(() => {
     if (!bootedRef.current || !bootHtml) return;
     const key = `${active?.vehicleClass ?? ''}|${active?.powertrain ?? ''}`;
-    // First run is map-ready, not a fleet change — seed key and exit.
     if (fleetKeyRef.current === null) {
       fleetKeyRef.current = key;
       return;
@@ -276,7 +425,6 @@ export function GpsFullMap() {
       active?.vehicleClass === 'poids_lourd' || active?.powertrain === 'poids_lourd_diesel';
     void (async () => {
       const prefs = prefsRef.current ?? (await loadGpsNavPrefs());
-      // Respect stored voiture/camion — never force camion over an explicit voiture choice.
       const nextMode: GpsVehicleMode = prefs.mode;
       setModeLabel(nextMode);
       applyModeInMap(nextMode, prefs);
@@ -293,17 +441,14 @@ export function GpsFullMap() {
     })();
   }, [active?.vehicleClass, active?.powertrain, bootHtml, applyModeInMap]);
 
-  /** Push safe-area / SOS clearance into map HUD without remount. */
   useEffect(() => {
     if (!bootHtml) return;
     if (Platform.OS === 'web') {
       postGpsCmd(iframeWinRef.current, { cmd: 'setChrome', pads: chromePads });
       return;
     }
-    webRef.current?.injectJavaScript(
-      `window.__gpsSetChrome && window.__gpsSetChrome(${JSON.stringify(chromePads)}); true;`,
-    );
-  }, [bootHtml, chromePads]);
+    injectJs(`window.__gpsSetChrome && window.__gpsSetChrome(${JSON.stringify(chromePads)})`);
+  }, [bootHtml, chromePads, injectJs]);
 
   const handleMapMsg = useCallback(
     (raw: string) => {
@@ -333,7 +478,7 @@ export function GpsFullMap() {
             setMapOrigin(46.5, 2.5, false);
             return;
           }
-          setHudNote('GPS appareil OK');
+          setHudNote('GPS appareil OK — suivi live');
           setMapOrigin(loc.data.lat, loc.data.lon, true);
         })();
         return;
@@ -344,7 +489,6 @@ export function GpsFullMap() {
           setHudNote('Itinéraire bloqué — GPS appareil requis (pas de fallback Lille)');
           return;
         }
-        setDest(msg.to);
         setModeLabel(msg.mode);
         const reqId = ++routeReqId.current;
         void (async () => {
@@ -358,26 +502,34 @@ export function GpsFullMap() {
           });
           if (reqId !== routeReqId.current) return;
 
-          const route = await fetchVehicleRoute(msg.from, msg.to, msg.mode, {
+          const from = liveOriginRef.current ?? msg.from;
+          const excludes = reportsRef.current
+            .filter((r) => r.kind === 'police' || r.kind === 'accident' || r.kind === 'danger')
+            .map((r) => ({ lat: r.lat, lon: r.lon }));
+
+          const route = await fetchVehicleRoute(from, msg.to, msg.mode, {
             heightM: msg.truck.heightM,
             widthM: msg.truck.widthM,
             weightT: msg.truck.weightT,
-          });
+          }, { excludeLocations: excludes });
           if (reqId !== routeReqId.current) return;
 
           let label = route.label;
           if (msg.mode === 'camion' && route.ok) {
             const mid = route.coords[Math.floor(route.coords.length / 2)] ?? [
-              msg.from.lat,
-              msg.from.lon,
+              from.lat,
+              from.lon,
             ];
-            const bridges = await fetchNearbyBridgeClearances(mid[0], mid[1], 12000);
-            if (reqId !== routeReqId.current) return;
-            const risky = bridges.bridges.filter(
-              (b) => b.maxheightM != null && b.maxheightM < (msg.truck.heightM || 4),
+            const bridges = await fetchNearbyBridgeClearances(
+              mid[0],
+              mid[1],
+              12000,
+              { heightM: msg.truck.heightM, weightT: msg.truck.weightT },
             );
+            if (reqId !== routeReqId.current) return;
+            const risky = bridges.bridges.filter((b) => b.pass === 'no');
             if (risky.length) {
-              label = `${route.label} · ⚠ ${risky.length} ouvrage(s) maxheight < ${msg.truck.heightM} m (OSM advisory)`;
+              label = `${route.label} · ⚠ ${risky.length} ouvrage(s) no-pass vs profil`;
             } else if (bridges.label) {
               label = `${route.label} · ${bridges.label}`;
             }
@@ -388,27 +540,25 @@ export function GpsFullMap() {
           setLastRoute(enriched);
           setHudNote(label);
           injectRoute(enriched);
+          void refreshLayers();
         })();
         return;
       }
 
       if (msg.type === 'navigating' && msg.to) {
-        setDest(msg.to);
-        const urls = mapsHandoffUrls(msg.to, msg.mode);
         setHudNote(
           msg.mode === 'camion'
-            ? `Navigation camion (anim) — ${urls.truckNote}`
-            : 'Navigation voiture (animation sur carte)',
+            ? 'Navigation camion — marqueur = GPS live (pas de démo polyline)'
+            : 'Navigation voiture — marqueur = GPS live',
         );
         return;
       }
 
-      if (msg.type === 'arrived' && msg.to) {
-        setDest(msg.to);
-        setHudNote('Arrivée animée — tapez Maps / Waze pour le guidage live');
+      if (msg.type === 'arrived') {
+        setHudNote('Arrivée — GPS live toujours actif');
       }
     },
-    [gpsOk, injectRoute, setMapOrigin],
+    [gpsOk, injectRoute, setMapOrigin, refreshLayers],
   );
 
   const onMessage = useCallback(
@@ -429,6 +579,63 @@ export function GpsFullMap() {
     window.addEventListener('message', onWinMsg);
     return () => window.removeEventListener('message', onWinMsg);
   }, [handleMapMsg]);
+
+  const runSearch = useCallback(async () => {
+    const q = searchQ.trim();
+    if (!q) return;
+    setSearchBusy(true);
+    setSearchOpen(true);
+    try {
+      const res = await geocodePlace(q, 6);
+      setSearchHits(res.hits);
+      if (!res.ok) setHudNote(res.error ?? 'Adresse introuvable');
+      else setHudNote(`${res.hits.length} résultat(s) · ${res.source}`);
+    } finally {
+      setSearchBusy(false);
+    }
+  }, [searchQ]);
+
+  const pickSearchHit = useCallback(
+    (hit: GeocodeHit) => {
+      setSearchOpen(false);
+      setSearchHits([]);
+      setSearchQ(hit.label);
+      proposeDestination(hit.lat, hit.lon, hit.label);
+      setHudNote(`Destination · ${hit.label}`);
+    },
+    [proposeDestination],
+  );
+
+  const dropPoliceReport = useCallback(() => {
+    const origin = liveOriginRef.current;
+    if (!origin || !gpsOk) {
+      setHudNote('Signalement police — GPS appareil requis');
+      return;
+    }
+    void (async () => {
+      const local = await addCrowdReport({
+        kind: 'police',
+        lat: origin.lat,
+        lon: origin.lon,
+        note: 'Police (crowd local · expire ~45 min)',
+      });
+      if (!local.ok) {
+        setHudNote(local.error);
+        return;
+      }
+      // Soft cloud — ok:false is fine; pins stay local.
+      void reportHazard({
+        reporterUid: 'local',
+        kind: 'radar',
+        lat: origin.lat,
+        lon: origin.lon,
+        note: 'Police (crowd)',
+        expiresAt: local.report.expiresAt,
+      });
+      setHudNote('Police signalé (local · ~45 min) — pas d’outil de harcèlement');
+      void refreshLayers();
+    })();
+  }, [gpsOk, refreshLayers]);
 
   if (!bootHtml) {
     return (
@@ -453,7 +660,6 @@ export function GpsFullMap() {
           originWhitelist={MAP_ORIGIN_WHITELIST}
           source={{
             html: bootHtml,
-            // Must match whitelist so the inline document loads (not Linking.openURL).
             baseUrl: 'https://localhost/',
           }}
           style={styles.fill}
@@ -469,13 +675,61 @@ export function GpsFullMap() {
           mediaPlaybackRequiresUserAction
         />
       )}
+
+      <View
+        style={[
+          styles.searchWrap,
+          {
+            top: chromePads.padTop + 58,
+            left: chromePads.padLeft + 4,
+            right: chromePads.padRight + 4,
+          },
+        ]}
+        pointerEvents="box-none"
+      >
+        <View style={styles.searchRow}>
+          <TextInput
+            value={searchQ}
+            onChangeText={setSearchQ}
+            placeholder="Adresse / lieu…"
+            placeholderTextColor={colors.muted}
+            style={styles.searchInput}
+            returnKeyType="search"
+            onSubmitEditing={() => void runSearch()}
+            accessibilityLabel="Recherche adresse"
+          />
+          <Pressable style={styles.searchBtn} onPress={() => void runSearch()}>
+            {searchBusy ? (
+              <ActivityIndicator color={colors.white} size="small" />
+            ) : (
+              <Text style={styles.searchBtnTxt}>OK</Text>
+            )}
+          </Pressable>
+        </View>
+        {searchOpen && searchHits.length > 0 ? (
+          <FlatList
+            keyboardShouldPersistTaps="handled"
+            data={searchHits}
+            keyExtractor={(item, i) => `${item.lat},${item.lon},${i}`}
+            style={styles.hits}
+            renderItem={({ item }) => (
+              <Pressable style={styles.hitRow} onPress={() => pickSearchHit(item)}>
+                <Text style={styles.hitTxt} numberOfLines={2}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            )}
+          />
+        ) : null}
+      </View>
+
       {hudNote ? (
         <View
           pointerEvents="none"
           style={[
             styles.note,
             {
-              top: chromePads.padTop + 64,
+              top: chromePads.padTop + 108,
               left: chromePads.padLeft + 4,
               right: chromePads.padRight + 4,
             },
@@ -486,31 +740,26 @@ export function GpsFullMap() {
           </Text>
         </View>
       ) : null}
-      {lastRoute?.ok && dest ? (
-        <View
-          style={[
-            styles.handrow,
-            {
-              bottom: chromePads.padBottom + 8,
-              right: chromePads.padRight + 4,
-            },
-          ]}
-          pointerEvents="box-none"
-        >
-          <Text
-            style={styles.handLink}
-            onPress={() => void Linking.openURL(mapsHandoffUrls(dest, lastRoute.mode).google)}
-          >
-            Maps
+
+      <View
+        style={[
+          styles.reportRow,
+          {
+            bottom: chromePads.padBottom + 8,
+            left: chromePads.padLeft + 4,
+          },
+        ]}
+        pointerEvents="box-none"
+      >
+        <Pressable style={styles.reportBtn} onPress={dropPoliceReport}>
+          <Text style={styles.reportTxt}>Police</Text>
+        </Pressable>
+        {lastRoute?.ok ? (
+          <Text style={styles.etaTxt} numberOfLines={1}>
+            ~{lastRoute.durationMin} min · {lastRoute.distanceKm} km
           </Text>
-          <Text
-            style={styles.handLink}
-            onPress={() => void Linking.openURL(mapsHandoffUrls(dest, lastRoute.mode).waze)}
-          >
-            Waze
-          </Text>
-        </View>
-      ) : null}
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -526,7 +775,6 @@ function WebIframe({
     <iframe
       title="Carte GPS"
       srcDoc={html}
-      // No allow-same-origin → opaque unique origin; unpkg/Leaflet cannot read parent storage.
       sandbox="allow-scripts"
       referrerPolicy="no-referrer"
       style={{ border: 'none', width: '100%', height: '100%', flex: 1 }}
@@ -541,27 +789,65 @@ const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: colors.asphalt },
   boot: { alignItems: 'center', justifyContent: 'center' },
   bootTxt: { color: colors.white, fontWeight: '700' },
+  searchWrap: { position: 'absolute', zIndex: 20 },
+  searchRow: { flexDirection: 'row', gap: 6 },
+  searchInput: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 11,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.ink,
+  },
+  searchBtn: {
+    backgroundColor: colors.signal,
+    borderRadius: 11,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 48,
+  },
+  searchBtnTxt: { color: colors.white, fontWeight: '800', fontSize: 12 },
+  hits: {
+    marginTop: 4,
+    maxHeight: 160,
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderRadius: 11,
+  },
+  hitRow: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+  hitTxt: { color: colors.ink, fontSize: 12, fontWeight: '600' },
   note: {
     position: 'absolute',
-    backgroundColor: 'rgba(27,36,48,0.88)',
-    borderRadius: 10,
+    backgroundColor: 'rgba(27,36,48,0.9)',
+    borderRadius: 9,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 7,
   },
   noteTxt: { color: colors.white, fontSize: 11, fontWeight: '600', lineHeight: 15 },
-  handrow: {
+  reportRow: {
     position: 'absolute',
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
-  handLink: {
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    color: colors.ink,
-    fontWeight: '800',
-    fontSize: 12,
+  reportBtn: {
+    backgroundColor: 'rgba(59,91,219,0.95)',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: 11,
+  },
+  reportTxt: { color: colors.white, fontWeight: '800', fontSize: 12 },
+  etaTxt: {
+    color: colors.white,
+    fontSize: 11,
+    fontWeight: '700',
+    backgroundColor: 'rgba(27,36,48,0.85)',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 9,
     overflow: 'hidden',
+    maxWidth: 180,
   },
 });

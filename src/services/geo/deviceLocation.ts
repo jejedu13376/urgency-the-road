@@ -69,6 +69,61 @@ export async function getDeviceCoords(opts?: {
   }
 }
 
+export type LivePosition = {
+  lat: number;
+  lon: number;
+  accuracyM: number | null;
+  headingDeg: number | null;
+  speedMps: number | null;
+  at: number;
+};
+
+export type PositionSubscription = { remove: () => void };
+
+/**
+ * Continuous foreground GPS for the Carte vehicle marker.
+ * Caller must remove() on blur/unmount — never remount the map on each tick.
+ */
+export async function watchDevicePosition(
+  onUpdate: (pos: LivePosition) => void,
+  onError?: (message: string) => void,
+): Promise<PositionSubscription | null> {
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      onError?.('Permission localisation refusée');
+      return null;
+    }
+    const sub = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.High,
+        timeInterval: 1000,
+        distanceInterval: 3,
+        mayShowUserSettingsDialog: true,
+      },
+      (pos) => {
+        const heading = pos.coords.heading;
+        const speed = pos.coords.speed;
+        onUpdate({
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+          accuracyM: pos.coords.accuracy ?? null,
+          headingDeg:
+            typeof heading === 'number' && Number.isFinite(heading) && heading >= 0
+              ? heading
+              : null,
+          speedMps: typeof speed === 'number' && Number.isFinite(speed) && speed >= 0 ? speed : null,
+          at: pos.timestamp ?? Date.now(),
+        });
+      },
+    );
+    return sub;
+  } catch (e) {
+    onError?.(e instanceof Error ? e.message : 'GPS watch indisponible');
+    return null;
+  }
+}
+
 export function haversineKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
   const R = 6371;
   const dLat = ((bLat - aLat) * Math.PI) / 180;

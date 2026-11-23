@@ -49,7 +49,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "typecheck:functions": "npm --prefix firebase/functions run typecheck",
-    "test": "tsx --test src/services/osm/openingHours.test.ts src/services/quotes/parseQuoteText.test.ts src/services/firebase/devSoftAuth.test.ts src/services/geo/polyline6.test.ts",
+    "test": "tsx --test src/services/osm/openingHours.test.ts src/services/quotes/parseQuoteText.test.ts src/services/firebase/devSoftAuth.test.ts src/services/geo/polyline6.test.ts src/services/geo/valhallaRoute.test.ts",
     "lint": "expo lint",
     "eas:whoami": "npx eas-cli whoami",
     "eas:configure": "npx eas-cli build:configure",
