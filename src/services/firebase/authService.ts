@@ -3,6 +3,7 @@ import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
   sendEmailVerification,
+  signInAnonymously,
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
@@ -11,6 +12,7 @@ import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getFirebase, isFirebaseConfigured } from '../../firebase/config';
 import type { UserDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
+import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 const MOCK_USER: UserDoc = {
@@ -73,7 +75,11 @@ function profileFromAuth(
   return base;
 }
 
-/** Ensure users/{uid} exists so refresh() does not wipe a successful sign-in. */
+/**
+ * Ensure users/{uid} exists so refresh() does not wipe a successful sign-in.
+ * On permission-denied (rules not yet open / deploy pending), soft-return an
+ * in-memory profile so Expo never crashes on Auth bootstrap.
+ */
 async function ensureUserDoc(
   uid: string,
   email: string,
@@ -81,18 +87,25 @@ async function ensureUserDoc(
 ): Promise<UserDoc> {
   const fb = getFirebase()!;
   const ref = doc(fb.db, COLLECTIONS.users, uid);
-  const snap = await getDoc(ref);
-  if (snap.exists()) return snap.data() as UserDoc;
-  const profile = profileFromAuth(uid, email, displayName);
-  await setDoc(
-    ref,
-    stripUndefined({
-      ...profile,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    }),
-  );
-  return profile;
+  const fallback = profileFromAuth(uid, email, displayName);
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) return snap.data() as UserDoc;
+    await setDoc(
+      ref,
+      stripUndefined({
+        ...fallback,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    return fallback;
+  } catch (e) {
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return fallback;
+    }
+    throw e;
+  }
 }
 
 export async function signUpEmail(
@@ -204,6 +217,38 @@ export async function getCurrentUserProfile(): Promise<ServiceResult<UserDoc | n
     const profile = await ensureUserDoc(u.uid, u.email ?? '', u.displayName);
     return liveResult(profile);
   } catch (e) {
+    // Soft-fail: keep UI usable when rules deny users/{uid} (deploy pending).
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return mockResult(
+        profileFromAuth(u.uid, u.email ?? '', u.displayName),
+        'SOFT Auth — profil mémoire (Firestore permission / DEV)',
+      );
+    }
+    return failResult(null, authErrorMessage(e));
+  }
+}
+
+/**
+ * Anonymous Auth for local/dev preview — no email approval gate.
+ * Falls back to MOCK_USER when Firebase is off or soft-auth is forced.
+ */
+export async function signInAnonymousDev(): Promise<ServiceResult<UserDoc | null>> {
+  if (!isFirebaseConfigured()) {
+    return mockResult(MOCK_USER, 'MOCK Auth — anonyme local (Firebase off)');
+  }
+  const fb = getFirebase()!;
+  try {
+    const cred = await signInAnonymously(fb.auth);
+    const profile = await ensureUserDoc(
+      cred.user.uid,
+      cred.user.email ?? 'anon@urgence-mecanique.local',
+      cred.user.displayName ?? 'Anonyme DEV',
+    );
+    return liveResult(profile, 'Auth anonyme — session locale / preview');
+  } catch (e) {
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return mockResult(MOCK_USER, 'SOFT Auth — anonyme mock (permission / DEV)');
+    }
     return failResult(null, authErrorMessage(e));
   }
 }

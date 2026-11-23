@@ -15,8 +15,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   const refresh = async () => {
-    const res = await getCurrentUserProfile();
-    setProfile(res.data);
+    try {
+      const res = await getCurrentUserProfile();
+      setProfile(res.data);
+    } catch {
+      // Soft-fail: never leave Expo stuck / crash on Auth bootstrap errors.
+      setProfile(null);
+    }
   };
 
   useEffect(() => {

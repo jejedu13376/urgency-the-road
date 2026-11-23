@@ -14,6 +14,7 @@ import { getFirebase, getSignedInUid } from '../../firebase/config';
 import type { FeedPost } from '../../types/modules';
 import { COLLECTIONS } from '../../types/firestore';
 import { MOCK_FEED } from '../../data/mocks';
+import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 function mapDoc(id: string, data: Record<string, unknown>): FeedPost {
@@ -45,6 +46,12 @@ export async function listFeedPosts(max = 40): Promise<ServiceResult<FeedPost[]>
     const posts = snap.docs.map((d) => mapDoc(d.id, d.data() as Record<string, unknown>));
     return liveResult(posts);
   } catch (e) {
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return mockResult(
+        MOCK_FEED,
+        'SOFT fil — permission/DEV (mock, UI charge)',
+      );
+    }
     return failResult(
       MOCK_FEED,
       e instanceof Error ? e.message : 'Lecture fil refusée',

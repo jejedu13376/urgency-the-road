@@ -13,6 +13,7 @@ import type {
   UserDoc,
 } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
+import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 const MOCK_CARD: MedicalCardDoc = {
@@ -80,12 +81,17 @@ function canReuseScanCode(code: string | null | undefined, uid: string): boolean
 }
 
 function canRescuerFull(profile: UserDoc | null | undefined): boolean {
-  return Boolean(
+  if (
     profile &&
-      profile.role === 'rescuer' &&
-      profile.subscription === 'rescuer' &&
-      profile.subscriptionActive,
-  );
+    profile.role === 'rescuer' &&
+    profile.subscription === 'rescuer' &&
+    profile.subscriptionActive
+  ) {
+    return true;
+  }
+  // DEV soft-path: rescuer role without subscriptionActive / KYC still loads UI
+  // (no hard approve workflow). Non-rescuer stays denied.
+  return Boolean(isDevSoftAuth() && profile?.role === 'rescuer');
 }
 
 function toEmergencyView(card: MedicalCardDoc): MedicalEmergencyView {
@@ -444,6 +450,12 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
     }
     return liveResult(null);
   } catch (e) {
+    if (isPermissionDenied(e) || isDevSoftAuth()) {
+      return mockResult(
+        { ...MOCK_CARD, ownerUid, id: medicalCardDocId(ownerUid), scanCode: MOCK_CARD.scanCode },
+        'SOFT medical — permission/DEV (mock fiche)',
+      );
+    }
     return failResult(null, e instanceof Error ? e.message : 'Lecture fiche médicale refusée');
   }
 }
@@ -469,6 +481,7 @@ export async function scanMedicalEmergency(
   scanCode: string,
   rescuerProfile: UserDoc | null,
 ): Promise<ServiceResult<MedicalEmergencyView | null>> {
+  const softDev = isDevSoftAuth();
   if (!canRescuerFull(rescuerProfile)) {
     return mockResult(
       null,
@@ -480,8 +493,13 @@ export async function scanMedicalEmergency(
   const fb = getFirebase();
   if (!fb) {
     // Only the exact demo scan code returns mock PHI — never any UM-QR-* prefix.
-    if (code === MOCK_CARD.scanCode.toUpperCase()) {
-      return mockResult(toEmergencyView({ ...MOCK_CARD }), 'MOCK vue urgence complète (code démo)');
+    if (code === MOCK_CARD.scanCode.toUpperCase() || softDev) {
+      return mockResult(
+        toEmergencyView({ ...MOCK_CARD }),
+        softDev
+          ? 'SOFT vue urgence (DEV — mock PHI, pas de workflow approve)'
+          : 'MOCK vue urgence complète (code démo)',
+      );
     }
     return mockResult(null, 'QR inconnu (mock — seul le code démo renvoie une fiche)');
   }
@@ -489,7 +507,15 @@ export async function scanMedicalEmergency(
   try {
     // Exact document get by scanCode — not a collection list
     const snap = await getDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, code));
-    if (!snap.exists()) return liveResult(null);
+    if (!snap.exists()) {
+      if (softDev && code === MOCK_CARD.scanCode.toUpperCase()) {
+        return mockResult(
+          toEmergencyView({ ...MOCK_CARD }),
+          'SOFT vue urgence — index absent, mock DEV',
+        );
+      }
+      return liveResult(null);
+    }
     const idx = snap.data() as ScanIndexDoc;
     return liveResult(
       toEmergencyView({
@@ -508,6 +534,12 @@ export async function scanMedicalEmergency(
       }),
     );
   } catch (e) {
+    if (isPermissionDenied(e) || softDev) {
+      return mockResult(
+        toEmergencyView({ ...MOCK_CARD }),
+        'SOFT vue urgence — permission/DEV (pas de crash Expo)',
+      );
+    }
     return failResult(null, e instanceof Error ? e.message : 'Scan urgence refusé');
   }
 }
