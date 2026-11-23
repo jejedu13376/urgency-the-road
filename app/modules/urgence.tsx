@@ -140,7 +140,8 @@ export default function UrgenceScreen() {
       lat: device.lat,
       lon: device.lon,
       accuracyM: device.accuracyM ?? undefined,
-      scanCode: scanCode || card?.scanCode || '',
+      // Own personal QR only — never the "Code QR scanné" field (may be a third party).
+      scanCode: card?.scanCode || '',
       suggestedEmergency: `${suggested.number} (${suggested.regionLabel})`,
       createdAt: new Date().toISOString(),
     });
