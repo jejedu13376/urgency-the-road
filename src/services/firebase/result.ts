@@ -23,3 +23,12 @@ export function externalLiveResult<T>(data: T, stubLabel?: string): ServiceResul
 export function failResult<T>(data: T, message: string): ServiceResult<T> {
   return { data, source: 'firebase', stubLabel: message, ok: false };
 }
+
+/**
+ * Demo / soft PHI payload — never looks live.
+ * `ok: false` so screens that gate on `ok` do not hydrate as real data;
+ * `source: 'mock'` + stubLabel must say DEMO / soft.
+ */
+export function flaggedDemoResult<T>(data: T, stubLabel: string): ServiceResult<T> {
+  return { data, source: 'mock', stubLabel, ok: false };
+}

@@ -185,9 +185,15 @@ export default function UrgenceScreen() {
         ? { ...profile, rescuerBadgeId: badgeId || profile.rescuerBadgeId }
         : profile;
     const res = await scanMedicalEmergency(scanCode, rescuer ?? null);
+    // ok:false demo can still carry flagged PHI for UX — never present as live.
     setEmergencyView(res.data);
+    const demoFlag =
+      res.ok === false && res.data
+        ? `DEMO (ok:false) · ${res.stubLabel ?? 'pas live PHI'}`
+        : null;
     setScanMsg(
-      res.stubLabel ??
+      demoFlag ??
+        res.stubLabel ??
         (res.data
           ? `Urgence : ${res.data.fullName} · ${res.data.address}`
           : 'Accès refusé ou QR inconnu'),
