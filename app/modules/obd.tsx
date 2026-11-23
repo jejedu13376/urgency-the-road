@@ -70,18 +70,23 @@ export default function ObdScreen() {
   const cap = getBleCapability();
 
   useEffect(() => {
-    if (recommendation?.recommendedProtocol) {
+    if (!recommendation?.recommendedProtocol) return;
+    const t = setTimeout(() => {
       setProtocol(recommendation.recommendedProtocol);
-    }
+    }, 0);
+    return () => clearTimeout(t);
   }, [recommendation?.recommendedProtocol, active?.id]);
 
   useEffect(() => {
-    const activeSession = getActiveBleSession();
-    if (activeSession) {
-      setConnectedId(activeSession.deviceId);
-      setLiveBle(true);
-      setProtocol(activeSession.protocol);
-    }
+    const t = setTimeout(() => {
+      const activeSession = getActiveBleSession();
+      if (activeSession) {
+        setConnectedId(activeSession.deviceId);
+        setLiveBle(true);
+        setProtocol(activeSession.protocol);
+      }
+    }, 0);
+    return () => clearTimeout(t);
   }, []);
 
   const guideFor = useMemo(() => new Map(MOCK_DTC.map((d) => [d.code, d])), []);

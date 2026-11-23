@@ -312,12 +312,14 @@ export default function DiagnosticIaScreen() {
   useEffect(() => {
     if (acousticPhase !== 'listening') return;
     const m = recorderState.metering;
-    if (typeof m === 'number' && Number.isFinite(m)) {
-      peakMeteringRef.current =
-        peakMeteringRef.current == null ? m : Math.max(peakMeteringRef.current, m);
-      const norm = Math.max(0, Math.min(1, (m + 60) / 60));
+    if (typeof m !== 'number' || !Number.isFinite(m)) return;
+    peakMeteringRef.current =
+      peakMeteringRef.current == null ? m : Math.max(peakMeteringRef.current, m);
+    const norm = Math.max(0, Math.min(1, (m + 60) / 60));
+    const t = setTimeout(() => {
       setAcousticBars((prev) => prev.map((h, i) => 4 + Math.round(norm * (10 + ((h + i) % 8)))));
-    }
+    }, 0);
+    return () => clearTimeout(t);
   }, [recorderState.metering, acousticPhase]);
 
   // Stop any in-flight recording if the screen unmounts mid-capture.

@@ -13,12 +13,14 @@ export function VinCameraScanner({ visible, onClose, onVin }: Props) {
   const [manual, setManual] = useState('');
 
   useEffect(() => {
-    if (visible) {
+    if (!visible) return;
+    const t = setTimeout(() => {
       setLocked(false);
       setHint(null);
       setManual('');
       if (!permission?.granted) void requestPermission();
-    }
+    }, 0);
+    return () => clearTimeout(t);
   }, [visible, permission?.granted, requestPermission]);
 
   const emit = (raw: string) => {

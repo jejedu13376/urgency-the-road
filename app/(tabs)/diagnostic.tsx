@@ -85,6 +85,11 @@ export default function DiagnosticHub() {
             <Text style={styles.linkTxt}>{t('diagnostic.linkBases')}</Text>
           </Pressable>
         </Link>
+        <Link href="/(tabs)/fil" asChild>
+          <Pressable style={styles.linkRow}>
+            <Text style={styles.linkTxt}>{t('diagnostic.linkFil')}</Text>
+          </Pressable>
+        </Link>
       </Card>
     </Screen>
   );

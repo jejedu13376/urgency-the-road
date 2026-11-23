@@ -7,12 +7,12 @@
  */
 import { PermissionsAndroid, Platform } from 'react-native';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 let sharedManager: any = null;
 
 /** Wait until BleManager reports PoweredOn (required after create / after adapter toggle). */
 export async function waitForBlePoweredOn(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   manager: any,
   timeoutMs = 12000,
 ): Promise<void> {
@@ -25,7 +25,7 @@ export async function waitForBlePoweredOn(
 
   await new Promise<void>((resolve, reject) => {
     let settled = false;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     let sub: { remove?: () => void } | null = null;
     const timer = setTimeout(() => {
       if (settled) return;

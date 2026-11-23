@@ -71,7 +71,10 @@ export default function FilMecaniqueScreen() {
   }, []);
 
   useEffect(() => {
-    void loadFeed();
+    const t = setTimeout(() => {
+      void loadFeed();
+    }, 0);
+    return () => clearTimeout(t);
   }, [loadFeed]);
 
   const onRefresh = () => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Linking, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
@@ -35,7 +35,6 @@ export default function UrgenceScreen() {
   useModuleVisit(13);
   const { profile } = useAuth();
   const [seconds, setSeconds] = useState(0);
-  const [pausedAlert, setPausedAlert] = useState(false);
   const [driving, setDriving] = useState(true);
   const [card, setCard] = useState<MedicalCardDoc | null>(null);
   const [fullName, setFullName] = useState('');
@@ -66,9 +65,7 @@ export default function UrgenceScreen() {
     return () => clearInterval(t);
   }, [driving]);
 
-  useEffect(() => {
-    if (seconds >= FOUR_H) setPausedAlert(true);
-  }, [seconds]);
+  const pausedAlert = seconds >= FOUR_H;
 
   useEffect(() => {
     // M13: never seed SOS UI with Lille fallback — device GPS only.
@@ -78,7 +75,7 @@ export default function UrgenceScreen() {
     });
   }, []);
 
-  const hydrateForm = (c: MedicalCardDoc) => {
+  const hydrateForm = useCallback((c: MedicalCardDoc) => {
     setFullName(c.fullName);
     setAddress(c.address ?? '');
     setBloodType(c.bloodType ?? '');
@@ -87,7 +84,7 @@ export default function UrgenceScreen() {
     setMedications((c.medications ?? []).join(', '));
     setContactName(c.emergencyContacts?.[0]?.name ?? '');
     setContactPhone(c.emergencyContacts?.[0]?.phone ?? '');
-  };
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -120,8 +117,7 @@ export default function UrgenceScreen() {
         setLabel(e instanceof Error ? `Urgence soft — ${e.message}` : 'Urgence soft — mock');
       }
     })();
-  }, [profile?.uid, subscriberActive]);
-
+  }, [profile?.uid, subscriberActive, hydrateForm]);
 
   const saveCard = async () => {
     if (!profile?.uid) {
@@ -392,7 +388,6 @@ export default function UrgenceScreen() {
               style={styles.btn}
               onPress={() => {
                 setSeconds(0);
-                setPausedAlert(false);
               }}
             >
               <Text style={styles.sosTxt}>Reset</Text>

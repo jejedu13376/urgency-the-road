@@ -67,6 +67,8 @@ export const en: FrDict = {
     softFail: 'Local weather soft-fail',
     loading: 'Weather…',
     open: 'open',
+    closed: 'closed',
+    icy: 'icy',
   },
 
   backend: {
@@ -217,6 +219,7 @@ export const en: FrDict = {
     linkPieces: 'Parts catalog & install quotes (M3) →',
     linkTutoriels: 'YouTube tutorials (M11) — no embedded video →',
     linkBases: 'Enrich the fault base (M14) →',
+    linkFil: 'Share on the mechanic feed (M12) →',
   },
 
   fil: {

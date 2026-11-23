@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { View } from 'react-native';
 import {
   APP_LOCALES,
   loadStoredLocale,
@@ -17,6 +18,7 @@ import {
   type AppLocale,
   type TranslateOptions,
 } from '../i18n';
+import { colors } from '../theme/colors';
 
 type I18nContextValue = {
   locale: AppLocale;
@@ -29,7 +31,7 @@ type I18nContextValue = {
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<AppLocale>(resolveDeviceLocale());
+  const [locale, setLocaleState] = useState<AppLocale | null>(null);
   const [ready, setReady] = useState(false);
   /** Bump to force consumers to re-read i18n.t after locale change. */
   const [tick, setTick] = useState(0);
@@ -66,7 +68,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      locale,
+      locale: locale ?? 'fr',
       ready,
       setLocale,
       t,
@@ -74,6 +76,16 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     }),
     [locale, ready, setLocale, t],
   );
+
+  // Hold UI until AsyncStorage locale is resolved — avoids flashing device locale
+  // over a persisted EN/FR/ES choice (Bugbot: stored locale ignored on first paint).
+  if (!ready || locale == null) {
+    return (
+      <I18nContext.Provider value={value}>
+        <View style={{ flex: 1, backgroundColor: colors.paper }} />
+      </I18nContext.Provider>
+    );
+  }
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

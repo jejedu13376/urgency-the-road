@@ -323,7 +323,7 @@ export function withDistance<T extends { lat: number; lon: number }>(
   items: T[],
   lat: number,
   lon: number,
-): Array<T & { distanceKm: number; etaMin: number }> {
+): (T & { distanceKm: number; etaMin: number })[] {
   return items.map((p) => {
     const distanceKm = Math.round(haversineKm(lat, lon, p.lat, p.lon) * 10) / 10;
     return { ...p, distanceKm, etaMin: etaMinutesFromKm(distanceKm) };

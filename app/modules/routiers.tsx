@@ -82,7 +82,10 @@ export default function RoutiersScreen() {
   };
 
   useEffect(() => {
-    void reload(radiusKm);
+    const t = setTimeout(() => {
+      void reload(radiusKm);
+    }, 0);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [radiusKm]);
 

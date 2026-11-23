@@ -23,7 +23,7 @@ const KIND_LABEL: Record<GarageDoc['kind'], string> = {
   depot_pl: 'Dépôt poids lourd',
 };
 
-const KIND_FILTERS: Array<GarageDoc['kind'] | 'all'> = [
+const KIND_FILTERS: (GarageDoc['kind'] | 'all')[] = [
   'all',
   'garage',
   'depannage',
@@ -71,7 +71,10 @@ export default function GaragesScreen() {
   };
 
   useEffect(() => {
-    void reload(radiusKm);
+    const t = setTimeout(() => {
+      void reload(radiusKm);
+    }, 0);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initial + radius chip drives reload
   }, [radiusKm]);
 

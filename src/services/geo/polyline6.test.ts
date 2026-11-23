@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { decodePolyline6 } from './polyline6';
 
 /** Encode polyline6 for test fixture (mirrors Valhalla precision). */
-function encodePolyline6(coords: Array<[number, number]>): string {
+function encodePolyline6(coords: [number, number][]): string {
   let lastLat = 0;
   let lastLon = 0;
   let result = '';
@@ -28,7 +28,7 @@ function encodePolyline6(coords: Array<[number, number]>): string {
 
 describe('decodePolyline6', () => {
   it('round-trips Lille → nearby point', () => {
-    const original: Array<[number, number]> = [
+    const original: [number, number][] = [
       [50.6292, 3.0573],
       [50.6365, 3.0708],
     ];

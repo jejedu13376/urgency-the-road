@@ -9,6 +9,21 @@ import { loadLocalPrefs } from '../services/prefs/localPrefs';
 import { fetchWeather, type WeatherSnapshot } from '../services/weather/openMeteo';
 import { colors } from '../theme/colors';
 
+function roadLabel(
+  road: WeatherSnapshot['road'] | undefined,
+  t: (key: string) => string,
+): string {
+  switch (road) {
+    case 'fermees':
+      return t('weather.closed');
+    case 'glacees':
+      return t('weather.icy');
+    case 'ouvertes':
+    default:
+      return t('weather.open');
+  }
+}
+
 /** Top-right — leaves top-left free for permanent red spinner. Hidden on /modules/* (Stack header). */
 export function WeatherBanner() {
   const insets = useSafeAreaInsets();
@@ -74,7 +89,7 @@ export function WeatherBanner() {
   if (!enabled || onModules || onCarte) return null;
 
   const temp = w?.tempC ?? '…';
-  const road = w?.road ?? t('weather.open');
+  const road = roadLabel(w?.road, t);
 
   return (
     <View

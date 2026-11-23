@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
@@ -6,7 +6,7 @@ import { colors } from '../theme/colors';
 /** Spinner permanent TOP-LEFT rouge — toujours visible (gate + app), rotation continue. */
 export function PermanentLeftSpinner() {
   const insets = useSafeAreaInsets();
-  const spin = useRef(new Animated.Value(0)).current;
+  const [spin] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     const loop = Animated.loop(

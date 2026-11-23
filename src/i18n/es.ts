@@ -67,6 +67,8 @@ export const es: FrDict = {
     softFail: 'Clima soft-fail local',
     loading: 'Clima…',
     open: 'abiertas',
+    closed: 'cerradas',
+    icy: 'heladas',
   },
 
   backend: {
@@ -217,6 +219,7 @@ export const es: FrDict = {
     linkPieces: 'Catálogo de piezas y presupuestos (M3) →',
     linkTutoriels: 'Tutoriales YouTube (M11) — sin vídeo embebido →',
     linkBases: 'Enriquecer la base de fallos (M14) →',
+    linkFil: 'Compartir en el feed mecánico (M12) →',
   },
 
   fil: {

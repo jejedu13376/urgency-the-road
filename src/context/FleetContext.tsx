@@ -73,7 +73,10 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
   const [bucketReady, setBucketReady] = useState(false);
   const vehiclesRef = useRef(vehicles);
   const prevUidRef = useRef<string | null | undefined>(undefined);
-  vehiclesRef.current = vehicles;
+
+  useEffect(() => {
+    vehiclesRef.current = vehicles;
+  }, [vehicles]);
 
   const pendingLocalMigrateCount = useMemo(
     () => vehicles.filter(isMigratable).length,
@@ -316,7 +319,10 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!ready || !bucketReady || !authReady) return;
     if (!uid) return;
-    void refreshCloud();
+    const t = setTimeout(() => {
+      void refreshCloud();
+    }, 0);
+    return () => clearTimeout(t);
   }, [ready, bucketReady, authReady, uid, refreshCloud]);
 
   const setActive = useCallback((id: string) => setActiveId(id), []);

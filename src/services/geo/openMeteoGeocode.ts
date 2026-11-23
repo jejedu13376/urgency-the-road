@@ -36,7 +36,7 @@ async function photonGeocode(q: string, limit: number): Promise<GeocodeResult> {
       return { ok: false, hits: [], error: `Photon HTTP ${res.status}`, source: 'photon' };
     }
     const body = (await res.json()) as {
-      features?: Array<{
+      features?: {
         geometry?: { coordinates?: [number, number] };
         properties?: {
           name?: string;
@@ -45,7 +45,7 @@ async function photonGeocode(q: string, limit: number): Promise<GeocodeResult> {
           country?: string;
           street?: string;
         };
-      }>;
+      }[];
     };
     const hits: GeocodeHit[] = [];
     for (const f of body.features ?? []) {
@@ -99,10 +99,10 @@ export async function reverseGeocode(lat: number, lon: number): Promise<GeocodeR
     });
     if (res.ok) {
       const body = (await res.json()) as {
-        features?: Array<{
+        features?: {
           geometry?: { coordinates?: [number, number] };
           properties?: { name?: string; city?: string; state?: string; country?: string };
-        }>;
+        }[];
       };
       const f = body.features?.[0];
       if (f?.geometry?.coordinates) {
@@ -168,13 +168,13 @@ export async function geocodePlace(query: string, limit = 5): Promise<GeocodeRes
     const res = await fetch(url.toString());
     if (res.ok) {
       const body = (await res.json()) as {
-        results?: Array<{
+        results?: {
           name?: string;
           latitude?: number;
           longitude?: number;
           country?: string;
           admin1?: string;
-        }>;
+        }[];
       };
       const hits: GeocodeHit[] = (body.results ?? [])
         .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number')

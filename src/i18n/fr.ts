@@ -64,6 +64,8 @@ export const fr = {
     softFail: 'Météo soft-fail locale',
     loading: 'Météo…',
     open: 'ouvertes',
+    closed: 'fermées',
+    icy: 'glacées',
   },
 
   backend: {
@@ -214,6 +216,7 @@ export const fr = {
     linkPieces: 'Catalogue pièces & devis pose (M3) →',
     linkTutoriels: 'Tutoriels YouTube (M11) — pas de vidéo embarquée →',
     linkBases: 'Enrichir la base de pannes (M14) →',
+    linkFil: 'Partager sur le Fil mécanique (M12) →',
   },
 
   fil: {
