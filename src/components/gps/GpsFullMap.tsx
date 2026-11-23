@@ -179,15 +179,19 @@ export function GpsFullMap() {
     [insets.top, insets.right, insets.bottom, insets.left],
   );
 
-  const injectRoute = useCallback((result: VehicleRouteResult) => {
-    if (Platform.OS === 'web') {
-      postGpsCmd(iframeWinRef.current, { cmd: 'applyRoute', payload: result });
-      return;
-    }
-    webRef.current?.injectJavaScript(
-      `window.__gpsApplyRoute && window.__gpsApplyRoute(${JSON.stringify(result)}); true;`,
-    );
-  }, []);
+  const injectRoute = useCallback(
+    (result: VehicleRouteResult, to?: { lat: number; lon: number } | null) => {
+      const payload = to ? { ...result, to } : result;
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, { cmd: 'applyRoute', payload });
+        return;
+      }
+      webRef.current?.injectJavaScript(
+        `window.__gpsApplyRoute && window.__gpsApplyRoute(${JSON.stringify(payload)}); true;`,
+      );
+    },
+    [],
+  );
 
   const setMapOrigin = useCallback((lat: number, lon: number, ok: boolean) => {
     if (Platform.OS === 'web') {
@@ -320,7 +324,8 @@ export function GpsFullMap() {
           setLastRoute(kept);
           if (kept.label) setHudNote(kept.label);
           // Defer one tick so WebView/iframe handlers are registered.
-          setTimeout(() => injectRoute(kept), 0);
+          // Pass dest so Leaflet restores pin + internal `dest` (chips / Go / navigating).
+          setTimeout(() => injectRoute(kept, keptDest), 0);
         }
         return;
       }
@@ -382,19 +387,14 @@ export function GpsFullMap() {
           // No gabarit / maxheight alert banner in HUD — route label only (distance/time).
           setLastRoute(route);
           setHudNote(route.label);
-          injectRoute(route);
+          injectRoute(route, msg.to);
         })();
         return;
       }
 
       if (msg.type === 'navigating' && msg.to) {
         setDest(msg.to);
-        const urls = mapsHandoffUrls(msg.to, msg.mode);
-        setHudNote(
-          msg.mode === 'camion'
-            ? t('gps.navTruckAnim', { note: urls.truckNote ?? '' })
-            : t('gps.navCarAnim'),
-        );
+        setHudNote(msg.mode === 'camion' ? t('gps.navTruckAnim') : t('gps.navCarAnim'));
         return;
       }
 

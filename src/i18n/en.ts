@@ -289,7 +289,7 @@ export const en: FrDict = {
     fleetKeepCar: 'HD vehicle — car mode kept (saved choice)',
     fleetTruck: 'HD vehicle active — truck profile (map kept)',
     fleetUpdated: 'Vehicle profile updated — map kept',
-    navTruckAnim: 'Truck nav (anim) — %{note}',
+    navTruckAnim: 'Truck navigation (map animation)',
     navCarAnim: 'Car navigation (map animation)',
     arrivedHud: 'Animated arrival — tap Maps / Waze for live guidance',
   },

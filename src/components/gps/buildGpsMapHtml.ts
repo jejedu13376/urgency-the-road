@@ -309,6 +309,12 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
         return;
       }
       clearRoute();
+      // Locale remount restore: reinject dest + pin so chips/Go/navigating keep working.
+      if (payload.to && payload.to.lat != null && payload.to.lon != null) {
+        dest = { lat: payload.to.lat, lon: payload.to.lon };
+        if (destMarker) map.removeLayer(destMarker);
+        destMarker = L.marker([dest.lat, dest.lon], { icon: destDivIcon(), zIndexOffset: 700 }).addTo(map);
+      }
       routeCoords = payload.coords;
       routeLine = L.polyline(routeCoords, {
         color: mode === 'camion' ? '#1F6B4A' : '#C45C26',

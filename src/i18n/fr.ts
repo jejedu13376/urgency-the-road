@@ -286,7 +286,7 @@ export const fr = {
     fleetKeepCar: 'Véhicule PL — mode voiture conservé (choix enregistré)',
     fleetTruck: 'Véhicule PL actif — profil camion (carte conservée)',
     fleetUpdated: 'Profil véhicule mis à jour — carte conservée',
-    navTruckAnim: 'Navigation camion (anim) — %{note}',
+    navTruckAnim: 'Navigation camion (animation sur carte)',
     navCarAnim: 'Navigation voiture (animation sur carte)',
     arrivedHud: 'Arrivée animée — tapez Maps / Waze pour le guidage live',
   },
