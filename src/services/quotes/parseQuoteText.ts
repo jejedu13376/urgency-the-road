@@ -51,8 +51,11 @@ export function parseQuoteTextAmounts(text: string): ParsedQuoteAmounts {
 
   const lines = raw.split(/\n|;|\|/).map((l) => l.trim()).filter(Boolean);
   for (const line of lines) {
-    const isPart = /pi[eè]ce|part|filtre|huile|plaquette|disque|oem|sku/i.test(line);
-    const isLabor = /main.?d.?oeuvre|main.?d.?œuvre|mo\b|labor|pose|heure|h\.?\s*×|taux/i.test(line);
+    // Avoid bare "part" (matches départ/compartiment) — require pièce / parts / OEM cues.
+    const isPart =
+      /pi[eè]ce|\bparts?\b|filtre|huile|plaquette|disque|\boem\b|\bsku\b/i.test(line);
+    const isLabor =
+      /main.?d.?oeuvre|main.?d.?œuvre|\bmo\b|labor|pose|\bheure|\bh\.?\s*×|taux/i.test(line);
     const lineAmounts: number[] = [];
     const lr = new RegExp(AMOUNT_RE.source, 'gi');
     let lm: RegExpExecArray | null;

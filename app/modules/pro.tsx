@@ -106,6 +106,8 @@ export default function ProScreen() {
   }, [appts, ratings.length]);
 
   useEffect(() => {
+    // Persist only after ratings hydrate so we don't clobber stored KPI with empty mount.
+    if (!ratingsHydrated) return;
     void saveProKpi({
       updatedAt: new Date().toISOString(),
       charge: dashboard.charge,
@@ -114,14 +116,17 @@ export default function ProScreen() {
       currency: dashboard.currency,
       ratingsCount: dashboard.ratingsCount,
     });
-  }, [dashboard]);
+  }, [dashboard, ratingsHydrated]);
 
   useEffect(() => {
+    let cancelled = false;
     void loadProKpi().then((k) => {
-      if (k) {
-        setMsg((prev) => prev ?? `KPI atelier local · MAJ ${new Date(k.updatedAt).toLocaleString('fr-FR')}`);
-      }
+      if (cancelled || !k) return;
+      setMsg((prev) => prev ?? `KPI atelier local · MAJ ${new Date(k.updatedAt).toLocaleString('fr-FR')}`);
     });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const addRdv = async () => {

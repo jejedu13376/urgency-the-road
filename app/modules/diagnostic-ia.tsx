@@ -80,6 +80,7 @@ export default function DiagnosticIaScreen() {
   const [acousticLabel, setAcousticLabel] = useState<string | null>(null);
   const [acousticBars, setAcousticBars] = useState(() => [4, 10, 6, 14, 8, 12, 5, 11, 7, 13]);
   const peakMeteringRef = useRef<number | null>(null);
+  const acousticBusyRef = useRef(false);
   const audioRecorder = useAudioRecorder({
     ...RecordingPresets.HIGH_QUALITY,
     isMeteringEnabled: true,
@@ -317,12 +318,36 @@ export default function DiagnosticIaScreen() {
     }
   }, [recorderState.metering, acousticPhase]);
 
+  // Stop any in-flight recording if the screen unmounts mid-capture.
+  useEffect(() => {
+    return () => {
+      acousticBusyRef.current = false;
+      void (async () => {
+        try {
+          const st = audioRecorder.getStatus();
+          if (st.isRecording) await audioRecorder.stop();
+        } catch {
+          /* ignore unmount stop errors */
+        }
+        try {
+          await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+        } catch {
+          /* ignore */
+        }
+      })();
+    };
+    // audioRecorder identity is stable for the screen lifetime
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const runAcoustic = () => {
-    if (acousticPhase === 'listening') return;
+    if (acousticBusyRef.current || acousticPhase === 'listening') return;
+    acousticBusyRef.current = true;
     setAcousticPhase('listening');
     setAcousticGuess(null);
     setAcousticLabel(null);
     peakMeteringRef.current = null;
+    const focusAtStart = acousticFocus;
     void (async () => {
       try {
         const perm = await AudioModule.requestRecordingPermissionsAsync();
@@ -340,22 +365,38 @@ export default function DiagnosticIaScreen() {
         await audioRecorder.prepareToRecordAsync();
         audioRecorder.record();
         await new Promise((r) => setTimeout(r, 2500));
+        if (!acousticBusyRef.current) {
+          try {
+            const st = audioRecorder.getStatus();
+            if (st.isRecording) await audioRecorder.stop();
+          } catch {
+            /* unmounted */
+          }
+          return;
+        }
         await audioRecorder.stop();
         const status = audioRecorder.getStatus();
         const analysis = analyzeAcousticCapture({
           durationMs: status.durationMillis ?? 2500,
           peakMeteringDb: peakMeteringRef.current ?? status.metering,
-          focus: acousticFocus,
+          focus: focusAtStart,
         });
         setAcousticGuess(analysis.guess);
         setAcousticLabel(analysis.label);
         setAcousticPhase('done');
-        if (acousticFocus) void loadYoutube(`bruit moteur ${acousticFocus}`);
+        if (focusAtStart) void loadYoutube(`bruit moteur ${focusAtStart}`);
       } catch {
         const a = stubAcoustic();
         setAcousticGuess(`${a.label}\n${a.data.guess}`);
         setAcousticLabel('Runtime micro KO — fallback honnête');
         setAcousticPhase('done');
+      } finally {
+        acousticBusyRef.current = false;
+        try {
+          await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+        } catch {
+          /* ignore mode reset */
+        }
       }
     })();
   };
