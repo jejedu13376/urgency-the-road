@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Link, Stack } from 'expo-router';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
@@ -13,13 +13,41 @@ const CASCADE_FAILURES: Record<string, { id: string; title: string; symptoms: st
   'Renault|Clio V': [
     { id: 'c-clio-1', title: 'Capteur PMH intermittent', symptoms: ['calage à chaud', 'voyant moteur'], severity: 'moyen' },
     { id: 'c-clio-2', title: 'Usure plaquettes avant', symptoms: ['bruit freinage', 'course pédale'], severity: 'faible' },
+    { id: 'c-clio-3', title: 'Van EGR encrassée', symptoms: ['perte de puissance', 'fumée noire'], severity: 'moyen' },
+  ],
+  'Renault|Master': [
+    { id: 'c-mas-1', title: 'Turbo variable grippé', symptoms: ['manque en charge', 'sifflement'], severity: 'eleve' },
   ],
   'Ford|F-150': [
     { id: 'c-f150-1', title: 'Camphaser AAC', symptoms: ['cliquetis démarrage', 'ralenti irrégulier'], severity: 'eleve' },
+    { id: 'c-f150-2', title: 'Bobine crayon #4', symptoms: ['ratés', 'consommation↑'], severity: 'moyen' },
+  ],
+  'Ford|F-350': [
+    { id: 'c-f350-1', title: 'Filtre FAP / DPF saturé', symptoms: ['mode dégradé', 'régénération fréquente'], severity: 'eleve' },
   ],
   'Mercedes-Benz|Actros 1845': [
     { id: 'c-act-1', title: 'Capteur NOx amont', symptoms: ['mode dégradé', 'AdBlue↑'], severity: 'eleve' },
+    { id: 'c-act-2', title: 'Compresseur air', symptoms: ['pression circuit↓', 'frein de secours'], severity: 'eleve' },
   ],
+  'Toyota|Hilux': [
+    { id: 'c-hil-1', title: 'Injecteur diesel fuyard', symptoms: ['ralenti irrégulier', 'odeur gasoil'], severity: 'moyen' },
+  ],
+  'Peugeot|208': [
+    { id: 'c-208-1', title: 'Chaîne de distribution PureTech', symptoms: ['bruit froid', 'voyant huile'], severity: 'eleve' },
+  ],
+  'Iveco|S-Way': [
+    { id: 'c-iv-1', title: 'Capteur différentiel FAP', symptoms: ['voyant moteur', 'couple limité'], severity: 'moyen' },
+  ],
+};
+
+const COUNTRY_LABEL: Record<string, string> = {
+  FR: 'France', DE: 'Allemagne', ES: 'Espagne', IT: 'Italie', BE: 'Belgique',
+  CA: 'Canada', US: 'États-Unis', AU: 'Australie', JP: 'Japon', KR: 'Corée', CN: 'Chine',
+};
+
+const POWER_LABEL: Record<string, string> = {
+  essence: 'Essence', diesel: 'Diesel', hybride: 'Hybride', electrique: 'Électrique',
+  gpl: 'GPL', poids_lourd_diesel: 'Diesel poids lourd',
 };
 
 const CLASS_LABEL: Record<VehicleClass, string> = {
@@ -39,7 +67,10 @@ export default function FlotteScreen() {
   const [model, setModel] = useState<string | null>(null);
   const [year, setYear] = useState<number | null>(null);
   const [powertrain, setPowertrain] = useState<string | null>(null);
+  const [customLabel, setCustomLabel] = useState('');
+  const [odometer, setOdometer] = useState('0');
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(true);
 
   const countries = continent ? CASCADE.countries[continent] ?? [] : [];
   const makes = country ? CASCADE.makes[country] ?? [] : [];
@@ -81,6 +112,8 @@ export default function FlotteScreen() {
     setModel(null);
     setYear(null);
     setPowertrain(null);
+    setCustomLabel('');
+    setOdometer('0');
     setSavedMsg(null);
   };
 
@@ -89,7 +122,7 @@ export default function FlotteScreen() {
     const isPl = powertrain.includes('poids') || /Actros|Master|F-350/i.test(model);
     const v: VehicleProfile = {
       id: `cascade-${Date.now()}`,
-      label: `${make} ${model}`,
+      label: customLabel.trim() || `${make} ${model}`,
       continent: continent as ContinentCode,
       country,
       make,
@@ -99,7 +132,7 @@ export default function FlotteScreen() {
       vehicleClass: (isPl ? 'poids_lourd' : /F-150|Hilux/i.test(model) ? 'pickup' : 'voiture') as VehicleClass,
       fluids: { engineOilL: isPl ? 28 : 5, coolantL: isPl ? 40 : 6, washerL: isPl ? 10 : 3 },
       commonFailures: failures,
-      odometerKm: 0,
+      odometerKm: Math.max(0, Number(odometer) || 0),
       unitSystem: continent === 'NA' ? 'imperial' : 'metric',
       currency: country === 'CA' ? 'CAD' : country === 'US' ? 'USD' : country === 'AU' ? 'AUD' : 'EUR',
     };
@@ -149,8 +182,25 @@ export default function FlotteScreen() {
               </View>
             );
           })}
+          <Pressable
+            style={{
+              marginTop: 8,
+              backgroundColor: colors.mist,
+              borderRadius: 10,
+              padding: 12,
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: colors.line,
+            }}
+            onPress={() => setAddOpen((o) => !o)}
+          >
+            <Text style={{ color: colors.ink, fontWeight: '800', fontSize: 13 }}>
+              {addOpen ? 'Masquer le sélecteur' : '+ Ajouter un véhicule (cascade)'}
+            </Text>
+          </Pressable>
         </Card>
 
+        {addOpen ? (
         <Card title="Cascade visuelle (sans VIN)">
           <View style={styles.steps}>
             {stepLabels.map((label, i) => (
@@ -180,6 +230,7 @@ export default function FlotteScreen() {
           <ChipRow
             label="Pays"
             options={countries}
+            labels={COUNTRY_LABEL}
             value={country}
             onChange={(v) => {
               setCountry(v);
@@ -219,7 +270,7 @@ export default function FlotteScreen() {
               setPowertrain(null);
             }}
           />
-          <ChipRow label="Motorisation" options={CASCADE.powertrains} value={powertrain} onChange={setPowertrain} />
+          <ChipRow label="Motorisation" options={CASCADE.powertrains} labels={POWER_LABEL} value={powertrain} onChange={setPowertrain} />
 
           {preview ? (
             <View style={styles.previewBox}>
@@ -235,6 +286,28 @@ export default function FlotteScreen() {
             <Text style={styles.hint}>Choisissez Continent → Pays → Marque → Modèle → Année → Motorisation.</Text>
           )}
 
+          {preview ? (
+            <View style={{ gap: 6 }}>
+              <Text style={styles.chipLabel}>Libellé flotte (optionnel)</Text>
+              <TextInput
+                value={customLabel}
+                onChangeText={setCustomLabel}
+                placeholder={`${make} ${model}`}
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+              />
+              <Text style={styles.chipLabel}>Kilométrage</Text>
+              <TextInput
+                value={odometer}
+                onChangeText={setOdometer}
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+              />
+            </View>
+          ) : null}
+
           <Pressable style={[styles.save, !preview && styles.saveDisabled]} onPress={saveCascade} disabled={!preview}>
             <Text style={styles.saveTxt}>Enregistrer dans la flotte</Text>
           </Pressable>
@@ -243,6 +316,7 @@ export default function FlotteScreen() {
           </Pressable>
           {savedMsg ? <Text style={styles.ok}>{savedMsg}</Text> : null}
         </Card>
+        ) : null}
 
         <Card title="Suite du parcours">
           <Text style={styles.hint}>Après sélection : fiche véhicule, liste d’achats VIN, diagnostic.</Text>
@@ -353,6 +427,14 @@ const styles = StyleSheet.create({
   previewBox: { gap: 4, backgroundColor: colors.garageSoft, padding: 10, borderRadius: 10 },
   preview: { color: colors.garage, fontWeight: '700' },
   failLine: { color: colors.slate, fontSize: 12 },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 10,
+    padding: 10,
+    color: colors.ink,
+    backgroundColor: colors.mist,
+  },
   save: { backgroundColor: colors.signal, borderRadius: 10, padding: 12, alignItems: 'center' },
   saveDisabled: { opacity: 0.45 },
   saveTxt: { color: colors.white, fontWeight: '800' },

@@ -42,12 +42,48 @@ export default function GaragesScreen() {
   const [label, setLabel] = useState<string | undefined>();
   const [msg, setMsg] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState<GarageDoc['kind'] | 'all'>('all');
+  const [sortBy, setSortBy] = useState<'distance' | 'rating'>('distance');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
       const res = await listGaragesNearby();
-      setPlaces(res.data);
+      const base = res.data;
+      const extras: GarageDoc[] = [
+        {
+          id: 'c-mock-1',
+          name: 'Concession Nord Auto',
+          kind: 'concession',
+          address: 'Av. de la République, Lille',
+          phone: '+33320000011',
+          hours: 'Lun–Sam 9h–19h',
+          lat: 50.632,
+          lon: 3.07,
+          ratingAvg: 4.2,
+          ratingCount: 86,
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          id: 'm-mock-1',
+          name: 'Mécano Mobile Express',
+          kind: 'mobile',
+          address: 'Intervention sur site',
+          phone: '+33600000012',
+          hours: '7j/7 8h–20h',
+          lat: 50.625,
+          lon: 3.055,
+          ratingAvg: 4.7,
+          ratingCount: 41,
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+      const merged = [...base];
+      for (const e of extras) {
+        if (!merged.some((x) => x.id === e.id || x.name === e.name)) merged.push(e);
+      }
+      setPlaces(merged);
       setLabel(res.stubLabel);
+      setSelectedId(merged[0]?.id ?? null);
     })();
   }, []);
 
@@ -56,13 +92,21 @@ export default function GaragesScreen() {
     for (const p of MOCK_PLACES) {
       map.set(p.id, { distanceKm: p.distanceKm, etaMin: p.etaMin });
     }
+    map.set('c-mock-1', { distanceKm: 3.1, etaMin: 11 });
+    map.set('m-mock-1', { distanceKm: 1.8, etaMin: 7 });
     return map;
   }, []);
 
-  const visible = useMemo(
-    () => (kindFilter === 'all' ? places : places.filter((p) => p.kind === kindFilter)),
-    [places, kindFilter],
-  );
+  const visible = useMemo(() => {
+    const list = kindFilter === 'all' ? [...places] : places.filter((p) => p.kind === kindFilter);
+    list.sort((a, b) => {
+      if (sortBy === 'rating') return (b.ratingAvg ?? 0) - (a.ratingAvg ?? 0);
+      const da = distanceById.get(a.id)?.distanceKm ?? 99;
+      const db = distanceById.get(b.id)?.distanceKm ?? 99;
+      return da - db;
+    });
+    return list;
+  }, [places, kindFilter, sortBy, distanceById]);
 
   const openMaps = (p: GarageDoc) => {
     const q = encodeURIComponent(`${p.name} ${p.address}`);
@@ -111,27 +155,54 @@ export default function GaragesScreen() {
               </Pressable>
             ))}
           </View>
+          <View style={styles.row}>
+            <Pressable style={[styles.chip, sortBy === 'distance' && styles.chipOn]} onPress={() => setSortBy('distance')}>
+              <Text style={[styles.chipTxt, sortBy === 'distance' && styles.chipTxtOn]}>Tri distance</Text>
+            </Pressable>
+            <Pressable style={[styles.chip, sortBy === 'rating' && styles.chipOn]} onPress={() => setSortBy('rating')}>
+              <Text style={[styles.chipTxt, sortBy === 'rating' && styles.chipTxtOn]}>Tri notes</Text>
+            </Pressable>
+          </View>
         </Card>
 
         {visible.map((p) => {
           const dist = distanceById.get(p.id);
+          const selected = selectedId === p.id;
           return (
             <Card key={p.id} title={p.name}>
-              <Text style={styles.kind}>{KIND_LABEL[p.kind] ?? p.kind}</Text>
-              <Text style={styles.line}>{p.address}</Text>
-              <Text style={styles.line}>
-                {p.hours}
-                {dist ? ` · ${dist.distanceKm} km · ~${dist.etaMin} min` : ''}
-                {' · ★ '}
-                {p.ratingAvg ?? '—'}
-                {p.ratingCount != null ? ` (${p.ratingCount})` : ''}
-              </Text>
+              <Pressable onPress={() => setSelectedId(p.id)}>
+                <Text style={styles.kind}>{KIND_LABEL[p.kind] ?? p.kind}</Text>
+                <Text style={styles.line}>{p.address}</Text>
+                <View style={styles.pinMeta}>
+                  <Text style={styles.metaChip}>Horaires {p.hours}</Text>
+                  {dist ? (
+                    <>
+                      <Text style={styles.metaChip}>{dist.distanceKm} km</Text>
+                      <Text style={styles.metaChip}>ETA ~{dist.etaMin} min</Text>
+                    </>
+                  ) : null}
+                  <Text style={styles.metaChip}>
+                    ★ {p.ratingAvg ?? '—'}
+                    {p.ratingCount != null ? ` (${p.ratingCount})` : ''}
+                  </Text>
+                </View>
+                <Text style={styles.coords}>
+                  Pin {p.lat.toFixed(4)}, {p.lon.toFixed(4)}
+                  {selected ? ' · sélectionné' : ''}
+                </Text>
+              </Pressable>
               <View style={styles.actions}>
                 <Pressable style={styles.call} onPress={() => void Linking.openURL(`tel:${p.phone}`)}>
                   <Text style={styles.callTxt}>Appeler {p.phone}</Text>
                 </Pressable>
                 <Pressable style={styles.maps} onPress={() => openMaps(p)}>
-                  <Text style={styles.callTxt}>Itinéraire</Text>
+                  <Text style={styles.callTxt}>Maps</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.waze}
+                  onPress={() => void Linking.openURL(`https://waze.com/ul?ll=${p.lat}%2C${p.lon}&navigate=yes`)}
+                >
+                  <Text style={styles.callTxt}>Waze</Text>
                 </Pressable>
                 <Pressable
                   style={styles.rate}
@@ -147,10 +218,24 @@ export default function GaragesScreen() {
                   <Text style={styles.callTxt}>Noter 5★</Text>
                 </Pressable>
               </View>
-              {p.kind === 'depot_pl' || isPl ? (
-                <Link href="/modules/routiers" asChild>
-                  <Pressable style={styles.linkSoft}>
-                    <Text style={styles.linkSoftTxt}>Infos PL / balances →</Text>
+              {p.kind === 'depot_pl' || p.kind === 'pieces' || isPl ? (
+                <View style={styles.plLinks}>
+                  <Link href="/modules/routiers" asChild>
+                    <Pressable style={styles.linkSoft}>
+                      <Text style={styles.linkSoftTxt}>Infos PL / balances ON (M8) →</Text>
+                    </Pressable>
+                  </Link>
+                  <Link href="/modules/gps" asChild>
+                    <Pressable style={styles.linkSoft}>
+                      <Text style={styles.linkSoftTxt}>GPS camion hauteur/poids (M7) →</Text>
+                    </Pressable>
+                  </Link>
+                </View>
+              ) : null}
+              {p.kind === 'pieces' || p.kind === 'depot_pl' ? (
+                <Link href="/modules/pieces" asChild>
+                  <Pressable style={styles.linkCta}>
+                    <Text style={styles.callTxt}>Commander pièces VIN (M3) →</Text>
                   </Pressable>
                 </Link>
               ) : null}
@@ -190,7 +275,22 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: colors.asphalt, borderColor: colors.asphalt },
   chipTxt: { color: colors.slate, fontSize: 11, fontWeight: '600' },
   chipTxtOn: { color: colors.white },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  pinMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  metaChip: {
+    backgroundColor: colors.mist,
+    color: colors.slate,
+    fontSize: 11,
+    fontWeight: '700',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  coords: { color: colors.muted, fontSize: 11, marginTop: 4 },
+  waze: { backgroundColor: '#33A853', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  plLinks: { gap: 6, marginTop: 8 },
+  linkCta: { backgroundColor: colors.signal, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 8 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   call: { backgroundColor: colors.garage, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
   maps: { backgroundColor: colors.signal, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
   rate: { backgroundColor: colors.asphalt, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },

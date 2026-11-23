@@ -13,6 +13,7 @@ import { colors } from '../../src/theme/colors';
 
 type PhotoOutcome = {
   kind: 'ok' | 'polite_refuse';
+  media: 'photo' | 'video';
   problem: string;
   partName: string;
   partPrice: number;
@@ -46,6 +47,7 @@ export default function DiagnosticIaScreen() {
   const [note, setNote] = useState('');
   const [photoOutcome, setPhotoOutcome] = useState<PhotoOutcome | null>(null);
   const [acousticPhase, setAcousticPhase] = useState<'idle' | 'listening' | 'done'>('idle');
+  const [acousticFocus, setAcousticFocus] = useState<string | null>(null);
   const [acousticGuess, setAcousticGuess] = useState<string | null>(null);
   const [acousticBars] = useState(() => [4, 10, 6, 14, 8, 12, 5, 11, 7, 13]);
   const [qResult, setQResult] = useState<string | null>(null);
@@ -64,10 +66,11 @@ export default function DiagnosticIaScreen() {
     );
   };
 
-  const simulatePhoto = (offTopic: boolean) => {
+  const simulateMedia = (offTopic: boolean, media: 'photo' | 'video' = 'photo') => {
     if (offTopic) {
       setPhotoOutcome({
         kind: 'polite_refuse',
+        media,
         problem: '',
         partName: '',
         partPrice: 0,
@@ -85,7 +88,8 @@ export default function DiagnosticIaScreen() {
     const laborPrice = active?.vehicleClass === 'poids_lourd' ? 198 : 102;
     const outcome: PhotoOutcome = {
       kind: 'ok',
-      problem: 'Usure / composant à remplacer (mock photo)',
+      media,
+      problem: media === 'video' ? 'Fuite / usure visible en mouvement (mock vidéo)' : 'Usure / composant à remplacer (mock photo)',
       partName,
       partPrice,
       laborPrice,
@@ -140,13 +144,16 @@ export default function DiagnosticIaScreen() {
             un petit devis (pièce + pose).
           </Text>
           <View style={styles.row}>
-            <Pressable style={styles.btn} onPress={() => simulatePhoto(false)}>
-              <Text style={styles.btnTxt}>Simuler photo pièce</Text>
+            <Pressable style={styles.btn} onPress={() => simulateMedia(false, 'photo')}>
+              <Text style={styles.btnTxt}>Simuler photo</Text>
             </Pressable>
-            <Pressable style={styles.btnDark} onPress={() => simulatePhoto(true)}>
-              <Text style={styles.btnTxt}>Photo hors sujet</Text>
+            <Pressable style={styles.btnDark} onPress={() => simulateMedia(false, 'video')}>
+              <Text style={styles.btnTxt}>Simuler vidéo live</Text>
             </Pressable>
           </View>
+          <Pressable style={styles.btnWarn} onPress={() => simulateMedia(true, 'photo')}>
+            <Text style={styles.btnTxt}>Photo hors sujet (filtre politesse)</Text>
+          </Pressable>
           {photoOutcome?.kind === 'polite_refuse' ? (
             <View style={styles.politeBox}>
               <Text style={styles.politeTitle}>Filtre de politesse</Text>
@@ -154,19 +161,25 @@ export default function DiagnosticIaScreen() {
             </View>
           ) : null}
           {photoOutcome?.kind === 'ok' ? (
-            <View style={styles.resultBox}>
-              <Text style={styles.resultTitle}>{photoOutcome.problem}</Text>
-              <Text style={styles.meta}>Pièce : {photoOutcome.partName}</Text>
-              <Text style={styles.meta}>
-                Prix pièce mock : {photoOutcome.partPrice} {photoOutcome.currency} · Pose :{' '}
-                {photoOutcome.laborPrice} {photoOutcome.currency}
-              </Text>
-              <Text style={styles.devis}>
-                Petit devis approx. : {photoOutcome.partPrice + photoOutcome.laborPrice} {photoOutcome.currency}
-              </Text>
-              <Text style={styles.meta}>Causes : {photoOutcome.causes.join(' · ')}</Text>
-              <Text style={styles.meta}>Outils : {photoOutcome.tools.join(' · ')}</Text>
-              <Text style={styles.polite}>{photoOutcome.summary}</Text>
+            <View style={styles.resultStack}>
+              <View style={styles.resultBox}>
+                <Text style={styles.resultTitle}>Problème ({photoOutcome.media})</Text>
+                <Text style={styles.meta}>{photoOutcome.problem}</Text>
+                <Text style={styles.polite}>{photoOutcome.summary}</Text>
+              </View>
+              <View style={styles.partCard}>
+                <Text style={styles.partLabel}>Pièce identifiée</Text>
+                <Text style={styles.partName}>{photoOutcome.partName}</Text>
+                <Text style={styles.meta}>Causes : {photoOutcome.causes.join(' · ')}</Text>
+                <Text style={styles.meta}>Outils : {photoOutcome.tools.join(' · ')}</Text>
+              </View>
+              <View style={styles.priceCard}>
+                <Text style={styles.partLabel}>Prix & devis approx.</Text>
+                <Text style={styles.devis}>
+                  Pièce {photoOutcome.partPrice} + pose {photoOutcome.laborPrice} ={' '}
+                  {photoOutcome.partPrice + photoOutcome.laborPrice} {photoOutcome.currency}
+                </Text>
+              </View>
               <View style={styles.linkCol}>
                 <Link href="/modules/pieces" asChild>
                   <Pressable style={styles.linkCta}>
@@ -238,9 +251,9 @@ export default function DiagnosticIaScreen() {
           </View>
           <View style={styles.tags}>
             {HAZARD_KINDS_ACOUSTIC.map((k) => (
-              <View key={k.id} style={styles.tag}>
-                <Text style={styles.tagTxt}>{k.label}</Text>
-              </View>
+              <Pressable key={k.id} style={[styles.tag, acousticFocus === k.id && styles.tagOn]} onPress={() => setAcousticFocus(k.id)}>
+                <Text style={[styles.tagTxt, acousticFocus === k.id && styles.tagTxtOn]}>{k.label}</Text>
+              </Pressable>
             ))}
           </View>
           <Pressable
@@ -298,12 +311,32 @@ export default function DiagnosticIaScreen() {
 const styles = StyleSheet.create({
   hint: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   btn: { flex: 1, backgroundColor: colors.signal, borderRadius: 10, padding: 12, alignItems: 'center' },
+  btnWarn: { backgroundColor: colors.warn, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 8 },
   btnDark: { flex: 1, backgroundColor: colors.asphalt, borderRadius: 10, padding: 12, alignItems: 'center' },
   btnDisabled: { opacity: 0.6 },
   btnTxt: { color: colors.white, fontWeight: '800', fontSize: 13 },
   politeBox: { backgroundColor: colors.warnSoft, borderRadius: 10, padding: 10, gap: 4 },
   politeTitle: { fontWeight: '800', color: colors.warn },
   polite: { color: colors.slate, fontSize: 13, lineHeight: 19 },
+  resultStack: { gap: 8 },
+  partCard: {
+    backgroundColor: colors.signalSoft,
+    borderRadius: 10,
+    padding: 10,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.signal,
+  },
+  priceCard: {
+    backgroundColor: colors.mist,
+    borderRadius: 10,
+    padding: 10,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  partLabel: { fontSize: 11, fontWeight: '800', color: colors.slate },
+  partName: { fontWeight: '900', fontSize: 16, color: colors.ink },
   resultBox: { backgroundColor: colors.garageSoft, borderRadius: 10, padding: 10, gap: 6 },
   resultTitle: { fontWeight: '800', color: colors.garage, fontSize: 15 },
   meta: { color: colors.muted, fontSize: 12 },
@@ -352,5 +385,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
+  tagOn: { backgroundColor: colors.asphalt, borderColor: colors.asphalt },
   tagTxt: { fontSize: 11, fontWeight: '700', color: colors.slate },
+  tagTxtOn: { color: colors.white },
 });

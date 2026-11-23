@@ -46,6 +46,7 @@ export default function RoutiersScreen() {
   const [stations, setStations] = useState<WeighStationDoc[]>([]);
   const [label, setLabel] = useState<string | undefined>();
   const [filter, setFilter] = useState<'all' | 'on' | 'off'>('all');
+  const [regionFilter, setRegionFilter] = useState<WeighStationDoc['region'] | 'all'>('all');
   const [lawRegion, setLawRegion] = useState<WeighStationDoc['region']>('EU');
   const depots = MOCK_PLACES.filter((p) => p.kind === 'depot_pl' || p.kind === 'pieces');
   const relays = MOCK_PLACES.filter((p) => p.kind === 'depannage');
@@ -99,6 +100,19 @@ export default function RoutiersScreen() {
                 weightLimitT: 42.5,
                 updatedAt: new Date().toISOString(),
               },
+              {
+                id: 'w-na-off',
+                name: 'Weigh Station Hwy 401 (éteint)',
+                address: 'Ontario mock',
+                lat: 43.7,
+                lon: -79.4,
+                region: 'NA',
+                status: 'closed',
+                litUp: false,
+                heightLimitM: 4.15,
+                weightLimitT: 40,
+                updatedAt: new Date().toISOString(),
+              },
             ];
       setStations(withClosed);
       setLabel(res.stubLabel);
@@ -106,10 +120,12 @@ export default function RoutiersScreen() {
   }, []);
 
   const visible = useMemo(() => {
-    if (filter === 'on') return stations.filter((w) => w.litUp && w.status === 'open');
-    if (filter === 'off') return stations.filter((w) => !w.litUp || w.status === 'closed');
-    return stations;
-  }, [stations, filter]);
+    let list = stations;
+    if (regionFilter !== 'all') list = list.filter((w) => w.region === regionFilter);
+    if (filter === 'on') return list.filter((w) => w.litUp && w.status === 'open');
+    if (filter === 'off') return list.filter((w) => !w.litUp || w.status === 'closed');
+    return list;
+  }, [stations, filter, regionFilter]);
 
   const onCount = stations.filter((w) => w.litUp && w.status === 'open').length;
   const offCount = stations.length - onCount;
@@ -139,18 +155,26 @@ export default function RoutiersScreen() {
               <Text style={[styles.chipTxt, filter === 'off' && styles.chipTxtOn]}>ÉTEINTES ({offCount})</Text>
             </Pressable>
           </View>
+          <View style={styles.row}>
+            {(['all', 'EU', 'NA', 'AU'] as const).map((r) => (
+              <Pressable key={r} style={[styles.chip, regionFilter === r && styles.chipOn]} onPress={() => setRegionFilter(r)}>
+                <Text style={[styles.chipTxt, regionFilter === r && styles.chipTxtOn]}>{r === 'all' ? 'Régions' : r}</Text>
+              </Pressable>
+            ))}
+          </View>
           {visible.map((w) => {
             const lit = w.litUp && w.status === 'open';
+            const distKm = Math.round((Math.abs(w.lat - 50.63) + Math.abs(w.lon - 3.06)) * 40 + 4);
             return (
               <View key={w.id} style={[styles.rowCard, lit ? styles.rowLit : styles.rowOff]}>
                 <View style={styles.rowHead}>
                   <Text style={styles.name}>{w.name}</Text>
                   <Text style={[styles.statusBadge, lit ? styles.statusOn : styles.statusOff]}>
-                    {lit ? '🟢 ON / OUVERTE' : '⚫ OFF / FERMÉE'}
+                    {lit ? 'ON / OUVERTE' : 'OFF / FERMÉE'}
                   </Text>
                 </View>
                 <Text style={styles.meta}>
-                  {w.region} · {w.address}
+                  {w.region} · {w.address} · ~{distKm} km
                 </Text>
                 <Text style={styles.meta}>
                   H max {w.heightLimitM ?? '—'} m · Poids max {w.weightLimitT ?? '—'} t · statut {w.status}
@@ -194,6 +218,16 @@ export default function RoutiersScreen() {
                   <Text style={styles.callTxt}>Appeler {d.phone}</Text>
                 </Pressable>
               ) : null}
+              <Pressable
+                style={styles.maps}
+                onPress={() =>
+                  void Linking.openURL(
+                    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.name + ' ' + d.address)}`,
+                  )
+                }
+              >
+                <Text style={styles.callTxt}>Itinéraire dépôt</Text>
+              </Pressable>
             </View>
           ))}
           <Text style={styles.section}>Relais / dépannage</Text>
@@ -244,11 +278,12 @@ const styles = StyleSheet.create({
   name: { fontWeight: '800', color: colors.ink },
   meta: { color: colors.muted, fontSize: 12, lineHeight: 17 },
   statusBadge: { fontSize: 11, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
-  statusOn: { backgroundColor: colors.garageSoft, color: colors.garage },
+  statusOn: { backgroundColor: colors.garage, color: colors.white },
   statusOff: { backgroundColor: colors.mist, color: colors.slate },
   lawTitle: { fontWeight: '800', color: colors.ink, marginTop: 4 },
   section: { fontWeight: '800', color: colors.ink, marginTop: 6 },
   call: { backgroundColor: colors.garage, borderRadius: 8, padding: 8, alignItems: 'center', alignSelf: 'flex-start' },
+  maps: { backgroundColor: colors.signal, borderRadius: 8, padding: 8, alignItems: 'center', alignSelf: 'flex-start' },
   callTxt: { color: colors.white, fontWeight: '800', fontSize: 12 },
   linkBtn: { backgroundColor: colors.signal, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 6 },
   linkTxt: { color: colors.white, fontWeight: '800' },

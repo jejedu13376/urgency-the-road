@@ -46,6 +46,7 @@ export default function GpsScreen() {
   const [hazardKind, setHazardKind] = useState<RoadHazardDoc['kind']>('danger');
   const [hazardNote, setHazardNote] = useState('Signalement démo');
   const [label, setLabel] = useState<string | undefined>();
+  const [hazardFilter, setHazardFilter] = useState<RoadHazardDoc['kind'] | 'all'>('all');
   const [reportMsg, setReportMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -91,6 +92,9 @@ export default function GpsScreen() {
 
   const saveTruck = () => persistMode('camion');
 
+  const visibleHazards =
+    hazardFilter === 'all' ? hazards : hazards.filter((h) => h.kind === hazardFilter);
+
   return (
     <>
       <Stack.Screen options={{ title: 'Double GPS' }} />
@@ -109,6 +113,11 @@ export default function GpsScreen() {
               <Text style={styles.modeSub}>Hauteur · PTAC · ADR</Text>
             </Pressable>
           </View>
+          <Text style={styles.eta}>
+            {mode === 'camion'
+              ? `ETA PL mock ${22 + (hazmat ? 8 : 0)} min · gabarit ${heightM} m · PTAC ${ptacT} t${hazmat ? ' · ADR' : ''}`
+              : 'ETA voiture mock 18 min · 12,4 km — pas de filtre gabarit'}
+          </Text>
           {isPl && mode === 'voiture' ? (
             <Text style={styles.warn}>Véhicule actif = PL — basculez en mode camion pour les contraintes légales.</Text>
           ) : null}
@@ -158,13 +167,13 @@ export default function GpsScreen() {
           />
           <Text style={styles.section}>Envoyer la trajectoire</Text>
           <View style={styles.row}>
-            <Pressable style={styles.send} onPress={() => open('google')}>
+            <Pressable style={[styles.send, { backgroundColor: colors.signal }]} onPress={() => open('google')}>
               <Text style={styles.sendTxt}>Google Maps</Text>
             </Pressable>
-            <Pressable style={styles.send} onPress={() => open('waze')}>
+            <Pressable style={[styles.send, { backgroundColor: colors.garage }]} onPress={() => open('waze')}>
               <Text style={styles.sendTxt}>Waze</Text>
             </Pressable>
-            <Pressable style={styles.send} onPress={() => open('apple')}>
+            <Pressable style={[styles.send, { backgroundColor: colors.slate }]} onPress={() => open('apple')}>
               <Text style={styles.sendTxt}>Apple Plans</Text>
             </Pressable>
           </View>
@@ -172,7 +181,17 @@ export default function GpsScreen() {
 
         <Card title="Signalements routiers (temps réel mock)">
           <Text style={styles.hint}>Dangers, accidents, obstacles, travaux, radars — visibles par les autres conducteurs.</Text>
-          {hazards.map((h) => (
+          <View style={styles.row}>
+            <Pressable style={[styles.chip, hazardFilter === 'all' && styles.chipOn]} onPress={() => setHazardFilter('all')}>
+              <Text style={[styles.chipTxt, hazardFilter === 'all' && styles.chipTxtOn]}>Tous ({hazards.length})</Text>
+            </Pressable>
+            {HAZARD_KINDS.map((k) => (
+              <Pressable key={`f-${k}`} style={[styles.chip, hazardFilter === k && styles.chipOn]} onPress={() => setHazardFilter(k)}>
+                <Text style={[styles.chipTxt, hazardFilter === k && styles.chipTxtOn]}>{HAZARD_LABEL[k]}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {visibleHazards.map((h) => (
             <View key={h.id} style={styles.hazardRow}>
               <Text style={styles.hazardKind}>{HAZARD_LABEL[h.kind]}</Text>
               <Text style={styles.hint}>
@@ -234,6 +253,7 @@ const styles = StyleSheet.create({
   on: { backgroundColor: colors.signalSoft, borderWidth: 1, borderColor: colors.signal },
   modeTxt: { fontWeight: '800', color: colors.ink },
   modeSub: { fontSize: 11, color: colors.muted, marginTop: 2 },
+  eta: { fontWeight: '700', color: colors.signal, fontSize: 13 },
   hint: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   warn: { color: colors.warn, fontWeight: '700', fontSize: 12 },
   ok: { color: colors.garage, fontWeight: '700', fontSize: 12 },

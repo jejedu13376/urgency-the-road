@@ -21,6 +21,12 @@ const CAT_LABEL: Record<PartDoc['category'], string> = {
   filtre: 'Filtre',
 };
 
+const CAT_FILTERS: Array<PartDoc['category'] | 'all'> = [
+  'all', 'mecanique', 'electrique', 'carrosserie', 'fluide', 'filtre',
+];
+
+type ScanMode = 'photo' | 'pdf';
+
 /** Module 3 — liste VIN, catalogue, devis pose, tunnel vendeur. */
 export default function PiecesScreen() {
   useModuleVisit(3);
@@ -32,6 +38,8 @@ export default function PiecesScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scanQuote, setScanQuote] = useState<QuoteDoc | null>(null);
   const [scanLabel, setScanLabel] = useState<string | null>(null);
+  const [catFilter, setCatFilter] = useState<PartDoc['category'] | 'all'>('all');
+  const [scanMode, setScanMode] = useState<ScanMode>('photo');
   const [funnelStep, setFunnelStep] = useState<0 | 1 | 2 | 3>(0);
 
   useEffect(() => {
@@ -43,6 +51,11 @@ export default function PiecesScreen() {
       setFunnelStep(res.data.length ? 1 : 0);
     })();
   }, [active?.vin]);
+
+  const filtered = useMemo(
+    () => (catFilter === 'all' ? parts : parts.filter((p) => p.category === catFilter)),
+    [parts, catFilter],
+  );
 
   const selected = parts.find((p) => p.id === selectedId) ?? null;
 
@@ -94,6 +107,11 @@ export default function PiecesScreen() {
                 <Text style={styles.linkSoftTxt}>Capteur / OBD (M5) → identifier</Text>
               </Pressable>
             </Link>
+            <Link href="/modules/diagnostic-ia" asChild>
+              <Pressable style={styles.linkSoft}>
+                <Text style={styles.linkSoftTxt}>Diagnostic photo IA (M4) →</Text>
+              </Pressable>
+            </Link>
             <Link href="/modules/tutoriels" asChild>
               <Pressable style={styles.linkSoft}>
                 <Text style={styles.linkSoftTxt}>Tutoriels réparation (M11) →</Text>
@@ -106,8 +124,21 @@ export default function PiecesScreen() {
           {!active?.vin ? (
             <Text style={styles.warn}>Aucun VIN actif — activez un véhicule (M1/M2) pour générer la liste compatible.</Text>
           ) : null}
-          {parts.length === 0 ? <Text style={styles.hint}>Aucune pièce mock pour ce VIN.</Text> : null}
-          {parts.map((p) => {
+          <View style={styles.funnelRow}>
+            {CAT_FILTERS.map((c) => (
+              <Pressable
+                key={c}
+                style={[styles.funnelChip, catFilter === c && styles.funnelChipOn]}
+                onPress={() => setCatFilter(c)}
+              >
+                <Text style={[styles.funnelTxt, catFilter === c && styles.funnelTxtOn]}>
+                  {c === 'all' ? 'Toutes' : CAT_LABEL[c]}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          {filtered.length === 0 ? <Text style={styles.hint}>Aucune pièce mock pour ce filtre / VIN.</Text> : null}
+          {filtered.map((p) => {
             const pose = Math.round(p.laborHours * p.laborRate);
             const on = selectedId === p.id;
             return (
@@ -139,7 +170,31 @@ export default function PiecesScreen() {
         </Card>
 
         {selected ? (
-          <Card title={`Tunnel — ${selected.name}`}>
+          <Card title={`Comparateur OEM / neuf / adaptable — ${selected.name}`}>
+            <View style={styles.compareGrid}>
+              {[
+                { label: 'Neuf', price: selected.priceNew },
+                { label: 'OEM', price: selected.priceOem },
+                { label: 'Adaptable', price: selected.priceAftermarket },
+              ].map((cell) => {
+                const best = cell.price === bestBuy;
+                return (
+                  <View key={cell.label} style={[styles.compareCell, best && styles.compareCellBest]}>
+                    <Text style={styles.compareLabel}>{cell.label}</Text>
+                    <Text style={styles.comparePrice}>{cell.price} {selected.currency}</Text>
+                    {best ? <Text style={styles.bestBadge}>MEILLEUR</Text> : null}
+                  </View>
+                );
+              })}
+            </View>
+            <Text style={styles.meta}>
+              Pose barème {selected.laborHours} h × {selected.laborRate} ={' '}
+              {Math.round(selected.laborHours * selected.laborRate)} {selected.currency}
+            </Text>
+            <View style={styles.barTrack}>
+              <View style={[styles.barFill, { width: `${Math.min(100, Math.round((selected.laborHours / 3) * 100))}%` }]} />
+            </View>
+
             <Text style={styles.hint}>
               Meilleur prix mock : {bestBuy} {selected.currency} (comparateur neuf / OEM / adaptable).
             </Text>
@@ -188,16 +243,24 @@ export default function PiecesScreen() {
 
         <Card title="Scanner devis garage (anti-arnaque)">
           <Text style={styles.hint}>Photo / PDF d’un devis → comparaison mock vs marché local.</Text>
+          <View style={styles.funnelRow}>
+            <Pressable style={[styles.funnelChip, scanMode === 'photo' && styles.funnelChipOn]} onPress={() => setScanMode('photo')}>
+              <Text style={[styles.funnelTxt, scanMode === 'photo' && styles.funnelTxtOn]}>Photo papier</Text>
+            </Pressable>
+            <Pressable style={[styles.funnelChip, scanMode === 'pdf' && styles.funnelChipOn]} onPress={() => setScanMode('pdf')}>
+              <Text style={[styles.funnelTxt, scanMode === 'pdf' && styles.funnelTxtOn]}>PDF garage</Text>
+            </Pressable>
+          </View>
           <Pressable
             style={styles.scan}
             onPress={() =>
               void scanQuoteStub(profile?.uid ?? 'mock-local-user').then((r) => {
                 setScanQuote(r.data.quote);
-                setScanLabel(r.data.scanLabel);
+                setScanLabel(`${r.data.scanLabel ?? 'Scan'} · mode ${scanMode}`);
               })
             }
           >
-            <Text style={styles.scanTxt}>Scanner un devis (service stub)</Text>
+            <Text style={styles.scanTxt}>Scanner un devis ({scanMode} — service stub)</Text>
           </Pressable>
           {scanLabel ? <StubBanner text={scanLabel} /> : null}
           {scanQuote ? (
@@ -268,4 +331,20 @@ const styles = StyleSheet.create({
   devisTitle: { fontWeight: '800', color: colors.garage },
   scan: { backgroundColor: colors.asphalt, borderRadius: 12, padding: 14, alignItems: 'center' },
   scanTxt: { color: colors.white, fontWeight: '800' },
+  compareGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  compareCell: {
+    flexGrow: 1,
+    minWidth: '30%',
+    backgroundColor: colors.mist,
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  compareCellBest: { borderColor: colors.garage, backgroundColor: colors.garageSoft },
+  compareLabel: { fontSize: 11, fontWeight: '700', color: colors.slate },
+  comparePrice: { fontWeight: '800', color: colors.ink, fontSize: 14 },
+  bestBadge: { fontSize: 10, fontWeight: '800', color: colors.garage, marginTop: 2 },
+  barTrack: { height: 6, borderRadius: 3, backgroundColor: colors.line, overflow: 'hidden', marginTop: 6 },
+  barFill: { height: 6, backgroundColor: colors.signal },
 });

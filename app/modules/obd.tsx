@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Link, Stack } from 'expo-router';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
@@ -15,6 +15,7 @@ import {
   getBleCapability,
   scanBleDevices,
 } from '../../src/services/obd/bleScaffold';
+import { recommendValiseForVehicle } from '../../src/services/obd/recommendValise';
 import { listObdHistory, readObdSnapshot } from '../../src/services/firebase';
 import type { ObdProtocol, ObdReadingDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
@@ -39,13 +40,16 @@ const SEV_STYLE = {
   critical: { bg: colors.signalSoft, fg: colors.danger },
 } as const;
 
-/** Module 5 — OBD2 / J1939 + chemin BLE documenté (Expo Go limité). */
+/** Module 5 — VIN → recommandation prise/valise (achat abonné) + BLE / DTC. */
 export default function ObdScreen() {
   useModuleVisit(5);
   const { profile } = useAuth();
   const { active } = useFleet();
-  const isPl = active?.vehicleClass === 'poids_lourd';
-  const [protocol, setProtocol] = useState<ObdProtocol>(isPl ? 'J1939' : 'OBD2');
+  const recommendation = useMemo(() => recommendValiseForVehicle(active), [active]);
+  const isPl = active?.vehicleClass === 'poids_lourd' || recommendation?.connector.kind === 'j1939_9pin';
+  const [protocol, setProtocol] = useState<ObdProtocol>(
+    recommendation?.recommendedProtocol ?? (isPl ? 'J1939' : 'OBD2'),
+  );
   const [reading, setReading] = useState<ObdReadingDoc | null>(null);
   const [history, setHistory] = useState<ObdReadingDoc[]>([]);
   const [label, setLabel] = useState<string | undefined>();
@@ -54,7 +58,14 @@ export default function ObdScreen() {
   const [connectedId, setConnectedId] = useState<string | null>(null);
   const [cleared, setCleared] = useState(false);
   const [selectedDtc, setSelectedDtc] = useState<string | null>(null);
+  const [boughtAck, setBoughtAck] = useState(false);
   const cap = getBleCapability();
+
+  useEffect(() => {
+    if (recommendation?.recommendedProtocol) {
+      setProtocol(recommendation.recommendedProtocol);
+    }
+  }, [recommendation?.recommendedProtocol, active?.id]);
 
   const guideFor = useMemo(() => new Map(MOCK_DTC.map((d) => [d.code, d])), []);
 
@@ -99,7 +110,72 @@ export default function ObdScreen() {
         subtitle={`Module 5 — Bluetooth / Wi-Fi / USB${active ? ` · ${active.make} ${active.model}` : ''}`}
       >
         <BackendStatusBanner />
-        <StubBanner text={label ?? bleMsg} />
+        <StubBanner
+          text={
+            label ??
+            bleMsg ??
+            'Après VIN : l’app recommande la prise + la valise — l’abonné achète (pas fourni par l’éditeur).'
+          }
+        />
+
+        <Card title="Onboarding — prise & valise (via VIN)">
+          {!active ? (
+            <>
+              <Text style={styles.hint}>
+                Saisissez d’abord un VIN (Mon véhicule) pour obtenir la recommandation de connecteur et
+                de boîtier.
+              </Text>
+              <Link href="/(tabs)/mon-vehicule" asChild>
+                <Pressable style={styles.linkCta}>
+                  <Text style={styles.btnTxt}>Décoder un VIN (M1) →</Text>
+                </Pressable>
+              </Link>
+            </>
+          ) : recommendation ? (
+            <>
+              <Text style={styles.section}>
+                {recommendation.vehicleLabel}
+                {recommendation.vin ? ` · VIN …${recommendation.vin.slice(-8)}` : ''}
+              </Text>
+              <Text style={styles.meta}>{recommendation.valise.why}</Text>
+
+              <View style={styles.recoBox}>
+                <Text style={styles.recoLabel}>Prise / connecteur</Text>
+                <Text style={styles.recoTitle}>{recommendation.connector.label}</Text>
+                <Text style={styles.meta}>
+                  {recommendation.connector.pins} · {recommendation.connector.locationHint}
+                </Text>
+              </View>
+
+              <View style={styles.recoBox}>
+                <Text style={styles.recoLabel}>Type de valise à acheter</Text>
+                <Text style={styles.recoTitle}>{recommendation.valise.skuLabel}</Text>
+                <Text style={styles.meta}>
+                  {recommendation.valise.type} · {recommendation.valise.interfaces.join(' / ')} ·
+                  protocole conseillé : {recommendation.recommendedProtocol}
+                </Text>
+              </View>
+
+              <Text style={styles.disclaimer}>{recommendation.disclaimer}</Text>
+
+              <Pressable
+                style={styles.buyBtn}
+                onPress={() => {
+                  void Linking.openURL(recommendation.buyUrl);
+                  setBoughtAck(true);
+                }}
+              >
+                <Text style={styles.btnTxt}>Acheter ce boîtier (abonné) →</Text>
+              </Pressable>
+              <Text style={styles.meta}>Recherche : {recommendation.buySearchQuery}</Text>
+              {boughtAck ? (
+                <Text style={styles.ok}>
+                  Lien d’achat ouvert — une fois le boîtier reçu, connectez-le en BLE ci-dessous.
+                </Text>
+              ) : null}
+            </>
+          ) : null}
+        </Card>
 
         <Card title="Bluetooth (BLE)">
           <Text style={styles.meta}>{cap.available ? 'BLE natif prêt' : `Expo Go / web : ${cap.reason}`}</Text>
@@ -304,4 +380,23 @@ const styles = StyleSheet.create({
   sensorVal: { fontWeight: '900', fontSize: 18, color: colors.ink },
   barTrack: { height: 6, borderRadius: 3, backgroundColor: colors.line, overflow: 'hidden' },
   barFill: { height: 6, backgroundColor: colors.signal },
+  recoBox: {
+    backgroundColor: colors.mist,
+    borderRadius: 10,
+    padding: 10,
+    gap: 4,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  recoLabel: { fontSize: 11, fontWeight: '800', color: colors.signal, textTransform: 'uppercase' },
+  recoTitle: { fontWeight: '800', color: colors.ink, fontSize: 14 },
+  disclaimer: { color: colors.muted, fontSize: 11, fontStyle: 'italic', marginTop: 8, lineHeight: 16 },
+  buyBtn: {
+    backgroundColor: colors.garage,
+    borderRadius: 10,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 10,
+  },
 });
