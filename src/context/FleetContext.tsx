@@ -213,6 +213,10 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
         const cloudVins = new Set(
           cloud.map((v) => (v.vin ?? '').trim().toUpperCase()).filter((vin) => vin.length >= 8),
         );
+        // Already-migrated temps: cloud docs store original cascade-/decoded-/nhtsa- id here.
+        const cloudClientLocalIds = new Set(
+          cloud.map((v) => v.clientLocalId).filter((id): id is string => Boolean(id)),
+        );
         const pendingLocal = vehiclesRef.current.filter((v) => {
           if (!isMigratable(v)) return false;
           const localTemp =
@@ -221,10 +225,12 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
             v.id.startsWith('nhtsa-');
           if (!localTemp) return false;
           if (cloudIds.has(v.id)) return false;
+          // Drop temps that already migrated (clientLocalId rematch — never fingerprint).
+          if (cloudClientLocalIds.has(v.id)) return false;
           const vin = (v.vin ?? '').trim().toUpperCase();
           // VIN present: drop only when that exact VIN is already on cloud.
           if (vin.length >= 8) return !cloudVins.has(vin);
-          // No VIN: never fingerprint-drop — identical cascade twins stay until remapped by clientLocalId.
+          // No VIN and no clientLocalId hit → keep (identical cascade twins stay distinct).
           return true;
         });
         const merged = [...cloud, ...pendingLocal];

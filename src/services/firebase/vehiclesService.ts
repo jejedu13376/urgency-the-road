@@ -108,6 +108,8 @@ function fromDoc(d: VehicleDoc & { techNotes?: string[]; fluidsSource?: string }
     currency: d.currency as VehicleProfile['currency'],
     techNotes: d.techNotes,
     fluidsSource: d.fluidsSource === 'oem_api' ? 'oem_api' : d.fluidsSource === 'local_estimate' ? 'local_estimate' : undefined,
+    // Preserve migrate rematch key — refreshCloud drops local temps that already live on cloud.
+    clientLocalId: d.clientLocalId,
   };
 }
 
