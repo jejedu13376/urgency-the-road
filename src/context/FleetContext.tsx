@@ -156,11 +156,19 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
 
   const pushLocalToCloud = useCallback(async (list: VehicleProfile[], ownerUid: string) => {
     const mapped: VehicleProfile[] = [];
+    let lastFail: string | undefined;
     for (const v of list) {
       const res = await upsertVehicleRemote(ownerUid, v);
+      if (res.ok === false) {
+        lastFail = res.stubLabel;
+        continue;
+      }
       if (res.data) mapped.push(res.data);
     }
-    return mapped.length ? mapped : list;
+    if (!mapped.length) {
+      throw new Error(lastFail ?? 'Migration cloud refusée');
+    }
+    return mapped;
   }, []);
 
   /** Pull only — never auto-migrate local → other uid. */
@@ -173,6 +181,12 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
     setSyncSource('pending');
     try {
       const res = await listVehicles(uid);
+      if (res.ok === false) {
+        // Keep current local fleet — do not replace with mock / empty “live” data.
+        setSyncSource('local');
+        setSyncLabel(res.stubLabel ?? 'Cloud KO — flotte locale conservée');
+        return;
+      }
       if (res.source === 'firebase' && res.data.length > 0) {
         setVehicles(res.data);
         setActiveId((cur) => {
@@ -254,6 +268,10 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
       }
       // Live upsert only for the signed-in uid (current session action)
       void upsertVehicleRemote(uid, v).then((res) => {
+        if (res.ok === false) {
+          setSyncLabel(res.stubLabel ?? 'Upsert cloud refusé — flotte locale');
+          return;
+        }
         if (res.source === 'firebase' && res.data && res.data.id !== v.id) {
           setVehicles((prev) =>
             prev.map((x) => (x.id === v.id ? { ...res.data!, id: res.data!.id } : x)),
@@ -277,6 +295,10 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
       setActiveId((cur) => (cur === id ? null : cur));
       if (uid) {
         void removeVehicleRemote(id).then((res) => {
+          if (res.ok === false) {
+            setSyncLabel(res.stubLabel ?? 'Suppression cloud refusée');
+            return;
+          }
           if (res.source === 'firebase') {
             setSyncSource('firestore');
             setSyncLabel('Véhicule retiré Firestore');

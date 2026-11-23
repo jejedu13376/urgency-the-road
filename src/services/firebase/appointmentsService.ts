@@ -67,10 +67,8 @@ export async function listAppointmentsForGarage(
       snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AppointmentDoc, 'id'>) })),
     );
   } catch (e) {
-    return failResult(
-      mockStore,
-      e instanceof Error ? e.message : 'Lecture RDV refusée',
-    );
+    // Empty list + ok:false — never surface mock RDVs as live data on signed-in errors.
+    return failResult([], e instanceof Error ? e.message : 'Lecture RDV refusée');
   }
 }
 

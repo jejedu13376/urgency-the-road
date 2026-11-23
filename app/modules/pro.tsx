@@ -56,6 +56,12 @@ export default function ProScreen() {
 
   const reload = useCallback(async () => {
     const res = await listAppointmentsForGarage(garageId);
+    if (res.ok === false) {
+      setAppts([]);
+      setLabel(res.stubLabel ?? 'Lecture RDV refusée');
+      setMsg(res.stubLabel ?? 'Lecture RDV refusée — aucun mock affiché');
+      return;
+    }
     setAppts(res.data);
     setLabel(res.stubLabel);
   }, [garageId]);

@@ -71,10 +71,8 @@ export async function listVehicles(ownerUid: string): Promise<ServiceResult<Vehi
     const list = snap.docs.map((d) => fromDoc({ id: d.id, ...(d.data() as Omit<VehicleDoc, 'id'>) }));
     return liveResult(list);
   } catch (e) {
-    return failResult(
-      MOCK_FLEET,
-      e instanceof Error ? e.message : 'Lecture flotte refusée',
-    );
+    // Empty payload + ok:false — never ship MOCK_FLEET as a firebase-looking failure.
+    return failResult([], e instanceof Error ? e.message : 'Lecture flotte refusée');
   }
 }
 

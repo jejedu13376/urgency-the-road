@@ -210,6 +210,16 @@ export async function ensurePersonalQr(
   }
 
   const existing = await getOwnMedicalCard(ownerUid);
+  // Transient / permission read failure must NOT look like “no card” — never upsert demo PHI.
+  if (existing.ok === false) {
+    return failResult(
+      {
+        scanCode: '',
+        card: { ...MOCK_CARD, ownerUid, scanCode: '', subscriberActive: true },
+      },
+      existing.stubLabel ?? 'Lecture fiche médicale échouée — pas de mint QR',
+    );
+  }
   if (existing.data?.scanCode) {
     if (existing.source === 'mock') {
       return mockResult(
@@ -234,6 +244,7 @@ export async function ensurePersonalQr(
     );
   }
 
+  // Confirmed missing card (liveResult(null)) — mint new QR only in that case.
   const scanCode = mintScanCode();
   const cardId = `med-${ownerUid}`;
   const card: MedicalCardDoc = {
