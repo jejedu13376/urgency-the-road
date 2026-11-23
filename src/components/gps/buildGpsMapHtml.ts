@@ -89,6 +89,11 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   }
   .vehicle-icon.svg{width:22px;height:22px}
   .vehicle-icon svg{width:22px;height:22px}
+  .dest-pin{
+    width:28px;height:36px;display:flex;align-items:flex-end;justify-content:center;
+    filter:drop-shadow(0 2px 4px rgba(0,0,0,.35));
+  }
+  .dest-pin svg{width:28px;height:36px;display:block}
   .leaflet-bottom.leaflet-right{bottom:calc(72px + var(--pad-bottom)) !important;right:calc(8px + var(--pad-right)) !important}
 </style>
 </head>
@@ -177,6 +182,16 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     });
   }
 
+  /** Inline SVG pin — no unpkg marker-icon.png (CSP img-src blocks remote images). */
+  function destDivIcon(){
+    return L.divIcon({
+      className: '',
+      html: '<div class="dest-pin" aria-hidden="true"><svg viewBox="0 0 28 36"><path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="#C45C26"/><circle cx="14" cy="14" r="5.5" fill="#fff"/></svg></div>',
+      iconSize: [28, 36],
+      iconAnchor: [14, 36],
+    });
+  }
+
   document.addEventListener('click', function(ev){
     var t = ev.target;
     while (t && t !== document) {
@@ -256,7 +271,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     }
     dest = { lat: latlng.lat, lon: latlng.lng };
     if (destMarker) map.removeLayer(destMarker);
-    destMarker = L.marker([dest.lat, dest.lon]).addTo(map);
+    destMarker = L.marker([dest.lat, dest.lon], { icon: destDivIcon(), zIndexOffset: 700 }).addTo(map);
     requestRoute();
   }
 
