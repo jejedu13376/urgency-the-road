@@ -238,23 +238,20 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     font:600 9px/1 system-ui,sans-serif;letter-spacing:.04em;text-transform:uppercase;
     color:var(--muted);text-align:center;padding:2px 0 4px;
   }
+  /* Google Maps-style directional chevron — tip = heading, no cartoon vehicle. */
   .vehicle-wrap{
-    width:42px;height:42px;display:flex;align-items:center;justify-content:center;
+    width:40px;height:40px;display:flex;align-items:center;justify-content:center;
     transition:transform .18s linear;will-change:transform;
   }
-  .vehicle-wrap.camion{width:52px;height:40px}
+  .vehicle-wrap.camion{width:40px;height:40px}
   .vehicle-icon{
-    width:36px;height:36px;border-radius:18px;background:#fff;border:2.5px solid var(--signal);
+    width:36px;height:36px;background:transparent;border:0;border-radius:0;
     display:flex;align-items:center;justify-content:center;
-    box-shadow:0 2px 10px rgba(0,0,0,.35);
-    transition:border-color .25s ease,box-shadow .25s ease;
+    filter:drop-shadow(0 2px 3px rgba(0,0,0,.45));
   }
-  .vehicle-icon.camion{
-    width:46px;height:32px;border-radius:10px;
-    border-color:var(--garage);box-shadow:0 2px 10px rgba(31,107,74,.35);
-  }
-  .vehicle-icon svg{width:24px;height:24px;display:block}
-  .vehicle-icon.camion svg{width:38px;height:22px;display:block}
+  .vehicle-icon.camion{width:36px;height:36px;filter:drop-shadow(0 2px 3px rgba(15,47,34,.5))}
+  .vehicle-icon svg{width:36px;height:36px;display:block}
+  .vehicle-icon.camion svg{width:36px;height:36px;display:block}
   .dest-pin{
     width:28px;height:36px;display:flex;align-items:flex-end;justify-content:center;
     filter:drop-shadow(0 2px 4px rgba(0,0,0,.35));
@@ -415,47 +412,24 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     truck.classList.toggle('truck', mode === 'camion');
   }
 
-  function carSvg(){
-    return '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M12 30 L20 18 H44 L52 30 Z" fill="#C45C26"/><rect x="10" y="30" width="44" height="14" rx="5" fill="#2C3A47"/><circle cx="20" cy="46" r="5.5" fill="#101820"/><circle cx="44" cy="46" r="5.5" fill="#101820"/><rect x="16" y="33" width="10" height="6" rx="1.5" fill="#E8EEF2"/><rect x="38" y="33" width="10" height="6" rx="1.5" fill="#E8EEF2"/></svg>';
-  }
-  /** Side-view freight semi (tractor + dry-van) — map GPS marker in camion mode. */
-  function truckSvg(){
-    return '<svg viewBox="0 0 96 48" aria-hidden="true">' +
-      /* dry-van trailer — long body, roof rail, panel seams */
-      '<rect x="1" y="9" width="56" height="23" rx="2" fill="#1F6B4A"/>' +
-      '<rect x="1" y="9" width="56" height="4" rx="1.5" fill="#256F4D"/>' +
-      '<path d="M9 9 V32 M17 9 V32 M25 9 V32 M33 9 V32 M41 9 V32 M49 9 V32" stroke="#0F2F22" stroke-width="1.1" opacity=".5"/>' +
-      '<rect x="1" y="29" width="56" height="3.5" fill="#0F2F22"/>' +
-      /* rear underride + lights */
-      '<rect x="1" y="25" width="3.5" height="4.5" rx=".5" fill="#C0392B"/>' +
-      '<rect x="1" y="13" width="3.5" height="4.5" rx=".5" fill="#C0392B"/>' +
-      '<rect x="1" y="32.5" width="8" height="2" rx=".4" fill="#101820"/>' +
-      /* landing gear */
-      '<rect x="22" y="32" width="1.8" height="5.5" fill="#2C3A47"/><rect x="30" y="32" width="1.8" height="5.5" fill="#2C3A47"/>' +
-      /* fifth-wheel plate */
-      '<rect x="55" y="24" width="5" height="5.5" rx="1" fill="#2C3A47"/>' +
-      /* tractor frame */
-      '<rect x="58" y="26.5" width="35" height="5.5" rx="1.2" fill="#2C3A47"/>' +
-      /* sleeper */
-      '<rect x="58" y="11" width="13" height="16.5" rx="2" fill="#C45C26"/>' +
-      '<rect x="60" y="13.5" width="8" height="7" rx="1" fill="#F0D5C4"/>' +
-      /* day cab + hood */
-      '<path d="M71 12.5 H83.5 L91 26.5 H71 Z" fill="#B34E1F"/>' +
-      '<rect x="71" y="12.5" width="13" height="14.5" rx="1.4" fill="#C45C26"/>' +
-      '<path d="M73.5 14.5 H83 L86.5 24.5 H73.5 Z" fill="#E8EEF2"/>' +
-      /* grille + bumper + headlight */
-      '<rect x="86" y="20" width="5" height="7" rx=".8" fill="#3A4652"/>' +
-      '<rect x="89.5" y="26.5" width="5" height="5" rx="1" fill="#101820"/>' +
-      '<circle cx="91.5" cy="24" r="1.4" fill="#F7E27A"/>' +
-      /* fuel tank */
-      '<ellipse cx="68.5" cy="30" rx="4.2" ry="2.3" fill="#101820"/>' +
-      /* wheels: trailer tandem (rear) + drive tandem + steer */
-      '<circle cx="11" cy="38.5" r="5.2" fill="#101820"/><circle cx="11" cy="38.5" r="2.1" fill="#8A9199"/>' +
-      '<circle cx="21" cy="38.5" r="5.2" fill="#101820"/><circle cx="21" cy="38.5" r="2.1" fill="#8A9199"/>' +
-      '<circle cx="65" cy="38.5" r="5.2" fill="#101820"/><circle cx="65" cy="38.5" r="2.1" fill="#8A9199"/>' +
-      '<circle cx="75" cy="38.5" r="5.2" fill="#101820"/><circle cx="75" cy="38.5" r="2.1" fill="#8A9199"/>' +
-      '<circle cx="88" cy="38.5" r="4.8" fill="#101820"/><circle cx="88" cy="38.5" r="1.9" fill="#8A9199"/>' +
+  /**
+   * Google Maps–style navigation chevron (tip = forward / heading 0° = up).
+   * Cleaner than a side-view truck/car when CSS-rotated with device heading.
+   */
+  function navArrowSvg(fill){
+    var color = fill || '#1A73E8';
+    return '<svg viewBox="0 0 48 48" aria-hidden="true">' +
+      /* White halo then filled chevron — tip up = heading 0° */
+      '<path d="M24 5 L41 40 L24 31 L7 40 Z" fill="#fff"/>' +
+      '<path d="M24 9.5 L36.5 36.5 L24 29 L11.5 36.5 Z" fill="' + color + '"/>' +
       '</svg>';
+  }
+  function carSvg(){
+    return navArrowSvg('#1A73E8');
+  }
+  /** Same modern nav arrow — garage green so camion mode stays distinct. */
+  function truckSvg(){
+    return navArrowSvg('#1F6B4A');
   }
 
   function vehicleHtml(){
@@ -468,12 +442,11 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   }
 
   function vehicleDivIcon(){
-    var truck = mode === 'camion';
     return L.divIcon({
       className: '',
       html: vehicleHtml(),
-      iconSize: truck ? [52, 40] : [42, 42],
-      iconAnchor: truck ? [26, 20] : [21, 21],
+      iconSize: [40, 40],
+      iconAnchor: [20, 20],
     });
   }
 
