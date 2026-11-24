@@ -31,14 +31,6 @@ const SEV_STYLE = {
   critical: { bg: colors.signalSoft, fg: colors.danger },
 } as const;
 
-const CAT_LABEL: Record<PartDoc['category'], string> = {
-  mecanique: 'Mécanique',
-  electrique: 'Électrique',
-  carrosserie: 'Carrosserie',
-  fluide: 'Fluide / huile',
-  filtre: 'Filtre',
-};
-
 /**
  * Tab 2 — Diagnostic: plug OBD key, show results, parts-to-buy on THIS tab
  * (reuses OBD / pieces services; deep modules remain for full flows).
@@ -90,6 +82,7 @@ export default function DiagnosticHub() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
       try {
         const res = await listPartsForVin(active?.vin, {
@@ -99,15 +92,20 @@ export default function DiagnosticHub() {
           year: active?.year,
           currency: active?.currency,
         });
+        if (cancelled) return;
         setParts(res.data ?? []);
         setPartsLabel(res.stubLabel);
         setSelectedPartId(res.data?.[0]?.id ?? null);
       } catch (e) {
+        if (cancelled) return;
         setParts([]);
-        setPartsLabel(e instanceof Error ? e.message : 'Parts soft-fail');
+        setPartsLabel(e instanceof Error ? e.message : t('diagnostic.partsSoftFail'));
       }
     })();
-  }, [active?.vin, active?.vehicleClass, active?.make, active?.model, active?.year, active?.currency]);
+    return () => {
+      cancelled = true;
+    };
+  }, [active?.vin, active?.vehicleClass, active?.make, active?.model, active?.year, active?.currency, t]);
 
   const selectedPart = parts.find((p) => p.id === selectedPartId) ?? null;
   const bestBuy = selectedPart
@@ -116,13 +114,25 @@ export default function DiagnosticHub() {
 
   const onBleScan = async () => {
     if (busy) return;
-    if (liveBle) {
+    // Re-check live session (may have been opened in M5 after this tab mounted).
+    const activeSession = getActiveBleSession();
+    if (activeSession || liveBle) {
+      if (activeSession) {
+        setConnectedId(activeSession.deviceId);
+        setLiveBle(true);
+        setProtocol(activeSession.protocol);
+      }
       setBleMsg(t('diagnostic.bleBusy'));
       return;
     }
     setBusy(true);
     try {
       const r = await scanBleDevices();
+      if (!r.ok && r.message.includes('Session ELM')) {
+        setLiveBle(true);
+        setBleMsg(r.message);
+        return;
+      }
       setDevices(
         r.devices.length
           ? r.devices
@@ -147,6 +157,15 @@ export default function DiagnosticHub() {
     setBusy(true);
     try {
       if (id.startsWith('mock-')) {
+        // Never tear down a live ELM session to switch to mock UI.
+        const activeSession = getActiveBleSession();
+        if (activeSession && !activeSession.deviceId.startsWith('mock-')) {
+          setConnectedId(activeSession.deviceId);
+          setLiveBle(true);
+          setProtocol(activeSession.protocol);
+          setBleMsg(t('diagnostic.bleBusy'));
+          return;
+        }
         await disconnectBleSession();
         const r = await connectBleDevice(id);
         setBleMsg(r.message);
@@ -420,7 +439,7 @@ export default function DiagnosticHub() {
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={styles.partName}>{p.name}</Text>
                   <Text style={styles.meta}>
-                    {CAT_LABEL[p.category]} · OEM {p.oemSku}
+                    {t(`diagnostic.cat.${p.category}`)} · OEM {p.oemSku}
                   </Text>
                   <Text style={styles.meta}>
                     {t('diagnostic.partsPrices', {

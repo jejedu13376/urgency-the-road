@@ -334,6 +334,46 @@ export const es: FrDict = {
     linkEntretien: 'M10 — mantenimiento, documentos y PDF →',
     linkFlotte: 'M2 — selector en cascada y multi-flota →',
     linkProfil: 'Perfil camión — trek · remolque · rutas →',
+    maintOil: 'Cambio de aceite',
+    maintOilLiters: 'Cambio de aceite (%{liters} L)',
+    continent: {
+      EU: 'Europa',
+      NA: 'América del Norte',
+      AU: 'Australia',
+      AS: 'Asia',
+    },
+    country: {
+      FR: 'Francia',
+      DE: 'Alemania',
+      ES: 'España',
+      IT: 'Italia',
+      BE: 'Bélgica',
+      CA: 'Canadá',
+      US: 'Estados Unidos',
+      AU: 'Australia',
+      JP: 'Japón',
+      KR: 'Corea',
+      CN: 'China',
+    },
+    power: {
+      essence: 'Gasolina',
+      diesel: 'Diésel',
+      hybride: 'Híbrido',
+      electrique: 'Eléctrico',
+      gpl: 'GLP',
+      poids_lourd_diesel: 'Diésel pesado',
+    },
+    class: {
+      voiture: 'Coche',
+      suv: 'SUV',
+      pickup: 'Pickup',
+      poids_lourd: 'Camión pesado',
+    },
+    sev: {
+      faible: 'bajo',
+      moyen: 'medio',
+      eleve: 'alto',
+    },
   },
 
   diagnostic: {
@@ -399,6 +439,14 @@ export const es: FrDict = {
     moreTitle: 'Módulos detallados',
     linkObdFull: 'Maletín OBD completo (M5) →',
     linkIa: 'Diagnóstico IA foto (M4) →',
+    partsSoftFail: 'Piezas soft-fail',
+    cat: {
+      mecanique: 'Mecánica',
+      electrique: 'Eléctrica',
+      carrosserie: 'Carrocería',
+      fluide: 'Fluido / aceite',
+      filtre: 'Filtro',
+    },
   },
 
   fil: {

@@ -334,6 +334,46 @@ export const en: FrDict = {
     linkEntretien: 'M10 — service, documents & PDF logbook →',
     linkFlotte: 'M2 — cascade picker & multi-fleet →',
     linkProfil: 'Truck profile — trek · trailer · routes →',
+    maintOil: 'Oil change',
+    maintOilLiters: 'Oil change (%{liters} L)',
+    continent: {
+      EU: 'Europe',
+      NA: 'North America',
+      AU: 'Australia',
+      AS: 'Asia',
+    },
+    country: {
+      FR: 'France',
+      DE: 'Germany',
+      ES: 'Spain',
+      IT: 'Italy',
+      BE: 'Belgium',
+      CA: 'Canada',
+      US: 'United States',
+      AU: 'Australia',
+      JP: 'Japan',
+      KR: 'Korea',
+      CN: 'China',
+    },
+    power: {
+      essence: 'Gasoline',
+      diesel: 'Diesel',
+      hybride: 'Hybrid',
+      electrique: 'Electric',
+      gpl: 'LPG',
+      poids_lourd_diesel: 'Heavy-duty diesel',
+    },
+    class: {
+      voiture: 'Car',
+      suv: 'SUV',
+      pickup: 'Pickup',
+      poids_lourd: 'Heavy truck',
+    },
+    sev: {
+      faible: 'low',
+      moyen: 'medium',
+      eleve: 'high',
+    },
   },
 
   diagnostic: {
@@ -399,6 +439,14 @@ export const en: FrDict = {
     moreTitle: 'Detailed modules',
     linkObdFull: 'Full OBD scan tool (M5) →',
     linkIa: 'AI photo diagnostic (M4) →',
+    partsSoftFail: 'Parts soft-fail',
+    cat: {
+      mecanique: 'Mechanical',
+      electrique: 'Electrical',
+      carrosserie: 'Body',
+      fluide: 'Fluid / oil',
+      filtre: 'Filter',
+    },
   },
 
   fil: {

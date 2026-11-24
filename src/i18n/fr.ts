@@ -330,6 +330,46 @@ export const fr = {
     linkEntretien: 'M10 — entretien, documents & carnet PDF →',
     linkFlotte: 'M2 — sélecteur cascade & multi-flotte →',
     linkProfil: 'Profil camion — trek · remorque · routes →',
+    maintOil: 'Vidange / oil change',
+    maintOilLiters: 'Vidange / oil change (%{liters} L)',
+    continent: {
+      EU: 'Europe',
+      NA: 'Amérique du Nord',
+      AU: 'Australie',
+      AS: 'Asie',
+    },
+    country: {
+      FR: 'France',
+      DE: 'Allemagne',
+      ES: 'Espagne',
+      IT: 'Italie',
+      BE: 'Belgique',
+      CA: 'Canada',
+      US: 'États-Unis',
+      AU: 'Australie',
+      JP: 'Japon',
+      KR: 'Corée',
+      CN: 'Chine',
+    },
+    power: {
+      essence: 'Essence',
+      diesel: 'Diesel',
+      hybride: 'Hybride',
+      electrique: 'Électrique',
+      gpl: 'GPL',
+      poids_lourd_diesel: 'Diesel poids lourd',
+    },
+    class: {
+      voiture: 'Voiture',
+      suv: 'SUV',
+      pickup: 'Pick-up',
+      poids_lourd: 'Poids lourd',
+    },
+    sev: {
+      faible: 'faible',
+      moyen: 'moyen',
+      eleve: 'élevé',
+    },
   },
 
   diagnostic: {
@@ -396,6 +436,14 @@ export const fr = {
     moreTitle: 'Modules détaillés',
     linkObdFull: 'Valise OBD complète (M5) →',
     linkIa: 'Diagnostic IA photo (M4) →',
+    partsSoftFail: 'Pièces soft-fail',
+    cat: {
+      mecanique: 'Mécanique',
+      electrique: 'Électrique',
+      carrosserie: 'Carrosserie',
+      fluide: 'Fluide / huile',
+      filtre: 'Filtre',
+    },
   },
 
   fil: {

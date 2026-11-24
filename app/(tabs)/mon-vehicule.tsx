@@ -21,48 +21,6 @@ import { colors } from '../../src/theme/colors';
 import type { MaintenanceItem } from '../../src/types/modules';
 import type { ContinentCode, VehicleClass, VehicleProfile } from '../../src/types/vehicle';
 
-const POWERTRAIN_FR: Record<string, string> = {
-  essence: 'Essence',
-  diesel: 'Diesel',
-  hybride: 'Hybride',
-  electrique: 'Électrique',
-  gpl: 'GPL',
-  poids_lourd_diesel: 'Diesel poids lourd',
-};
-
-const CLASS_FR: Record<string, string> = {
-  voiture: 'Voiture',
-  suv: 'SUV',
-  pickup: 'Pick-up',
-  poids_lourd: 'Poids lourd',
-};
-
-const CONTINENT_FR: Record<string, string> = {
-  EU: 'Europe',
-  NA: 'Amérique du Nord',
-  AU: 'Australie',
-  AS: 'Asie',
-};
-
-const COUNTRY_LABEL: Record<string, string> = {
-  FR: 'France',
-  DE: 'Allemagne',
-  ES: 'Espagne',
-  IT: 'Italie',
-  BE: 'Belgique',
-  CA: 'Canada',
-  US: 'États-Unis',
-  AU: 'Australie',
-  JP: 'Japon',
-  KR: 'Corée',
-  CN: 'Chine',
-};
-
-const SEV_FR: Record<string, string> = {
-  faible: 'faible',
-  moyen: 'moyen',
-  eleve: 'élevé',
-};
 
 type KindChoice = 'voiture' | 'camion';
 
@@ -70,8 +28,11 @@ function kindFromClass(vc?: VehicleClass): KindChoice {
   return vc === 'poids_lourd' ? 'camion' : 'voiture';
 }
 
-function classFromKind(kind: KindChoice): VehicleClass {
-  return kind === 'camion' ? 'poids_lourd' : 'voiture';
+/** Keep pickup/SUV when staying on the light-vehicle side; only switch to PL when kind=camion. */
+function resolveVehicleClass(kind: KindChoice, current?: VehicleClass): VehicleClass {
+  if (kind === 'camion') return 'poids_lourd';
+  if (current === 'pickup' || current === 'suv' || current === 'voiture') return current;
+  return 'voiture';
 }
 
 function currencyFor(continent: ContinentCode, country: string): VehicleProfile['currency'] {
@@ -82,12 +43,11 @@ function currencyFor(continent: ContinentCode, country: string): VehicleProfile[
 }
 
 /** Minimum required maintenance rows (oil / vidange first). */
-function buildMinMaintenance(active: VehicleProfile | null, open: MaintenanceItem[]): MaintenanceItem[] {
-  const oilL = active?.fluids.engineOilL;
-  const oilTitle =
-    oilL != null
-      ? `Vidange / oil change (${oilL} L)`
-      : 'Vidange / oil change';
+function buildMinMaintenance(
+  active: VehicleProfile | null,
+  open: MaintenanceItem[],
+  oilTitle: string,
+): MaintenanceItem[] {
   const fromCarnet = open.filter((m) => /vidange|huile|oil/i.test(m.title));
   const base: MaintenanceItem[] = fromCarnet.length
     ? fromCarnet
@@ -197,7 +157,17 @@ export default function MonVehiculeScreen() {
     };
   }, [active?.make, active?.model, active?.year]);
 
-  const minMaint = useMemo(() => buildMinMaintenance(active, reminders), [active, reminders]);
+  const oilTitle = useMemo(() => {
+    const oilL = active?.fluids.engineOilL;
+    return oilL != null
+      ? t('monVehicule.maintOilLiters', { liters: oilL })
+      : t('monVehicule.maintOil');
+  }, [active?.fluids.engineOilL, t]);
+
+  const minMaint = useMemo(
+    () => buildMinMaintenance(active, reminders, oilTitle),
+    [active, reminders, oilTitle],
+  );
 
   const applyDecoded = async (decoded: VehicleProfile, stub?: string) => {
     const sameVin = Boolean(active && active.vin && active.vin === decoded.vin);
@@ -261,11 +231,25 @@ export default function MonVehiculeScreen() {
       setMsg(t('monVehicule.idNeedZone'));
       return;
     }
-    const vehicleClass = classFromKind(kind);
-    const powertrain = kind === 'camion' ? 'poids_lourd_diesel' : 'essence';
-    const fluids = estimateLocalFluids({ vehicleClass, powertrain, make: active?.make });
+    const vehicleClass = resolveVehicleClass(kind, active?.vehicleClass);
+    const powertrain =
+      kind === 'camion'
+        ? 'poids_lourd_diesel'
+        : active?.powertrain && active.powertrain !== 'poids_lourd_diesel'
+          ? active.powertrain
+          : 'essence';
+    const fluids = estimateLocalFluids({
+      vehicleClass,
+      powertrain,
+      make: active?.make,
+    });
     const year = active?.year ?? new Date().getFullYear();
-    const make = active?.make && active.make !== '—' ? active.make : kind === 'camion' ? 'Camion' : 'Voiture';
+    const make =
+      active?.make && active.make !== '—'
+        ? active.make
+        : kind === 'camion'
+          ? t('monVehicule.kindTruck')
+          : t('monVehicule.kindCar');
     const model = active?.model && active.model !== '—' ? active.model : t('monVehicule.idDraftModel');
     const next: VehicleProfile = {
       id: active?.id ?? `id-${Date.now()}`,
@@ -276,10 +260,13 @@ export default function MonVehiculeScreen() {
       make,
       model,
       year,
-      powertrain: active?.powertrain ?? powertrain,
+      powertrain: active?.powertrain && kind === kindFromClass(active.vehicleClass) ? active.powertrain : powertrain,
       vehicleClass,
-      fluids: active?.fluids ?? fluids.fluids,
-      fluidsSource: active?.fluidsSource ?? fluids.source,
+      fluids: active?.fluids && kind === kindFromClass(active.vehicleClass) ? active.fluids : fluids.fluids,
+      fluidsSource:
+        active?.fluidsSource && kind === kindFromClass(active.vehicleClass)
+          ? active.fluidsSource
+          : fluids.source,
       commonFailures: active?.commonFailures ?? [],
       odometerKm: active?.odometerKm ?? 0,
       unitSystem: continent === 'NA' ? 'imperial' : 'metric',
@@ -288,7 +275,12 @@ export default function MonVehiculeScreen() {
       clientLocalId: active?.clientLocalId,
     };
     upsertVehicle(next);
-    setMsg(t('monVehicule.idSaved', { kind: kind === 'camion' ? t('monVehicule.kindTruck') : t('monVehicule.kindCar'), country }));
+    setMsg(
+      t('monVehicule.idSaved', {
+        kind: kind === 'camion' ? t('monVehicule.kindTruck') : t('monVehicule.kindCar'),
+        country,
+      }),
+    );
   };
 
   const saveOdometer = () => {
@@ -348,7 +340,7 @@ export default function MonVehiculeScreen() {
           onChange={onContinent}
           options={CASCADE.continents.map((c) => ({
             value: c.id as ContinentCode,
-            label: c.label,
+            label: t(`monVehicule.continent.${c.id}`),
           }))}
         />
 
@@ -359,7 +351,7 @@ export default function MonVehiculeScreen() {
             onChange={setCountry}
             options={countries.map((code) => ({
               value: code,
-              label: COUNTRY_LABEL[code] ?? code,
+              label: t(`monVehicule.country.${code}`),
               hint: code,
             }))}
           />
@@ -446,7 +438,7 @@ export default function MonVehiculeScreen() {
                   <View key={f.id} style={styles.block}>
                     <Text style={styles.blockTitle}>{f.title}</Text>
                     <Text style={styles.blockBody}>
-                      {f.symptoms.join(' · ')} · {SEV_FR[f.severity] ?? f.severity}
+                      {f.symptoms.join(' · ')} · {t(`monVehicule.sev.${f.severity}`)}
                     </Text>
                   </View>
                 ))}
@@ -494,11 +486,11 @@ export default function MonVehiculeScreen() {
           <Field label={t('monVehicule.fieldYear')} value={String(active.year)} />
           <Field
             label={t('monVehicule.fieldPower')}
-            value={`${POWERTRAIN_FR[active.powertrain] ?? active.powertrain} · ${CLASS_FR[active.vehicleClass] ?? active.vehicleClass}`}
+            value={`${t(`monVehicule.power.${active.powertrain}`)} · ${t(`monVehicule.class.${active.vehicleClass}`)}`}
           />
           <Field
             label={t('monVehicule.fieldZone')}
-            value={`${CONTINENT_FR[active.continent] ?? active.continent} / ${active.country} · ${active.currency}`}
+            value={`${t(`monVehicule.continent.${active.continent}`)} / ${t(`monVehicule.country.${active.country}`)} · ${active.currency}`}
           />
 
           <Text style={styles.section}>{t('monVehicule.odoTitle')}</Text>
