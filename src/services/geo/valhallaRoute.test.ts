@@ -73,4 +73,42 @@ describe('valhalla truck costing', () => {
     assert.equal(payload.exclude_locations, undefined);
     assert.equal(payload.costing, 'truck');
   });
+
+  it('applies avoid tolls/highways/ferries on auto costing', () => {
+    const payload = buildValhallaPayload(
+      { lat: 48.85, lon: 2.35 },
+      { lat: 48.87, lon: 2.3 },
+      'voiture',
+      undefined,
+      {
+        avoid: {
+          avoidTolls: true,
+          avoidHighways: true,
+          avoidFerries: true,
+          eco: true,
+        },
+      },
+    );
+    const opts = payload.costing_options as {
+      auto: Record<string, number | boolean>;
+    };
+    assert.equal(opts.auto.use_tolls, 0);
+    assert.equal(opts.auto.use_highways, 0);
+    assert.equal(opts.auto.use_ferry, 0);
+    assert.equal(opts.auto.shortest, true);
+  });
+
+  it('inserts through waypoints between origin and dest', () => {
+    const payload = buildValhallaPayload(
+      { lat: 48.85, lon: 2.35 },
+      { lat: 48.9, lon: 2.4 },
+      'voiture',
+      undefined,
+      { avoid: { waypoints: [{ lat: 48.87, lon: 2.37 }] } },
+    );
+    const locs = payload.locations as { lat: number; lon: number; type?: string }[];
+    assert.equal(locs.length, 3);
+    assert.equal(locs[1].lat, 48.87);
+    assert.equal(locs[1].type, 'through');
+  });
 });

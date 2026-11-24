@@ -348,6 +348,8 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   var routeCoords = [];
   var vehicleMarker = null;
   var routeLine = null;
+  var altRouteLines = [];
+  var stopMarkers = [];
   var destMarker = null;
   var followLive = false;
   /** True only after startNavigation — not mere recenter / followLive. */
@@ -800,8 +802,22 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     el.removeAttribute('hidden');
   }
 
+  function clearAltRoutes(){
+    for (var i = 0; i < altRouteLines.length; i++) {
+      try { map.removeLayer(altRouteLines[i]); } catch (e) {}
+    }
+    altRouteLines = [];
+  }
+  function clearStopMarkers(){
+    for (var j = 0; j < stopMarkers.length; j++) {
+      try { map.removeLayer(stopMarkers[j]); } catch (e) {}
+    }
+    stopMarkers = [];
+  }
   function clearRouteGraphics(){
     if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+    clearAltRoutes();
+    clearStopMarkers();
     routeCoords = [];
     document.getElementById('btnGo').disabled = true;
     setEtaBar(null, null);
@@ -869,13 +885,43 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
         return;
       }
       if (routeLine) map.removeLayer(routeLine);
+      clearAltRoutes();
+      clearStopMarkers();
       routeCoords = payload.coords;
+      var primaryColor = mode === 'camion' ? '#1F6B4A' : '#C45C26';
+      // Alt routes under primary (lighter).
+      var alts = payload.alternatives || [];
+      for (var ai = 0; ai < alts.length; ai++) {
+        var ac = alts[ai] && alts[ai].coords;
+        if (!ac || ac.length < 2) continue;
+        altRouteLines.push(L.polyline(ac, {
+          color: '#6B7785',
+          weight: 4,
+          opacity: 0.45,
+          dashArray: '8 10',
+          className: 'route-line',
+        }).addTo(map));
+      }
       routeLine = L.polyline(routeCoords, {
-        color: mode === 'camion' ? '#1F6B4A' : '#C45C26',
+        color: primaryColor,
         weight: 5,
-        opacity: 0.88,
+        opacity: 0.92,
         className: 'route-line',
       }).addTo(map);
+      var stops = payload.waypoints || [];
+      for (var si = 0; si < stops.length; si++) {
+        var sp = stops[si];
+        if (!sp || !isFinite(sp.lat) || !isFinite(sp.lon)) continue;
+        stopMarkers.push(L.marker([sp.lat, sp.lon], {
+          icon: L.divIcon({
+            className: '',
+            html: '<div class="layer-pin report">' + (si + 1) + '</div>',
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+          }),
+          zIndexOffset: 650,
+        }).addTo(map));
+      }
       map.fitBounds(routeLine.getBounds(), { padding: [52, 52], animate: true, duration: 0.45 });
       ensureVehicleMarker();
       document.getElementById('btnGo').disabled = false;
