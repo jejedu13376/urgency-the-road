@@ -3,6 +3,7 @@
  * GPS watch is motion-based (not app-open wall clock).
  */
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { belowGlobalTopBar, CHROME_GAP, CONNEXION_RIGHT_CLEARANCE } from '../chromeInsets';
 import { HosLivePanel } from './HosLivePanel';
@@ -20,6 +21,9 @@ function formatHms(totalSec: number): string {
 
 export function SafetyDrivingMonitor() {
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
+  // Hide chip on /modules/* so native stack back/title stay tappable (Connexion/Weather do the same).
+  const onModules = pathname?.includes('/modules');
   const {
     breakState,
     fatigue,
@@ -39,30 +43,32 @@ export function SafetyDrivingMonitor() {
 
   return (
     <>
-      <View
-        style={[
-          styles.chip,
-          {
-            // Under GlobalTopBar overlay; leave right clearance so Connexion stays tappable.
-            top: belowGlobalTopBar(insets) + CHROME_GAP,
-            right: CONNEXION_RIGHT_CLEARANCE,
-          },
-        ]}
-        pointerEvents="box-none"
-      >
-        <Pressable
-          style={[styles.chipBtn, monitoring ? styles.chipOn : styles.chipOff]}
-          onPress={() => setMonitoring((v) => !v)}
-          accessibilityLabel="Safety driving monitor"
+      {onModules ? null : (
+        <View
+          style={[
+            styles.chip,
+            {
+              // Under GlobalTopBar overlay; leave right clearance so Connexion stays tappable.
+              top: belowGlobalTopBar(insets) + CHROME_GAP,
+              right: CONNEXION_RIGHT_CLEARANCE,
+            },
+          ]}
+          pointerEvents="box-none"
         >
-          <Text style={[styles.chipTxt, !monitoring && styles.chipTxtOff]} numberOfLines={2}>
-            {monitoring ? 'HOS ON' : 'HOS OFF'} · {hosRegion} · reste {hosLive.hoursLeftLabel}
-            {speedKmh != null ? ` · ${Math.round(speedKmh)}/${speedLimit.limitKmh}` : ''}
-            {overspeed ? ' · VITESSE' : ''}
-            {fatigue.level !== 'ok' ? ` · fatigue ${fatigue.score}` : ''}
-          </Text>
-        </Pressable>
-      </View>
+          <Pressable
+            style={[styles.chipBtn, monitoring ? styles.chipOn : styles.chipOff]}
+            onPress={() => setMonitoring((v) => !v)}
+            accessibilityLabel="Safety driving monitor"
+          >
+            <Text style={[styles.chipTxt, !monitoring && styles.chipTxtOff]} numberOfLines={2}>
+              {monitoring ? 'HOS ON' : 'HOS OFF'} · {hosRegion} · reste {hosLive.hoursLeftLabel}
+              {speedKmh != null ? ` · ${Math.round(speedKmh)}/${speedLimit.limitKmh}` : ''}
+              {overspeed ? ' · VITESSE' : ''}
+              {fatigue.level !== 'ok' ? ` · fatigue ${fatigue.score}` : ''}
+            </Text>
+          </Pressable>
+        </View>
+      )}
 
       <Modal visible={showHardStop || showBreak} animationType="fade" transparent>
         <View style={styles.modalBg}>

@@ -9,5 +9,11 @@ export function belowGlobalTopBar(insets: EdgeInsets): number {
 /** Gap between GlobalTopBar overlay and the next chrome row (HOS / Connexion). */
 export const CHROME_GAP = 6;
 
+/**
+ * Max height of the HOS chip (2-line speed/fatigue readout).
+ * Weather must clear this, not only ConnexionChip height.
+ */
+export const HOS_CHIP_ROW_HEIGHT = 52;
+
 /** Leave room on the right for ConnexionChip (width 112 + right 10 + slack). */
 export const CONNEXION_RIGHT_CLEARANCE = 128;
