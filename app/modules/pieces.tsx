@@ -1,54 +1,47 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Link, Stack } from 'expo-router';
+import { Stack } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
-import { Card } from '../../src/components/Card';
+import { CatalogProductCard } from '../../src/components/CatalogProductCard';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
-import { useAuth } from '../../src/context/AuthContext';
 import { useFleet } from '../../src/context/FleetContext';
-import { useProgress } from '../../src/context/ProgressContext';
-import { useModuleVisit } from '../../src/hooks/useModuleVisit';
-import { listPartsForVin, scanQuoteStub } from '../../src/services/firebase';
-import { OCR_ML_BLOCKED, OEM_CATALOGUE_BLOCKED } from '../../src/services/parts/vinPartsCatalog';
-import { parseQuoteTextAmounts } from '../../src/services/quotes/parseQuoteText';
-import type { PartDoc, QuoteDoc } from '../../src/types/firestore';
-import { colors } from '../../src/theme/colors';
 import { useI18n } from '../../src/context/I18nContext';
+import { useModuleVisit } from '../../src/hooks/useModuleVisit';
+import { listPartsForVin } from '../../src/services/firebase';
+import type { PartDoc } from '../../src/types/firestore';
+import { colors } from '../../src/theme/colors';
 
-const CAT_LABEL: Record<PartDoc['category'], string> = {
-  mecanique: 'Mécanique',
-  electrique: 'Électrique',
-  carrosserie: 'Carrosserie',
-  fluide: 'Fluide / huile',
-  filtre: 'Filtre',
+const CAT_ICON: Record<PartDoc['category'], keyof typeof Ionicons.glyphMap> = {
+  mecanique: 'construct-outline',
+  electrique: 'flash-outline',
+  carrosserie: 'car-outline',
+  fluide: 'water-outline',
+  filtre: 'funnel-outline',
 };
 
-const CAT_FILTERS: (PartDoc['category'] | 'all')[] = [
-  'all', 'mecanique', 'electrique', 'carrosserie', 'fluide', 'filtre',
-];
+const CAT_TONE: Record<PartDoc['category'], string> = {
+  mecanique: '#E4E9EE',
+  electrique: '#F3E2C8',
+  carrosserie: '#D9E8F2',
+  fluide: '#D7EDE3',
+  filtre: '#F5E9B8',
+};
 
-type ScanMode = 'photo' | 'pdf';
+function formatPrice(amount: number, currency: string) {
+  return `${Math.round(amount)} ${currency}`;
+}
 
-/** Module 3 — liste VIN, catalogue, devis pose, tunnel vendeur. */
+/** Module 3 — catalogue type Canadian Tire / Amazon : recherche → photo + nom + prix. */
 export default function PiecesScreen() {
   const { t } = useI18n();
   useModuleVisit(3);
-  const { profile } = useAuth();
   const { active } = useFleet();
-  const { xp } = useProgress();
   const [parts, setParts] = useState<PartDoc[]>([]);
   const [label, setLabel] = useState<string | undefined>();
+  const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [scanQuote, setScanQuote] = useState<QuoteDoc | null>(null);
-  const [scanLabel, setScanLabel] = useState<string | null>(null);
-  const [catFilter, setCatFilter] = useState<PartDoc['category'] | 'all'>('all');
-  const [scanMode, setScanMode] = useState<ScanMode>('photo');
-  const [funnelStep, setFunnelStep] = useState<0 | 1 | 2 | 3>(0);
-  const [manualPart, setManualPart] = useState('');
-  const [manualLabor, setManualLabor] = useState('');
-  const [pasteText, setPasteText] = useState('');
-  const [pasteNote, setPasteNote] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -62,8 +55,7 @@ export default function PiecesScreen() {
         });
         setParts(res.data ?? []);
         setLabel(res.stubLabel);
-        setSelectedId(res.data?.[0]?.id ?? null);
-        setFunnelStep(res.data?.length ? 1 : 0);
+        setSelectedId(null);
       } catch (e) {
         setParts([]);
         setLabel(e instanceof Error ? `Pièces soft — ${e.message}` : 'Pièces soft — mock');
@@ -71,22 +63,18 @@ export default function PiecesScreen() {
     })();
   }, [active?.vin, active?.vehicleClass, active?.make, active?.model, active?.year, active?.currency]);
 
-  const filtered = useMemo(
-    () => (catFilter === 'all' ? parts : parts.filter((p) => p.category === catFilter)),
-    [parts, catFilter],
-  );
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return parts;
+    return parts.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.oemSku.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q),
+    );
+  }, [parts, query]);
 
   const selected = parts.find((p) => p.id === selectedId) ?? null;
-
-  const totals = useMemo(() => {
-    const pieces = parts.reduce((s, p) => s + p.priceAftermarket, 0);
-    const pose = parts.reduce((s, p) => s + p.laborHours * p.laborRate, 0);
-    return { pieces, pose, all: pieces + pose, currency: parts[0]?.currency ?? 'EUR' };
-  }, [parts]);
-
-  const bestBuy = selected
-    ? Math.min(selected.priceNew, selected.priceOem, selected.priceAftermarket)
-    : null;
 
   return (
     <>
@@ -94,401 +82,153 @@ export default function PiecesScreen() {
       <Screen
         variant="stack"
         title={t('moduleTitles.pieces')}
-        subtitle={`${t('moduleTitles.piecesSub')} · VIN ${active?.vin ?? '—'} · ${active?.make ?? ''} ${active?.model ?? ''}`.trim()}
+        subtitle={
+          active?.make
+            ? `${active.make} ${active.model ?? ''} · VIN ${active.vin ?? '—'}`.trim()
+            : t('moduleTitles.piecesSub')
+        }
       >
         <BackendStatusBanner />
         {label ? <StubBanner text={label} /> : null}
-        <StubBanner
-          text={`Catalogue local WMI/VIN LIVE · OCR-lite collage. Options externes : OEM mondial / OCR ML (${OEM_CATALOGUE_BLOCKED.slice(0, 42)}…)`}
-        />
 
-        <Card title="Parcours vendeur (pièce → achat → réparation → devis)">
-          <Text style={styles.hint}>
-            Dès qu’une pièce est liée au VIN / diagnostic, enchaînez : meilleur prix → tutoriel réparation → devis
-            approximatif. Progression active · {xp} XP.
-          </Text>
-          <View style={styles.funnelRow}>
-            {(['Identifiée', 'Acheter', 'Réparer', 'Devis'] as const).map((labelStep, i) => {
-              const n = (i + 1) as 1 | 2 | 3 | 4;
-              const on = funnelStep >= i;
-              return (
-                <Pressable
-                  key={labelStep}
-                  style={[styles.funnelChip, on && styles.funnelChipOn]}
-                  onPress={() => setFunnelStep(i as 0 | 1 | 2 | 3)}
-                >
-                  <Text style={[styles.funnelTxt, on && styles.funnelTxtOn]}>
-                    {n}. {labelStep}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <View style={styles.linkCol}>
-            <Link href="/modules/obd" asChild>
-              <Pressable style={styles.linkSoft}>
-                <Text style={styles.linkSoftTxt}>Capteur / OBD (M5) → identifier</Text>
-              </Pressable>
-            </Link>
-            <Link href="/modules/diagnostic-ia" asChild>
-              <Pressable style={styles.linkSoft}>
-                <Text style={styles.linkSoftTxt}>Diagnostic photo IA (M4) →</Text>
-              </Pressable>
-            </Link>
-            <Link href="/modules/tutoriels" asChild>
-              <Pressable style={styles.linkSoft}>
-                <Text style={styles.linkSoftTxt}>Tutoriels réparation (M11) →</Text>
-              </Pressable>
-            </Link>
-          </View>
-        </Card>
-
-        <Card title="Liste automatique d’achats (VIN)">
-          {!active?.vin ? (
-            <Text style={styles.warn}>Aucun VIN actif — activez un véhicule (M1/M2) pour générer la liste compatible.</Text>
+        <View style={styles.searchWrap}>
+          <Ionicons name="search" size={22} color={colors.ink} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Rechercher une pièce…"
+            placeholderTextColor={colors.muted}
+            style={styles.search}
+            autoCorrect={false}
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+            accessibilityLabel="Rechercher une pièce"
+          />
+          {query.length > 0 ? (
+            <Pressable onPress={() => setQuery('')} accessibilityLabel="Effacer la recherche">
+              <Ionicons name="close-circle" size={22} color={colors.slate} />
+            </Pressable>
           ) : null}
-          <View style={styles.funnelRow}>
-            {CAT_FILTERS.map((c) => (
+        </View>
+
+        {!active?.vin ? (
+          <Text style={styles.warn}>Activez un véhicule (M1/M2) pour la liste compatible.</Text>
+        ) : null}
+
+        {filtered.length === 0 ? (
+          <Text style={styles.empty}>
+            {query.trim() ? `Aucune pièce pour « ${query.trim()} ».` : 'Aucune pièce pour ce VIN.'}
+          </Text>
+        ) : (
+          <View style={styles.grid}>
+            {filtered.map((p) => (
+              <CatalogProductCard
+                key={p.id}
+                title={p.name}
+                priceLine={formatPrice(p.priceAftermarket, p.currency)}
+                icon={CAT_ICON[p.category]}
+                photoTone={CAT_TONE[p.category]}
+                selected={selectedId === p.id}
+                onPress={() => setSelectedId((cur) => (cur === p.id ? null : p.id))}
+              />
+            ))}
+          </View>
+        )}
+
+        {selected ? (
+          <View style={styles.detail}>
+            <Text style={styles.detailName}>{selected.name}</Text>
+            <Text style={styles.detailPrice}>
+              {formatPrice(selected.priceAftermarket, selected.currency)}
+            </Text>
+            {(selected.buyUrls?.length
+              ? selected.buyUrls
+              : selected.buyUrlStub
+                ? [{ label: 'Acheter', url: selected.buyUrlStub }]
+                : []
+            ).map((b) => (
               <Pressable
-                key={c}
-                style={[styles.funnelChip, catFilter === c && styles.funnelChipOn]}
-                onPress={() => setCatFilter(c)}
+                key={b.label}
+                style={styles.buyBtn}
+                onPress={() => void Linking.openURL(b.url)}
+                accessibilityRole="link"
               >
-                <Text style={[styles.funnelTxt, catFilter === c && styles.funnelTxtOn]}>
-                  {c === 'all' ? 'Toutes' : CAT_LABEL[c]}
-                </Text>
+                <Text style={styles.buyTxt}>{b.label}</Text>
               </Pressable>
             ))}
           </View>
-          {filtered.length === 0 ? <Text style={styles.hint}>Aucune pièce pour ce filtre / VIN.</Text> : null}
-          {filtered.map((p) => {
-            const pose = Math.round(p.laborHours * p.laborRate);
-            const on = selectedId === p.id;
-            return (
-              <Pressable key={p.id} style={[styles.row, on && styles.rowOn]} onPress={() => { setSelectedId(p.id); setFunnelStep(1); }}>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={styles.name}>{p.name}</Text>
-                  <Text style={styles.meta}>
-                    {CAT_LABEL[p.category]} · OEM {p.oemSku} · {p.region}
-                  </Text>
-                  <Text style={styles.meta}>
-                    Neuf {p.priceNew} · OEM {p.priceOem} · Adaptable {p.priceAftermarket} {p.currency}
-                  </Text>
-                  <Text style={styles.meta}>
-                    Pose barème {p.laborHours} h × {p.laborRate} = {pose} {p.currency}
-                  </Text>
-                </View>
-                <Text style={styles.price}>
-                  {p.priceAftermarket}
-                  {'\n'}
-                  <Text style={styles.priceUnit}>{p.currency}</Text>
-                </Text>
-              </Pressable>
-            );
-          })}
-          <Text style={styles.total}>
-            Estimation panier : pièces {Math.round(totals.pieces)} + pose {Math.round(totals.pose)} ={' '}
-            {Math.round(totals.all)} {totals.currency}
-          </Text>
-        </Card>
-
-        {selected ? (
-          <Card title={`Comparateur OEM / neuf / adaptable — ${selected.name}`}>
-            <View style={styles.compareGrid}>
-              {[
-                { label: 'Neuf', price: selected.priceNew },
-                { label: 'OEM', price: selected.priceOem },
-                { label: 'Adaptable', price: selected.priceAftermarket },
-              ].map((cell) => {
-                const best = cell.price === bestBuy;
-                return (
-                  <View key={cell.label} style={[styles.compareCell, best && styles.compareCellBest]}>
-                    <Text style={styles.compareLabel}>{cell.label}</Text>
-                    <Text style={styles.comparePrice}>{cell.price} {selected.currency}</Text>
-                    {best ? <Text style={styles.bestBadge}>MEILLEUR</Text> : null}
-                  </View>
-                );
-              })}
-            </View>
-            <Text style={styles.meta}>
-              Pose barème {selected.laborHours} h × {selected.laborRate} ={' '}
-              {Math.round(selected.laborHours * selected.laborRate)} {selected.currency}
-            </Text>
-            <View style={styles.barTrack}>
-              <View style={[styles.barFill, { width: `${Math.min(100, Math.round((selected.laborHours / 3) * 100))}%` }]} />
-            </View>
-
-            <Text style={styles.hint}>
-              Meilleur prix catalogue local : {bestBuy} {selected.currency} (neuf / OEM / adaptable — pas d’API OEM mondiale).
-            </Text>
-            <View style={styles.buyCol}>
-              {(selected.buyUrls?.length
-                ? selected.buyUrls
-                : selected.buyUrlStub
-                  ? [{ label: 'Recherche web', url: selected.buyUrlStub }]
-                  : []
-              ).map((b) => (
-                <Pressable
-                  key={b.label}
-                  style={styles.cta}
-                  onPress={() => {
-                    setFunnelStep(1);
-                    void Linking.openURL(b.url);
-                  }}
-                >
-                  <Text style={styles.ctaTxt}>
-                    1. {b.label}
-                    {selected.oemSku ? ` · ${selected.oemSku}` : ''}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <Link href="/modules/tutoriels" asChild>
-              <Pressable style={styles.ctaAlt} onPress={() => setFunnelStep(2)}>
-                <Text style={styles.ctaTxt}>2. Proposer la réparation (tutoriel M11) →</Text>
-              </Pressable>
-            </Link>
-            <Pressable
-              style={styles.ctaDark}
-              onPress={() => setFunnelStep(3)}
-            >
-              <Text style={styles.ctaTxt}>
-                3. Devis approx. pièce + pose :{' '}
-                {Math.round(selected.priceAftermarket + selected.laborHours * selected.laborRate)}{' '}
-                {selected.currency}
-              </Text>
-            </Pressable>
-            {funnelStep >= 3 ? (
-              <View style={styles.devisBox}>
-                <Text style={styles.devisTitle}>Petit devis (indicatif)</Text>
-                <Text style={styles.meta}>Pièce adaptable : {selected.priceAftermarket} {selected.currency}</Text>
-                <Text style={styles.meta}>
-                  Main-d’œuvre ({selected.laborHours} h) : {Math.round(selected.laborHours * selected.laborRate)}{' '}
-                  {selected.currency}
-                </Text>
-                <Text style={styles.total}>
-                  Total approx. :{' '}
-                  {Math.round(selected.priceAftermarket + selected.laborHours * selected.laborRate)}{' '}
-                  {selected.currency}
-                </Text>
-                <Text style={styles.hint}>Devis indicatif local — pas de paiement / checkout simulé.</Text>
-              </View>
-            ) : null}
-          </Card>
         ) : null}
-
-        <Card title="Scanner devis garage (anti-arnaque)">
-          <Text style={styles.hint}>
-            OCR ML Kit non branché — collez le texte du devis, saisissez les montants, ou lancez l’heuristique marché.
-            Aucun « devis scanné OCR ML avec succès » inventé.
-          </Text>
-          <View style={styles.funnelRow}>
-            <Pressable style={[styles.funnelChip, scanMode === 'photo' && styles.funnelChipOn]} onPress={() => setScanMode('photo')}>
-              <Text style={[styles.funnelTxt, scanMode === 'photo' && styles.funnelTxtOn]}>Mode photo</Text>
-            </Pressable>
-            <Pressable style={[styles.funnelChip, scanMode === 'pdf' && styles.funnelChipOn]} onPress={() => setScanMode('pdf')}>
-              <Text style={[styles.funnelTxt, scanMode === 'pdf' && styles.funnelTxtOn]}>Mode PDF</Text>
-            </Pressable>
-          </View>
-          <Text style={styles.meta}>Coller texte devis (OCR-lite — extraction montants)</Text>
-          <TextInput
-            value={pasteText}
-            onChangeText={setPasteText}
-            placeholder="Ex. Pièce plaquettes 189,00 € ; Main d’œuvre 120 €"
-            placeholderTextColor={colors.muted}
-            style={styles.pasteInput}
-            multiline
-          />
-          <Pressable
-            style={styles.scanSoft}
-            onPress={() => {
-              const parsed = parseQuoteTextAmounts(pasteText);
-              setPasteNote(parsed.note);
-              if (parsed.partPrice != null) setManualPart(String(parsed.partPrice));
-              if (parsed.laborPrice != null) setManualLabor(String(parsed.laborPrice));
-            }}
-          >
-            <Text style={styles.scanTxt}>Extraire montants du texte</Text>
-          </Pressable>
-          {pasteNote ? <Text style={styles.meta}>{pasteNote}</Text> : null}
-          <Text style={styles.meta}>Montants saisis (pièce + main-d’œuvre du devis garage)</Text>
-          <View style={styles.funnelRow}>
-            <TextInput
-              value={manualPart}
-              onChangeText={setManualPart}
-              keyboardType="decimal-pad"
-              placeholder={`Pièce (${active?.currency ?? 'EUR'})`}
-              placeholderTextColor={colors.muted}
-              style={styles.manualInput}
-            />
-            <TextInput
-              value={manualLabor}
-              onChangeText={setManualLabor}
-              keyboardType="decimal-pad"
-              placeholder={`MO (${active?.currency ?? 'EUR'})`}
-              placeholderTextColor={colors.muted}
-              style={styles.manualInput}
-            />
-          </View>
-          <Pressable
-            style={styles.scan}
-            onPress={() => {
-              const partRaw = manualPart.trim();
-              const laborRaw = manualLabor.trim();
-              const partN = partRaw ? parseFloat(partRaw.replace(',', '.')) : NaN;
-              const laborN = laborRaw ? parseFloat(laborRaw.replace(',', '.')) : NaN;
-              const partOk = Number.isFinite(partN);
-              const laborOk = Number.isFinite(laborN);
-              // Either field typed → manual path; missing side defaults to 0
-              const hasManual = partOk || laborOk;
-              void scanQuoteStub({
-                ownerUid: profile?.uid,
-                vin: active?.vin,
-                make: active?.make,
-                model: active?.model,
-                mode: scanMode,
-                anchorOemSku: selected?.oemSku,
-                currency: active?.currency ?? selected?.currency,
-                manualPartPrice: hasManual ? (partOk ? partN : 0) : undefined,
-                manualLaborPrice: hasManual ? (laborOk ? laborN : 0) : undefined,
-              }).then((r) => {
-                // Local market compare is always useful; never imply Firestore sync on ok:false.
-                setScanQuote(r.data.quote);
-                const syncBit =
-                  r.ok === false
-                    ? ` · ${r.stubLabel ?? 'SOFT devis — sync refusée (ok:false, comparaison locale)'}`
-                    : !profile
-                      ? ' · local (connectez-vous pour sync)'
-                      : r.stubLabel
-                        ? ` · ${r.stubLabel}`
-                        : '';
-                setScanLabel(
-                  `${r.data.scanLabel ?? 'Scan'} · ${scanMode}${
-                    hasManual ? ' · saisie manuelle' : ' · heuristique'
-                  }${syncBit}`,
-                );
-              });
-            }}
-          >
-            <Text style={styles.scanTxt}>
-              Comparer au marché
-              {active?.make ? ` · ${active.make}` : ''}
-              {manualPart.trim() || manualLabor.trim() ? ' (montants saisis)' : ' (heuristique)'}
-            </Text>
-          </Pressable>
-          {scanLabel ? <StubBanner text={scanLabel} /> : null}
-          {scanQuote ? (
-            <View style={styles.devisBox}>
-              <Text style={styles.devisTitle}>
-                Risque de surfacturation : {scanQuote.overchargeRisk?.toUpperCase() ?? '—'}
-              </Text>
-              {scanQuote.lines.map((line, idx) => (
-                <Text key={`${line.label}-${idx}`} style={styles.meta}>
-                  · {line.label} — pièce {line.partPrice} + MO {line.laborPrice} {scanQuote.currency}
-                </Text>
-              ))}
-              <Text style={styles.total}>
-                Total scanné :{' '}
-                {scanQuote.lines.reduce((s, l) => s + l.partPrice + l.laborPrice, 0)} {scanQuote.currency}
-              </Text>
-            </View>
-          ) : null}
-        </Card>
       </Screen>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  hint: { color: colors.muted, fontSize: 12, lineHeight: 18 },
-  warn: { color: colors.danger, fontWeight: '700', fontSize: 12 },
-  funnelRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  funnelChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: colors.mist,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  funnelChipOn: { backgroundColor: colors.signalSoft, borderColor: colors.signal },
-  funnelTxt: { fontSize: 11, fontWeight: '700', color: colors.slate },
-  funnelTxtOn: { color: colors.signal },
-  linkCol: { gap: 6 },
-  linkSoft: {
-    backgroundColor: colors.mist,
-    borderRadius: 10,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  linkSoftTxt: { color: colors.ink, fontWeight: '700', fontSize: 13 },
-  row: {
+  searchWrap: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
-  },
-  rowOn: { backgroundColor: colors.signalSoft, marginHorizontal: -6, paddingHorizontal: 6, borderRadius: 8 },
-  name: { fontWeight: '700', color: colors.ink },
-  meta: { color: colors.muted, fontSize: 12 },
-  price: { fontWeight: '800', color: colors.signal, textAlign: 'right', fontSize: 16 },
-  priceUnit: { fontSize: 11, color: colors.muted, fontWeight: '600' },
-  total: { marginTop: 8, fontWeight: '800', color: colors.garage },
-  cta: { backgroundColor: colors.signal, borderRadius: 10, padding: 12 },
-  ctaAlt: { backgroundColor: colors.garage, borderRadius: 10, padding: 12 },
-  ctaDark: { backgroundColor: colors.asphalt, borderRadius: 10, padding: 12 },
-  ctaTxt: { color: colors.white, fontWeight: '800', fontSize: 13 },
-  buyCol: { gap: 6 },
-  devisBox: { backgroundColor: colors.garageSoft, borderRadius: 10, padding: 10, gap: 4 },
-  devisTitle: { fontWeight: '800', color: colors.garage },
-  scan: { backgroundColor: colors.asphalt, borderRadius: 12, padding: 14, alignItems: 'center' },
-  scanSoft: {
-    backgroundColor: colors.signal,
-    borderRadius: 12,
-    padding: 12,
     alignItems: 'center',
-    marginBottom: 6,
+    gap: 10,
+    backgroundColor: colors.white,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
-  scanTxt: { color: colors.white, fontWeight: '800' },
-  pasteInput: {
-    minHeight: 64,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+  search: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
     color: colors.ink,
-    backgroundColor: colors.mist,
-    marginBottom: 6,
+    padding: 0,
+    minHeight: 28,
   },
-  manualInput: {
-    flexGrow: 1,
-    minWidth: '40%',
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+  warn: {
+    color: colors.danger,
+    fontWeight: '800',
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  empty: {
     color: colors.ink,
-    backgroundColor: colors.mist,
+    fontSize: 17,
+    fontWeight: '700',
+    lineHeight: 24,
   },
-  compareGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  compareCell: {
-    flexGrow: 1,
-    minWidth: '30%',
-    backgroundColor: colors.mist,
-    borderRadius: 8,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: colors.line,
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    justifyContent: 'space-between',
   },
-  compareCellBest: { borderColor: colors.garage, backgroundColor: colors.garageSoft },
-  compareLabel: { fontSize: 11, fontWeight: '700', color: colors.slate },
-  comparePrice: { fontWeight: '800', color: colors.ink, fontSize: 14 },
-  bestBadge: { fontSize: 10, fontWeight: '800', color: colors.garage, marginTop: 2 },
-  barTrack: { height: 6, borderRadius: 3, backgroundColor: colors.line, overflow: 'hidden', marginTop: 6 },
-  barFill: { height: 6, backgroundColor: colors.signal },
+  detail: {
+    backgroundColor: colors.white,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    borderRadius: 12,
+    padding: 16,
+    gap: 10,
+  },
+  detailName: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: colors.ink,
+    lineHeight: 28,
+  },
+  detailPrice: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: colors.signal,
+  },
+  buyBtn: {
+    backgroundColor: colors.signal,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  buyTxt: {
+    color: colors.white,
+    fontWeight: '900',
+    fontSize: 17,
+  },
 });
