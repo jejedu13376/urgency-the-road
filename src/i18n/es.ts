@@ -350,6 +350,8 @@ export const es: FrDict = {
       BE: 'Bélgica',
       CA: 'Canadá',
       US: 'Estados Unidos',
+      GB: 'Reino Unido',
+      MX: 'México',
       AU: 'Australia',
       JP: 'Japón',
       KR: 'Corea',

@@ -24,6 +24,13 @@ import type { ContinentCode, VehicleClass, VehicleProfile } from '../../src/type
 
 type KindChoice = 'voiture' | 'camion';
 
+/** Prefer i18n label; fall back to raw code when key is missing (e.g. VIN GB/MX). */
+function tOrRaw(tFn: (key: string) => string, key: string, fallback: string): string {
+  const out = tFn(key);
+  if (!out || out === key || out.startsWith('[missing')) return fallback;
+  return out;
+}
+
 function kindFromClass(vc?: VehicleClass): KindChoice {
   return vc === 'poids_lourd' ? 'camion' : 'voiture';
 }
@@ -340,7 +347,7 @@ export default function MonVehiculeScreen() {
           onChange={onContinent}
           options={CASCADE.continents.map((c) => ({
             value: c.id as ContinentCode,
-            label: t(`monVehicule.continent.${c.id}`),
+            label: tOrRaw(t, `monVehicule.continent.${c.id}`, c.label),
           }))}
         />
 
@@ -351,7 +358,7 @@ export default function MonVehiculeScreen() {
             onChange={setCountry}
             options={countries.map((code) => ({
               value: code,
-              label: t(`monVehicule.country.${code}`),
+              label: tOrRaw(t, `monVehicule.country.${code}`, code),
               hint: code,
             }))}
           />
@@ -438,7 +445,8 @@ export default function MonVehiculeScreen() {
                   <View key={f.id} style={styles.block}>
                     <Text style={styles.blockTitle}>{f.title}</Text>
                     <Text style={styles.blockBody}>
-                      {f.symptoms.join(' · ')} · {t(`monVehicule.sev.${f.severity}`)}
+                      {f.symptoms.join(' · ')} ·{' '}
+                      {tOrRaw(t, `monVehicule.sev.${f.severity}`, f.severity)}
                     </Text>
                   </View>
                 ))}
@@ -486,11 +494,11 @@ export default function MonVehiculeScreen() {
           <Field label={t('monVehicule.fieldYear')} value={String(active.year)} />
           <Field
             label={t('monVehicule.fieldPower')}
-            value={`${t(`monVehicule.power.${active.powertrain}`)} · ${t(`monVehicule.class.${active.vehicleClass}`)}`}
+            value={`${tOrRaw(t, `monVehicule.power.${active.powertrain}`, active.powertrain)} · ${tOrRaw(t, `monVehicule.class.${active.vehicleClass}`, active.vehicleClass)}`}
           />
           <Field
             label={t('monVehicule.fieldZone')}
-            value={`${t(`monVehicule.continent.${active.continent}`)} / ${t(`monVehicule.country.${active.country}`)} · ${active.currency}`}
+            value={`${tOrRaw(t, `monVehicule.continent.${active.continent}`, active.continent)} / ${tOrRaw(t, `monVehicule.country.${active.country}`, active.country)} · ${active.currency}`}
           />
 
           <Text style={styles.section}>{t('monVehicule.odoTitle')}</Text>

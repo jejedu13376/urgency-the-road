@@ -346,6 +346,8 @@ export const fr = {
       BE: 'Belgique',
       CA: 'Canada',
       US: 'États-Unis',
+      GB: 'Royaume-Uni',
+      MX: 'Mexique',
       AU: 'Australie',
       JP: 'Japon',
       KR: 'Corée',
