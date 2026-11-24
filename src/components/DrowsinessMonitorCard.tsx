@@ -23,7 +23,10 @@ export function DrowsinessMonitorCard() {
   const [status, setStatus] = useState('Caméra frontale — détection somnolence (3 s yeux fermés)');
   const speakingRef = useRef(false);
   const stateRef = useRef(state);
-  stateRef.current = state;
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     if (!active) return;
