@@ -110,7 +110,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     "default-src 'none'",
     "script-src https://unpkg.com/leaflet@1.9.4/ https://cdn.osmbuildings.org https://api.mapbox.com 'unsafe-inline'",
     "style-src https://unpkg.com/leaflet@1.9.4/ https://api.mapbox.com https://cdn.osmbuildings.org 'unsafe-inline'",
-    "img-src https://server.arcgisonline.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://tile.opentopomap.org https://*.tile.opentopomap.org https://tile.memomaps.de https://*.tile.memomaps.de https://a.tiles.mapbox.com https://b.tiles.mapbox.com https://c.tiles.mapbox.com https://d.tiles.mapbox.com https://api.mapbox.com https://api.tomtom.com data: blob:",
+    "img-src https://server.arcgisonline.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://tile.opentopomap.org https://*.tile.opentopomap.org https://tile.memomaps.de https://*.tile.memomaps.de https://a.tiles.mapbox.com https://b.tiles.mapbox.com https://c.tiles.mapbox.com https://d.tiles.mapbox.com https://api.mapbox.com https://api.tomtom.com data: blob: file:",
     "connect-src https://unpkg.com https://cdn.osmbuildings.org https://data.osmbuildings.org https://api.mapbox.com https://events.mapbox.com https://api.tomtom.com",
     "worker-src blob: 'self'",
     "child-src blob:",
@@ -663,14 +663,41 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     }
   }, true);
 
+  /* Offline pack — file:// tiles for roads + Esri satellite (set by RN). */
+  var offlinePack = null;
+  var ROADS_ONLINE = ROADS_URL;
+  var SAT_ONLINE = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+  function offlineTileUrl(layer, coords){
+    if (!offlinePack || !offlinePack.rootUri) return null;
+    var z = coords.z;
+    if (z < offlinePack.minZoom || z > offlinePack.maxZoom) return null;
+    var layers = offlinePack.layers || [];
+    if (layers.indexOf(layer) < 0) return null;
+    var root = offlinePack.rootUri;
+    if (root.charAt(root.length - 1) !== '/') root += '/';
+    return root + layer + '/' + z + '/' + coords.x + '/' + coords.y + '.png';
+  }
+
+  var OfflineAwareTileLayer = L.TileLayer.extend({
+    initialize: function(onlineUrl, layerKind, options){
+      this._onlineUrl = onlineUrl;
+      this._layerKind = layerKind;
+      L.TileLayer.prototype.initialize.call(this, onlineUrl, options);
+    },
+    getTileUrl: function(coords){
+      var local = offlineTileUrl(this._layerKind, coords);
+      if (local) return local;
+      return L.TileLayer.prototype.getTileUrl.call(this, coords);
+    }
+  });
+
   /* No Leaflet chrome (Esri/#47). Pinch/scroll zoom still works.
      Default base = colored roads; Satellite = Esri; Terrain = OpenTopoMap. */
   var map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true })
     .setView([origin.lat, origin.lon], gpsOk ? 14 : 5);
-  roadsLayer = L.tileLayer(ROADS_URL, { maxZoom: 19, attribution: '' });
-  satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 19, attribution: ''
-  });
+  roadsLayer = new OfflineAwareTileLayer(ROADS_ONLINE, 'roads', { maxZoom: 19, attribution: '' });
+  satLayer = new OfflineAwareTileLayer(SAT_ONLINE, 'satellite', { maxZoom: 19, attribution: '' });
   terrainLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
     maxZoom: 17, attribution: '', subdomains: 'abc'
   });
@@ -688,6 +715,24 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       zoomOffset: TRAFFIC_CFG.zoomOffset || 0,
     });
   }
+  /* Missing offline file → fall back to online template once. */
+  function bindOfflineTileFallback(layer){
+    layer.on('tileerror', function(ev){
+      try {
+        var img = ev.tile;
+        var coords = ev.coords;
+        if (!img || !coords || img._urOfflineTried) return;
+        img._urOfflineTried = true;
+        var url = L.Util.template(layer._onlineUrl, L.extend({
+          s: layer._getSubdomain(coords),
+          r: layer.options.detectRetina && L.Browser.retina && layer.options.maxZoom > 0 ? '@2x' : ''
+        }, coords));
+        img.src = url;
+      } catch (e) { /* ignore */ }
+    });
+  }
+  bindOfflineTileFallback(roadsLayer);
+  bindOfflineTileFallback(satLayer);
   roadsLayer.addTo(map);
   layerGroup = L.layerGroup().addTo(map);
   aqiGroup = L.layerGroup().addTo(map);
@@ -1465,6 +1510,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     else if (msg.cmd === 'setAqi') window.__gpsSetAqi(msg.payload);
     else if (msg.cmd === 'setMapType') window.__gpsSetMapType(msg);
     else if (msg.cmd === 'reportResult') window.__gpsReportResult && window.__gpsReportResult(msg);
+    else if (msg.cmd === 'setOfflineTiles') window.__gpsSetOfflineTiles && window.__gpsSetOfflineTiles(msg.payload);
   });
 
   /* Mouse: single click opens right report bubble (draft pin).
@@ -1693,6 +1739,25 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     return true;
   }
   window.__gpsStartNavigation = startNavigation;
+
+  /** Activate cached file:// tiles (roads + satellite) for the downloaded pack. */
+  window.__gpsSetOfflineTiles = function(cfg){
+    if (!cfg || !cfg.rootUri) {
+      offlinePack = null;
+      return;
+    }
+    offlinePack = {
+      rootUri: String(cfg.rootUri),
+      minZoom: typeof cfg.minZoom === 'number' ? cfg.minZoom : 10,
+      maxZoom: typeof cfg.maxZoom === 'number' ? cfg.maxZoom : 15,
+      layers: Array.isArray(cfg.layers) ? cfg.layers : ['roads', 'satellite'],
+      bbox: cfg.bbox || null
+    };
+    try {
+      if (roadsLayer) roadsLayer.redraw();
+      if (satLayer) satLayer.redraw();
+    } catch (e) { /* ignore */ }
+  };
 
   /* Free pan/zoom during nav: pause forced follow; resume after idle. Route + ETA stay. */
   map.on('dragstart', function(){ beginExplore(); });
