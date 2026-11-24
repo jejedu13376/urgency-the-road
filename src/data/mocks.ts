@@ -8,6 +8,11 @@ import type {
   SubscriptionPlan,
   TutorialItem,
 } from '../types/modules';
+import {
+  PREMIUM_CURRENCY,
+  PREMIUM_PLAN_ID,
+  PREMIUM_PRICE_MONTHLY_USD,
+} from '../constants/subscription';
 import { buildLocalCommonFailures } from '../services/vehicle/localFailures';
 import { estimateLocalFluids } from '../services/vehicle/localFluids';
 import { hintFromWmi, normalizeVin, vinCheckDigitOk } from '../services/vin/vinNormalize';
@@ -309,27 +314,18 @@ export const MOCK_FEED: FeedPost[] = [
   },
 ];
 
+/** Single app plan: Premium = $15/month — unlocks all Urgency road options. */
 export const MOCK_PLANS: SubscriptionPlan[] = [
   {
-    id: 'particulier',
-    name: 'Particulier',
-    priceMonthly: 9.9,
-    currency: 'EUR',
-    perks: ['1 véhicule', 'Diagnostic photo stub', 'Carnet numérique'],
-  },
-  {
-    id: 'routier_pro',
-    name: 'Routier Pro',
-    priceMonthly: 24.9,
-    currency: 'EUR',
-    perks: ['GPS PL', 'Pesage', 'Multi-IA stub', '2 véhicules'],
-  },
-  {
-    id: 'flotte',
-    name: 'Flotte',
-    priceMonthly: 79,
-    currency: 'EUR',
-    perks: ['Flotte illimitée', 'Espace Pro', 'Exports PDF', 'Admin atelier'],
+    id: PREMIUM_PLAN_ID,
+    name: 'Premium',
+    priceMonthly: PREMIUM_PRICE_MONTHLY_USD,
+    currency: PREMIUM_CURRENCY,
+    perks: [
+      'Unlocks all Urgency road options',
+      'Tous les modules & options de l’app',
+      '$15 / month',
+    ],
   },
 ];
 

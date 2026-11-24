@@ -61,10 +61,10 @@ const INITIAL_MOD: ModItem[] = [
 ];
 
 const INITIAL_ACCOUNTS: AccountRow[] = [
-  { id: 'u1', email: 'martin@ex.fr', role: 'driver', plan: 'Particulier', active: true },
-  { id: 'u2', email: 'atelier@nord.fr', role: 'pro', plan: 'Flotte', active: true },
+  { id: 'u1', email: 'martin@ex.fr', role: 'driver', plan: 'Premium ($15/mo)', active: true },
+  { id: 'u2', email: 'atelier@nord.fr', role: 'pro', plan: 'Premium ($15/mo)', active: true },
   { id: 'u3', email: 'sp59@secours.fr', role: 'rescuer', plan: 'Secours', active: true },
-  { id: 'u4', email: 'demo@um.app', role: 'driver', plan: 'Routier Pro', active: false },
+  { id: 'u4', email: 'demo@um.app', role: 'driver', plan: 'Premium ($15/mo)', active: false },
 ];
 
 /** Module 17b — Super-admin : comptes, modération, analytics, feature flags. */
@@ -248,7 +248,7 @@ export default function AdminScreen() {
         </Card>
 
         <Card title="Abonnements (supervision M15)">
-          <Text style={styles.line}>• Particulier / Routier Pro / Flotte — Stripe · PayPal · Apple/Google Pay</Text>
+          <Text style={styles.line}>• {t('subscription.adminLine')}</Text>
           <Text style={styles.line}>• Secours : abo actif obligatoire pour scan fiche (M13)</Text>
           <Text style={styles.line}>• Pro : KYC atelier avant réservation en ligne</Text>
         </Card>

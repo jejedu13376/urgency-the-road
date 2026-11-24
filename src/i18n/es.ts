@@ -436,4 +436,18 @@ export const es: FrDict = {
     support: 'Soporte',
     supportSub: 'Email de soporte de la empresa',
   },
+
+  subscription: {
+    sectionTitle: 'Suscripción Premium',
+    planName: 'Premium',
+    priceMonthly: '15 $ / mes',
+    priceShort: '15 $',
+    unlocksAll:
+      'Premium desbloquea todas las opciones de Urgency road: módulos, GPS, diagnóstico, flota, urgencia y más.',
+    perksHint: 'Un solo plan · 15 $ / mes · acceso completo',
+    payCta: 'Suscribirse a Premium · 15 $ / mes',
+    paying: 'Abriendo…',
+    adminLine:
+      'Premium — 15 $ / mes · desbloquea todas las opciones de Urgency road (Stripe · PayPal · Apple/Google Pay · RevenueCat)',
+  },
 };

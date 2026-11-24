@@ -432,6 +432,19 @@ export const fr = {
     support: 'Support',
     supportSub: 'Email support entreprise',
   },
+
+  subscription: {
+    sectionTitle: 'Abonnement Premium',
+    planName: 'Premium',
+    priceMonthly: '15 $ / mois',
+    priceShort: '15 $',
+    unlocksAll:
+      'Premium débloque toutes les options Urgency road — modules, GPS, diagnostic, flotte, urgence et plus.',
+    perksHint: 'Un seul abonnement · 15 $ / mois · accès complet',
+    payCta: 'S’abonner Premium · 15 $ / mois',
+    paying: 'Ouverture…',
+    adminLine: 'Premium — 15 $ / mois · débloque toutes les options Urgency road (Stripe · PayPal · Apple/Google Pay · RevenueCat)',
+  },
 } as const;
 
 /** Deep string shape of fr — allows en/es value overrides. */

@@ -89,9 +89,9 @@ export interface FeedPost {
 }
 
 export interface SubscriptionPlan {
-  id: 'particulier' | 'routier_pro' | 'flotte';
+  id: 'premium' | 'particulier' | 'routier_pro' | 'flotte';
   name: string;
   priceMonthly: number;
-  currency: 'EUR';
+  currency: 'USD' | 'EUR' | 'CAD' | 'AUD';
   perks: string[];
 }
