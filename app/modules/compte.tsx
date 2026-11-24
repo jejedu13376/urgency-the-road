@@ -23,18 +23,9 @@ import {
   startCheckout,
   type PaymentMethod,
 } from '../../src/services/payments/paymentsService';
+import { validatePassword } from '../../src/services/prefs/userProfileLocal';
 import { colors } from '../../src/theme/colors';
 import { useI18n } from '../../src/context/I18nContext';
-
-function validatePassword(pw: string) {
-  const ok = pw.length >= 6 && /[A-Z]/.test(pw) && /[^A-Za-z0-9]/.test(pw);
-  return {
-    ok,
-    msg: ok
-      ? 'Mot de passe conforme (6+ · 1 majuscule · 1 caractère spécial).'
-      : 'Invalidé : min. 6 caractères, 1 majuscule, 1 caractère spécial.',
-  };
-}
 
 /** Module 15 — Auth, bio, abonnements : Stripe · PayPal · Apple Pay · Google Pay (pas de Lydia). */
 export default function CompteScreen() {
@@ -78,7 +69,7 @@ export default function CompteScreen() {
 
   const onSignUp = async () => {
     const v = validatePassword(pw);
-    setPwMsg(v.msg);
+    setPwMsg(v.msgFr);
     setPwOk(v.ok);
     if (!v.ok) {
       setAuthMsg('Inscription bloquée — mot de passe non conforme.');
@@ -149,11 +140,11 @@ export default function CompteScreen() {
           />
           <TextInput
             value={pw}
-            onChangeText={(t) => {
-              setPw(t);
-              const v = validatePassword(t);
+            onChangeText={(txt) => {
+              setPw(txt);
+              const v = validatePassword(txt);
               setPwOk(v.ok);
-              setPwMsg(v.msg);
+              setPwMsg(v.msgFr);
             }}
             placeholder="Mot de passe"
             placeholderTextColor={colors.muted}

@@ -6,29 +6,44 @@ import { colors } from '../theme/colors';
 
 /**
  * Module 13 — bouton SOS toujours accessible → écran Urgence (numéros régionaux + alerte).
+ * First tap opens Urgence; second tap (while open) closes/collapses it.
  * Sits above the tab bar: safe-area bottom + tab content (~40) + small gap.
  * Keep in sync with `app/(tabs)/_layout.tsx` TAB_CONTENT / PAD_TOP.
  */
 const TAB_BAR_CONTENT = 40;
 const FAB_GAP = 12;
+const URGENCE_PATH = '/modules/urgence';
+
+function isUrgenceOpen(pathname: string | null | undefined): boolean {
+  return Boolean(pathname?.includes(URGENCE_PATH));
+}
 
 export function SosButton() {
   const pathname = usePathname();
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const bottom = Math.max(insets.bottom, 8) + TAB_BAR_CONTENT + FAB_GAP;
+  const open = isUrgenceOpen(pathname);
 
   return (
     <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={t('sos.a11y')}
+        accessibilityLabel={open ? t('sos.a11yClose') : t('sos.a11y')}
+        accessibilityState={{ expanded: open }}
         style={({ pressed }) => [styles.btn, pressed && { opacity: 0.85 }]}
         onPress={() => {
-          // Already on Urgence → no-op (avoid stacking a duplicate).
-          if (pathname?.includes('/modules/urgence')) return;
-          // push (not replace) so tab/module history keeps a back path.
-          router.push('/modules/urgence');
+          if (open) {
+            // Second tap: collapse Urgence panel / leave the module.
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)/mon-vehicule');
+            }
+            return;
+          }
+          // First tap: open Urgence (push keeps tab/module back path).
+          router.push(URGENCE_PATH);
         }}
       >
         <Text style={styles.txt} allowFontScaling={false}>

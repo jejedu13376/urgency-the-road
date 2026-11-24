@@ -74,6 +74,12 @@ export function localizedNavSections(t: T): NavSection[] {
           moduleTag: 'M15',
         },
         {
+          id: 'set-support',
+          title: t('nav.parametres.support'),
+          short: t('nav.parametres.supportShort'),
+          href: '/modules/support',
+        },
+        {
           id: 'set-bases',
           title: t('nav.parametres.bases'),
           short: t('nav.parametres.basesShort'),

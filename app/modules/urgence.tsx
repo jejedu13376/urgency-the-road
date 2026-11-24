@@ -3,10 +3,15 @@ import { Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { Stack } from 'expo-router';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
+import { DrowsinessMonitorCard } from '../../src/components/DrowsinessMonitorCard';
 import { EmergencyDialList } from '../../src/components/EmergencyDialList';
+import { HosLivePanel } from '../../src/components/HosLivePanel';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
+import { useI18n } from '../../src/context/I18nContext';
+import { useNightMode } from '../../src/context/NightModeContext';
+import { useSafetyDriving } from '../../src/context/SafetyDrivingContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import {
   ensurePersonalQr,
@@ -16,6 +21,14 @@ import {
   upsertMedicalCard,
 } from '../../src/services/firebase';
 import { getDeviceCoords, type DeviceCoords } from '../../src/services/geo/deviceLocation';
+import {
+  BREAK_TTS_EN,
+  BREAK_TTS_ES,
+  BREAK_TTS_FR,
+  DRIVING_BREAK_THRESHOLD_SEC,
+  speakDrivingBreakAlert,
+} from '../../src/services/urgence/drivingBreak';
+import type { NightModeSetting } from '../../src/services/urgence/nightMode';
 import {
   emergencyOptionById,
   suggestEmergencyNumberId,
@@ -32,9 +45,6 @@ import type {
   MedicalPublicPreview,
 } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
-import { useI18n } from '../../src/context/I18nContext';
-
-const FOUR_H = 4 * 60 * 60;
 
 /**
  * Module 13 — SOS, pause 4h, personal printed QR per subscriber,
@@ -45,8 +55,20 @@ export default function UrgenceScreen() {
   const { t } = useI18n();
   useModuleVisit(13);
   const { profile } = useAuth();
-  const [seconds, setSeconds] = useState(0);
-  const [driving, setDriving] = useState(true);
+  const {
+    breakState,
+    fatigue,
+    hosLive,
+    hosRegion,
+    setHosRegion,
+    takeBreak,
+    speedLimit,
+    speedKmh,
+    overspeed,
+    monitoring,
+    setMonitoring,
+  } = useSafetyDriving();
+  const { setting: nightSetting, active: nightActive, setSetting: setNightSetting } = useNightMode();
   const [card, setCard] = useState<MedicalCardDoc | null>(null);
   const [fullName, setFullName] = useState('');
   const [address, setAddress] = useState('');
@@ -81,14 +103,6 @@ export default function UrgenceScreen() {
 
   // Align with firestore.rules ownerIsActiveSubscriber — flag only, never plan name / !profile.
   const subscriberActive = profile?.subscriptionActive === true;
-
-  useEffect(() => {
-    if (!driving) return;
-    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [driving]);
-
-  const pausedAlert = seconds >= FOUR_H;
 
   useEffect(() => {
     // M13: never seed SOS UI with Lille fallback — device GPS only.
@@ -274,9 +288,11 @@ export default function UrgenceScreen() {
     );
   };
 
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
+  const driveSec = Math.floor(breakState.drivingSec);
+  const h = Math.floor(driveSec / 3600);
+  const m = Math.floor((driveSec % 3600) / 60);
+  const s = driveSec % 60;
+  const pausedAlert = driveSec >= DRIVING_BREAK_THRESHOLD_SEC || fatigue.mustStop;
 
   return (
     <>
@@ -453,28 +469,82 @@ export default function UrgenceScreen() {
           ) : null}
         </Card>
 
-        <Card title="Alerte pause conduite (4 heures)">
+        <Card title="HOS live + fatigue / vitesse">
+          <HosLivePanel
+            hosLive={hosLive}
+            selected={hosRegion}
+            onSelectRegion={(id) => {
+              void setHosRegion(id);
+            }}
+          />
           <Text style={styles.timer}>
-            Chrono : {h} h {String(m).padStart(2, '0')} min {String(s).padStart(2, '0')} s
+            Conduite GPS : {h} h {String(m).padStart(2, '0')} min {String(s).padStart(2, '0')} s
+            {' · '}
+            fatigue {fatigue.score}/100 ({fatigue.level})
+          </Text>
+          <Text style={styles.meta}>
+            Limite {speedLimit.label}: {speedLimit.limitKmh} km/h
+            {speedKmh != null ? ` · actuel ${Math.round(speedKmh)} km/h` : ''}
+            {overspeed ? ' · ALERTE VITESSE' : ''}
           </Text>
           <View style={styles.row}>
-            <Pressable style={styles.share} onPress={() => setDriving((d) => !d)}>
-              <Text style={styles.sosTxt}>{driving ? 'Pause chrono' : 'Reprendre'}</Text>
+            <Pressable style={styles.share} onPress={() => setMonitoring((v) => !v)}>
+              <Text style={styles.sosTxt}>{monitoring ? 'Pause surveillance' : 'Reprendre GPS'}</Text>
             </Pressable>
             <Pressable
               style={styles.btn}
               onPress={() => {
-                setSeconds(0);
+                void takeBreak();
               }}
             >
-              <Text style={styles.sosTxt}>Reset</Text>
+              <Text style={styles.sosTxt}>Pause faite — reset</Text>
             </Pressable>
           </View>
+          <Pressable
+            style={styles.btn}
+            onPress={() => {
+              void speakDrivingBreakAlert({ repeat: 1 });
+            }}
+          >
+            <Text style={styles.sosTxt}>Tester TTS pause (FR→EN→ES)</Text>
+          </Pressable>
+          <Text style={styles.meta}>
+            {BREAK_TTS_FR}
+            {'\n'}
+            {BREAK_TTS_EN}
+            {'\n'}
+            {BREAK_TTS_ES}
+          </Text>
           {pausedAlert ? (
             <View style={styles.alert}>
-              <Text style={styles.alertTxt}>4 heures — faites une pause ou prenez un café.</Text>
+              <Text style={styles.alertTxt}>
+                {fatigue.mustStop
+                  ? 'Arrêt obligatoire — fatigue / HOS critique.'
+                  : `4 h confort (${DRIVING_BREAK_THRESHOLD_SEC / 3600} h) — café et jambes.`}
+              </Text>
             </View>
           ) : null}
+        </Card>
+
+        <DrowsinessMonitorCard />
+
+        <Card title="Mode nuit (auto + manuel)">
+          <Text style={styles.meta}>
+            Actif : {nightActive ? 'oui (sombre / atténué)' : 'non'} · réglage : {nightSetting}
+          </Text>
+          <View style={styles.row}>
+            {(['auto', 'on', 'off'] as NightModeSetting[]).map((mode) => (
+              <Pressable
+                key={mode}
+                style={[styles.share, nightSetting === mode && styles.btn]}
+                onPress={() => setNightSetting(mode)}
+              >
+                <Text style={styles.sosTxt}>
+                  {mode === 'auto' ? 'Auto' : mode === 'on' ? 'Nuit ON' : 'Nuit OFF'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </Card>
       </Screen>
     </>

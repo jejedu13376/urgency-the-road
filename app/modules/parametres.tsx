@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Stack } from 'expo-router';
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Card } from '../../src/components/Card';
 import { LanguagePicker } from '../../src/components/LanguagePicker';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
 import { useI18n } from '../../src/context/I18nContext';
+import { signInEmail, signUpEmail } from '../../src/services/firebase';
 import {
   DEFAULT_LOCAL_NOTIFS,
   DEFAULT_LOCAL_PREFS,
@@ -17,27 +18,62 @@ import {
   type LocalNotifs,
   type LocalPrefs,
 } from '../../src/services/prefs/localPrefs';
+import {
+  isValidDisplayName,
+  isValidEmail,
+  isValidPhone,
+  loadLocalUserProfile,
+  mergeAutofill,
+  saveLocalUserProfile,
+  validatePassword,
+  type LocalUserProfile,
+} from '../../src/services/prefs/userProfileLocal';
+import { getSupportEmail } from '../../src/services/support/companySupport';
 import { colors } from '../../src/theme/colors';
 
 /**
- * Hub Paramètres — préférences / notifications locales + liens Compte (M15) / Bases (M14).
- * Ne compte pas comme un module du parcours 17.
+ * Hub Paramètres — credentials / personal (autofill · validate · persist) +
+ * préférences / notifications + liens Compte / Support / Bases.
  */
 export default function ParametresHub() {
-  const { profile } = useAuth();
+  const { profile, refresh } = useAuth();
   const { t } = useI18n();
   const [prefs, setPrefs] = useState<LocalPrefs>(DEFAULT_LOCAL_PREFS);
   const [notifs, setNotifs] = useState<LocalNotifs>(DEFAULT_LOCAL_NOTIFS);
   const [ready, setReady] = useState(false);
 
+  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [city, setCity] = useState('');
+  const [pw, setPw] = useState('');
+  const [pwMsg, setPwMsg] = useState<string | null>(null);
+  const [pwOk, setPwOk] = useState(false);
+  const [credMsg, setCredMsg] = useState<string | null>(null);
+  const [personalMsg, setPersonalMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const applyAutofill = useCallback((local: LocalUserProfile, auth: typeof profile) => {
+    const seed = mergeAutofill(local, auth);
+    setEmail(seed.email);
+    setDisplayName(seed.displayName);
+    setPhone(local.phone);
+    setCity(local.city);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const [p, n] = await Promise.all([loadLocalPrefs(), loadLocalNotifs()]);
+        const [p, n, local] = await Promise.all([
+          loadLocalPrefs(),
+          loadLocalNotifs(),
+          loadLocalUserProfile(),
+        ]);
         if (cancelled) return;
         setPrefs(p);
         setNotifs(n);
+        applyAutofill(local, profile);
       } catch {
         /* mock local — ignore corrupt */
       } finally {
@@ -47,7 +83,14 @@ export default function ParametresHub() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [profile, applyAutofill]);
+
+  const onSmartAutofill = useCallback(async () => {
+    const local = await loadLocalUserProfile();
+    applyAutofill(local, profile);
+    setPersonalMsg(t('settings.autofillDone'));
+    setCredMsg(null);
+  }, [profile, t, applyAutofill]);
 
   const patchPrefs = useCallback(async (patch: Partial<LocalPrefs>) => {
     setPrefs((prev) => {
@@ -65,6 +108,84 @@ export default function ParametresHub() {
     });
   }, []);
 
+  const persistPersonal = async () => {
+    if (email && !isValidEmail(email)) {
+      setPersonalMsg(t('settings.invalidEmail'));
+      return;
+    }
+    if (!isValidDisplayName(displayName)) {
+      setPersonalMsg(t('settings.invalidName'));
+      return;
+    }
+    if (!isValidPhone(phone)) {
+      setPersonalMsg(t('settings.invalidPhone'));
+      return;
+    }
+    await saveLocalUserProfile({ email, displayName, phone, city });
+    setPersonalMsg(t('settings.personalSaved'));
+  };
+
+  const onSignIn = async () => {
+    if (!isValidEmail(email)) {
+      setCredMsg(t('settings.invalidEmail'));
+      return;
+    }
+    if (!pw) {
+      setCredMsg(t('settings.needPassword'));
+      return;
+    }
+    setBusy(true);
+    setCredMsg(null);
+    try {
+      const r = await signInEmail(email, pw);
+      if (r.ok === false) {
+        setCredMsg(r.stubLabel ?? t('settings.signInFail'));
+        return;
+      }
+      await saveLocalUserProfile({ email, displayName });
+      await refresh();
+      setCredMsg(r.stubLabel ?? t('settings.signInOk', { email }));
+      setPw('');
+    } catch (e) {
+      setCredMsg(e instanceof Error ? e.message : t('settings.signInFail'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onSignUp = async () => {
+    if (!isValidEmail(email)) {
+      setCredMsg(t('settings.invalidEmail'));
+      return;
+    }
+    const v = validatePassword(pw);
+    setPwOk(v.ok);
+    setPwMsg(v.ok ? t('settings.pwOk') : t('settings.pwBad'));
+    if (!v.ok) {
+      setCredMsg(t('settings.pwBlock'));
+      return;
+    }
+    setBusy(true);
+    setCredMsg(null);
+    try {
+      const r = await signUpEmail(email, pw, displayName.trim() || undefined);
+      if (r.ok === false) {
+        setCredMsg(r.stubLabel ?? t('settings.signUpFail'));
+        return;
+      }
+      await saveLocalUserProfile({ email, displayName });
+      await refresh();
+      setCredMsg(r.stubLabel ?? t('settings.signUpOk'));
+      setPw('');
+    } catch (e) {
+      setCredMsg(e instanceof Error ? e.message : t('settings.signUpFail'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const supportEmail = getSupportEmail();
+
   return (
     <>
       <Stack.Screen options={{ title: t('settings.title') }} />
@@ -76,12 +197,66 @@ export default function ParametresHub() {
           <Text style={styles.hint}>{t('languageHint')}</Text>
         </Card>
 
-        <Card title={t('settings.account')}>
+        <Card title={t('settings.credentials')}>
           <Text style={styles.meta}>
             {profile?.email
               ? t('settings.connected', { email: profile.email })
               : t('settings.notConnected')}
           </Text>
+          <TextInput
+            value={email}
+            onChangeText={setEmail}
+            placeholder={t('settings.emailPh')}
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            autoCorrect={false}
+            accessibilityLabel={t('settings.emailPh')}
+          />
+          <TextInput
+            value={pw}
+            onChangeText={(txt) => {
+              setPw(txt);
+              if (!txt) {
+                setPwMsg(null);
+                return;
+              }
+              const v = validatePassword(txt);
+              setPwOk(v.ok);
+              setPwMsg(v.ok ? t('settings.pwOk') : t('settings.pwBad'));
+            }}
+            placeholder={t('settings.passwordPh')}
+            placeholderTextColor={colors.muted}
+            secureTextEntry
+            style={styles.input}
+            accessibilityLabel={t('settings.passwordPh')}
+          />
+          {pwMsg ? (
+            <Text style={[styles.msg, pwOk ? styles.ok : styles.bad]}>{pwMsg}</Text>
+          ) : (
+            <Text style={styles.hint}>{t('settings.pwRule')}</Text>
+          )}
+          <View style={styles.row}>
+            <Pressable
+              style={[styles.btn, styles.flex, busy && styles.disabled]}
+              disabled={busy}
+              onPress={() => void onSignUp()}
+            >
+              <Text style={styles.btnTxt}>{t('settings.signUp')}</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.btnDark, styles.flex, busy && styles.disabled]}
+              disabled={busy}
+              onPress={() => void onSignIn()}
+            >
+              <Text style={styles.btnTxt}>{t('settings.signIn')}</Text>
+            </Pressable>
+          </View>
+          <Pressable style={styles.linkGhost} onPress={() => void onSmartAutofill()}>
+            <Text style={styles.linkGhostTxt}>{t('settings.smartAutofill')}</Text>
+          </Pressable>
+          {credMsg ? <Text style={styles.msg}>{credMsg}</Text> : null}
           <Link href="/modules/compte" asChild>
             <Pressable
               style={styles.linkRow}
@@ -90,6 +265,55 @@ export default function ParametresHub() {
             >
               <Text style={styles.id}>M15</Text>
               <Text style={styles.linkTxt}>{t('settings.openCompte')}</Text>
+            </Pressable>
+          </Link>
+        </Card>
+
+        <Card title={t('settings.personal')}>
+          <Text style={styles.hint}>{t('settings.personalHint')}</Text>
+          <TextInput
+            value={displayName}
+            onChangeText={setDisplayName}
+            placeholder={t('settings.namePh')}
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+            autoCapitalize="words"
+            accessibilityLabel={t('settings.namePh')}
+          />
+          <TextInput
+            value={phone}
+            onChangeText={setPhone}
+            placeholder={t('settings.phonePh')}
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+            keyboardType="phone-pad"
+            accessibilityLabel={t('settings.phonePh')}
+          />
+          <TextInput
+            value={city}
+            onChangeText={setCity}
+            placeholder={t('settings.cityPh')}
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+            accessibilityLabel={t('settings.cityPh')}
+          />
+          <Pressable style={styles.btnDark} onPress={() => void persistPersonal()}>
+            <Text style={styles.btnTxt}>{t('settings.savePersonal')}</Text>
+          </Pressable>
+          {personalMsg ? <Text style={styles.msg}>{personalMsg}</Text> : null}
+        </Card>
+
+        <Card title={t('settings.account')}>
+          <Link href="/modules/support" asChild>
+            <Pressable
+              style={styles.linkRow}
+              accessibilityRole="button"
+              accessibilityLabel={t('settings.openSupportA11y')}
+            >
+              <Text style={styles.id}>SUP</Text>
+              <Text style={styles.linkTxt}>
+                {t('settings.openSupport')} · {supportEmail}
+              </Text>
             </Pressable>
           </Link>
           <Link href="/modules/bases" asChild>
@@ -189,6 +413,32 @@ function ToggleRow({
 const styles = StyleSheet.create({
   meta: { color: colors.muted, fontSize: 12 },
   hint: { color: colors.muted, fontSize: 11, marginTop: 4 },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: colors.mist,
+    color: colors.ink,
+    marginTop: 8,
+  },
+  row: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  flex: { flex: 1 },
+  btn: { backgroundColor: colors.signal, borderRadius: 10, padding: 12, alignItems: 'center' },
+  btnDark: {
+    backgroundColor: colors.asphalt,
+    borderRadius: 10,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  disabled: { opacity: 0.6 },
+  btnTxt: { color: colors.white, fontWeight: '800' },
+  msg: { fontWeight: '700', fontSize: 12, marginTop: 6 },
+  ok: { color: colors.garage },
+  bad: { color: colors.danger },
+  linkGhost: { marginTop: 8, paddingVertical: 4 },
+  linkGhostTxt: { color: colors.signal, fontWeight: '700', fontSize: 12 },
   linkRow: {
     flexDirection: 'row',
     alignItems: 'center',
