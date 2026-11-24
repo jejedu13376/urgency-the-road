@@ -76,9 +76,15 @@ export function useSafetyDrivingMonitor() {
   const sinceBreakRef = useRef(sinceBreakSec);
   const speakingRef = useRef(false);
 
-  breakStateRef.current = breakState;
-  breaksTakenRef.current = breaksTaken;
-  sinceBreakRef.current = sinceBreakSec;
+  useEffect(() => {
+    breakStateRef.current = breakState;
+  }, [breakState]);
+  useEffect(() => {
+    breaksTakenRef.current = breaksTaken;
+  }, [breaksTaken]);
+  useEffect(() => {
+    sinceBreakRef.current = sinceBreakSec;
+  }, [sinceBreakSec]);
 
   const hosRegion = useMemo(
     () =>

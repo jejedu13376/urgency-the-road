@@ -410,7 +410,7 @@ export function GpsFullMap() {
       padBottom: Math.max(insets.bottom, 8) + SOS_FAB_CLEARANCE,
       padLeft: Math.max(insets.left, 8),
     }),
-    [insets.top, insets.right, insets.bottom, insets.left],
+    [insets],
   );
 
   const injectJs = useCallback((script: string) => {
