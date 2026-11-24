@@ -38,7 +38,7 @@ export const es: FrDict = {
   },
 
   stub: 'STUB — servicio no conectado',
-  stubVin: 'VIN — NHTSA vPIC en vivo; fluidos locales; recalls NHTSA; sin API OEM de fluidos',
+  stubVin: 'VIN — NHTSA vPIC en vivo; fluidos locales por marca; recalls NHTSA; OEM opcional',
   stubObd: 'STUB OBD — sin enlace Bluetooth/USB real (maletín / Dev Client)',
   stubAi: 'Multi-IA — heurística cruzada; proxy/claves opcionales',
   stubPay: 'Pago — Stripe / PayPal / Apple Pay / Google Pay (sin Lydia)',

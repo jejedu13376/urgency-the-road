@@ -98,7 +98,9 @@ export default function PiecesScreen() {
       >
         <BackendStatusBanner />
         {label ? <StubBanner text={label} /> : null}
-        <StubBanner text={`${OEM_CATALOGUE_BLOCKED} · ${OCR_ML_BLOCKED}`} />
+        <StubBanner
+          text={`Catalogue local WMI/VIN LIVE · OCR-lite collage. Options externes : OEM mondial / OCR ML (${OEM_CATALOGUE_BLOCKED.slice(0, 42)}…)`}
+        />
 
         <Card title="Parcours vendeur (pièce → achat → réparation → devis)">
           <Text style={styles.hint}>

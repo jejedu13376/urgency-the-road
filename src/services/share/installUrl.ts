@@ -2,35 +2,35 @@
  * Module 16 — resolve install / share URL with honest fallback (no fake store URL).
  */
 import Constants from 'expo-constants';
+import * as ExpoLinking from 'expo-linking';
 import { Linking, Platform, Share } from 'react-native';
+import {
+  UNSET_INSTALL_PLACEHOLDER,
+  pickInstallUrl,
+  type InstallUrlInfo,
+} from './installUrlCore';
 
-export type InstallUrlInfo = {
-  url: string;
-  configured: boolean;
-  source: 'env' | 'linking' | 'unset';
-};
-
-const UNSET_PLACEHOLDER = '(lien d’installation non configuré — définissez EXPO_PUBLIC_INSTALL_URL)';
+export type { InstallUrlInfo } from './installUrlCore';
 
 export function resolveInstallUrl(): InstallUrlInfo {
-  const fromEnv = (process.env.EXPO_PUBLIC_INSTALL_URL ?? '').trim();
-  if (fromEnv) return { url: fromEnv, configured: true, source: 'env' };
-
   const extraUrl = (Constants.expoConfig?.extra as { installUrl?: string } | undefined)?.installUrl;
   const linkingUri = (Constants as { linkingUri?: string }).linkingUri;
-  const link =
-    (typeof extraUrl === 'string' && extraUrl.trim()) ||
-    (typeof linkingUri === 'string' && linkingUri.startsWith('http') ? linkingUri : null);
-  if (link) {
-    return { url: link, configured: true, source: 'linking' };
+  let expoUrl: string | null = null;
+  try {
+    const created = ExpoLinking.createURL('/');
+    if (typeof created === 'string' && created.trim()) expoUrl = created;
+  } catch {
+    expoUrl = null;
   }
-
-  return {
-    url: UNSET_PLACEHOLDER,
-    configured: false,
-    source: 'unset',
-  };
+  return pickInstallUrl({
+    envUrl: process.env.EXPO_PUBLIC_INSTALL_URL,
+    extraUrl,
+    linkingUri,
+    expoUrl,
+  });
 }
+
+export { UNSET_INSTALL_PLACEHOLDER };
 
 export async function openInstallUrl(url: string): Promise<{ ok: boolean; message: string }> {
   if (!url.startsWith('http')) {

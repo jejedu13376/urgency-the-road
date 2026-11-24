@@ -352,7 +352,7 @@ export function mockDecodeVin(vin: string): VehicleProfile | null {
   const check = vinCheckDigitOk(clean);
   const year = 2000 + (parseInt(clean.slice(-2), 36) % 25);
   const powertrain = hint.powertrainHint ?? 'essence';
-  const vehicleClass = hint.vehicleClassHint ?? 'voiture';  const fluidsEst = estimateLocalFluids({ vehicleClass, powertrain });
+  const vehicleClass = hint.vehicleClassHint ?? 'voiture';  const fluidsEst = estimateLocalFluids({ vehicleClass, powertrain, make: hint.make });
   return {
     id: `decoded-${Date.now()}`,
     label: `${hint.make} (WMI mock) ${year}`,
@@ -369,7 +369,7 @@ export function mockDecodeVin(vin: string): VehicleProfile | null {
     techNotes: [
       'NHTSA indisponible — estimation par préfixe VIN',
       fluidsEst.label,
-      'API fluides OEM constructeur : non branchée',
+      'API fluides OEM constructeur : option externe (MVP = estimation locale)',
       check === false ? 'Chiffre de contrôle VIN invalide (ISO 3779)' : 'Préfixe WMI reconnu',
     ],
     commonFailures: buildLocalCommonFailures({

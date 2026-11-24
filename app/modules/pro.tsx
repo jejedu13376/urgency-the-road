@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Stack } from 'expo-router';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
@@ -16,6 +16,8 @@ import {
 } from '../../src/services/firebase';
 import {
   adminKeys,
+  exportProAtelierSnapshot,
+  formatProAtelierExport,
   loadJson,
   loadProKpi,
   saveJson,
@@ -247,7 +249,7 @@ export default function ProScreen() {
             </View>
           </View>
           <Text style={styles.meta}>
-            Avis locaux : {dashboard.ratingsCount} · KPI persistés AsyncStorage (pas de serveur atelier).
+            Avis locaux : {dashboard.ratingsCount} · KPI persistés AsyncStorage (MVP atelier local).
           </Text>
           <View style={styles.viewRow}>
             {(['jour', 'semaine'] as const).map((v) => (
@@ -257,8 +259,27 @@ export default function ProScreen() {
             ))}
           </View>
           <Text style={styles.meta}>
-            Créneaux · affectation mécanicien · durée estimée — structure locale (push/SMS à brancher).
+            Créneaux · affectation mécanicien · durée estimée — structure locale (push/SMS optionnel).
           </Text>
+          <Pressable
+            style={styles.btnDark}
+            onPress={() => {
+              void exportProAtelierSnapshot().then(async (snap) => {
+                const body = formatProAtelierExport(snap);
+                try {
+                  await Share.share({
+                    message: body,
+                    title: 'Export atelier Urgence Mécanique',
+                  });
+                  setMsg('Snapshot atelier exporté (JSON local)');
+                } catch (e) {
+                  setMsg(e instanceof Error ? e.message : 'Échec export atelier');
+                }
+              });
+            }}
+          >
+            <Text style={styles.btnTxt}>Exporter snapshot atelier (JSON)</Text>
+          </Pressable>
         </Card>
 
         <Card title="Créer un rendez-vous">

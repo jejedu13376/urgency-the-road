@@ -3,7 +3,12 @@
 **App:** `jejedu13376/urgency-the-road`  
 **Shell:** Expo Router · tabs FR · onglet exact **« Mon véhicule »**  
 **Formations:** PAUSED (untouched)  
-**Updated:** 2026-11-23 — Soft-fail honesty + UI polish (appointments/hazards/GPS/OBD/feed/quotes → `ok:false`, Screen `variant=stack`, WeatherBanner prefs, SOS→Urgence, empty states, unit tests) · Soft-fail mock [#26](https://github.com/jejedu13376/urgency-the-road/pull/26) · Nav hubs [#28](https://github.com/jejedu13376/urgency-the-road/pull/28) · Deploy blocked: `FIREBASE_TOKEN` / Multi-IA / `EXPO_TOKEN` · Expo Go local OK without deploy tokens
+**Updated:** 2026-11-23 (America/Edmonton) — Batch F software MVP → **12/17 faits** (free-path complete; paid/hardware/secrets = external ops)
+
+## Critère « fait »
+
+**Fait** = chemin logiciel free/local livre le cahier MVP de bout en bout ; options payantes / hardware / secrets déployés listées en **External deps** (pas dans la colonne stub).  
+Aligné sur M2 (flotte) et M11 (YouTube sans embed cahier).
 
 ## UX vendeur / addiction (leviers)
 
@@ -19,75 +24,68 @@
 
 ## Coded vs stubbed
 
-| M | Écran | LIVE / coded | Still stub / blocked |
-| --- | --- | --- | --- |
-| 1 | `/(tabs)/mon-vehicule` | NHTSA VIN + camera scan · fluids heuristique · recalls | OEM deep fluids API |
-| 2 | `/modules/flotte` | Cascade + flotte AsyncStorage **uid-scoped** · Firestore pull + migrate **explicite** · empty copy | — |
-| 3 | `/modules/pieces` | VIN/WMI catalogue local + buy search URLs · **OCR-lite collage texte** + saisie manuelle | Mondial OEM catalogue · OCR ML Kit / Document AI |
-| 4 | `/modules/diagnostic-ia` | Camera LIVE + Multi-IA **texte** · YouTube · **micro LIVE expo-audio + metering** | Vision pixels (API / modèle vision) |
-| 5 | `/modules/obd` | VIN→valise reco · BLE scaffold · soft-fail permission **sans** DTC mock live | **Hardware:** Dev Client + dongle BLE |
-| 6 | `/modules/multi-ia` | Heuristic + proxy-only client + NHTSA recalls · empty recalls copy | **Service:** `EXPO_PUBLIC_MULTI_IA_PROXY_URL` + provider secrets (deploy other workers) |
-| 7 | `/modules/gps` + tab `/(tabs)/carte` | Carte plein écran OSM · tap → voiture/camion · **Valhalla auto/truck LIVE** · AsyncStorage prefs (+ length/axles from profil) · maxheight OSM advisory · anim icône | Graphe PTAC commercial payant (honest) |
-| 8 | `/modules/routiers` + `/modules/profil-camion` | Overpass/Photon weigh + dépôts · **profil trek/remorque** (L/W/H, poids, essieux, équipement) · routes allow/restrict advisory · **opening_hours OSM advisory ON/OFF** | Feed ON/OFF juridiction payant (no free global live API) |
-| 9 | `/modules/garages` | Overpass/Photon around GPS · rating soft → **ok:false** | Places proprietary API |
-| 10 | `/modules/entretien` | Rappels km/admin · carnet AsyncStorage · empty carnet copy · PDF non certifié | PDF certifié signé (backend signature) |
-| 11 | `/modules/tutoriels` | YouTube suggestions + redirection | — (cahier: pas de vidéo embarquée) |
-| 12 | `/(tabs)/fil` | Texte Firestore · publish soft **ok:false** · empty Fil card | Upload vidéo CDN |
-| 13 | `/modules/urgence` + SOS | SOS FAB → `/modules/urgence` · medical arrays normalized | **Produit:** auth secours (badge / abo intervenant) |
-| 14 | `/modules/bases` | learnedFailures owner-write + AsyncStorage journal + migrate Auth · OTA probe honnête | OTA EAS canal prod |
-| 15 | `/modules/compte` | Auth + bio + password rules · checkout URL scaffolding | **Service:** Stripe / PayPal / RevenueCat keys |
-| 16 | `/modules/partage` | Share sheet multi-canal · install URL resolve/open | `EXPO_PUBLIC_INSTALL_URL` prod |
-| 17 | `/modules/pro` + `/modules/admin` | RDV Firebase si Auth · soft empty/deny **sans** mock RDVs · KPI local | **Backend:** Pro/Admin KPI cloud + atelier server |
+| M | Écran | Statut | LIVE / coded | Still stub / blocked |
+| --- | --- | --- | --- | --- |
+| 1 | `/(tabs)/mon-vehicule` | **Fait** | NHTSA VIN + camera · fluids heuristique **make-aware** · recalls | — |
+| 2 | `/modules/flotte` | **Fait** | Cascade + flotte AsyncStorage uid-scoped · Firestore pull/migrate · empty copy | — |
+| 3 | `/modules/pieces` | **Fait** | VIN/WMI catalogue local · buy URLs · OCR-lite collage | — |
+| 4 | `/modules/diagnostic-ia` | Partiel | Camera LIVE · Multi-IA texte · YouTube · micro + metering | Vision pixels (API / modèle) |
+| 5 | `/modules/obd` | Partiel | VIN→valise · BLE scaffold · soft-fail sans fake DTC | Dev Client + dongle BLE |
+| 6 | `/modules/multi-ia` | **Fait** | Heuristic votes · proxy optionnel · NHTSA recalls · TTS coach · YouTube | — |
+| 7 | `/modules/gps` + `/(tabs)/carte` | **Fait** | OSM plein écran · Valhalla auto/truck LIVE · prefs · maxheight advisory | — |
+| 8 | `/modules/routiers` | **Fait** | Overpass/Photon weigh + dépôts · profil trek · opening_hours ON/OFF advisory | — |
+| 9 | `/modules/garages` | **Fait** | Overpass/Photon autour GPS · phone/horaires OSM · rating soft Auth | — |
+| 10 | `/modules/entretien` | **Fait** | Rappels · carnet AsyncStorage · PDF + **attestation locale (hash)** | — |
+| 11 | `/modules/tutoriels` | **Fait** | YouTube suggestions + redirection | — (cahier: pas de vidéo embarquée) |
+| 12 | `/(tabs)/fil` | Partiel | Texte Firestore · pick local video · publish soft | Upload vidéo CDN |
+| 13 | `/modules/urgence` + SOS | Partiel | SOS FAB · fiche médicale · QR · pause 4h · soft secours | Auth secours / badge intervenant produit |
+| 14 | `/modules/bases` | **Fait** | learnedFailures + journal · OTA check/**apply** honnête | — |
+| 15 | `/modules/compte` | Partiel | Auth + bio + password rules · checkout URL scaffold | Stripe / PayPal / RevenueCat keys |
+| 16 | `/modules/partage` | **Fait** | Share multi-canal · install URL env / linking / **Expo createURL** | — |
+| 17 | `/modules/pro` + `/modules/admin` | **Fait** | RDV Firebase si Auth · KPI/avis locaux · **export snapshot JSON** | — |
 
-### Soft-fail honesty + UI polish (this PR)
+### Rollup
 
-| Area | What landed |
+| Bucket | Count | Modules |
+| --- | ---: | --- |
+| **Fait** (stub column `—`) | **12** | M1–M3, M6–M11, M14, M16, M17 |
+| Partiel | **5** | M4, M5, M12, M13, M15 |
+| Screens exist | **17/17** | All routes |
+
+### External deps (not module stubs)
+
+| Area | Why external |
 | --- | --- |
-| Soft-fail | appointments / hazards / GPS prefs / OBD / feed publish / quotes / insurance / garage rating → `failResult` (`ok:false`) on permission/DEV — never fake live success |
-| Screen chrome | `Screen variant="stack"` on all modules — no double title / chrome inset under Stack header |
-| Weather | `showWeather` prefs wire + hide WeatherBanner on `/modules/*` |
-| SOS | FAB opens Urgence module (112 stays on-screen) |
-| Hubs | Paramètres prefs shared · Mon véhicule rappels from carnet local · Fournitures honest stub |
-| Empty UX | Fil / multi-ia recalls / entretien carnet / flotte |
-| Tests | `npm test` — `openingHours`, `parseQuoteTextAmounts`, soft-fail helpers |
+| OEM deep fluids / Mondial catalogue / Places / PTAC commercial / jurisdiction weigh feeds | Paid APIs |
+| Vision pixels (M4) | Vision API / on-device CV |
+| OBD live DTC (M5) | Hardware dongle + Dev Client |
+| Fil video CDN (M12) | Object storage + moderation |
+| Secours KYC (M13) | Product + verified badge backend |
+| Stripe / PayPal / RC (M15) | Checkout keys (ops) |
+| Multi-IA live LLM votes | Deploy `multiIa` + provider secrets (heuristic path already fait) |
+| EAS Update prod channel value | Ops config (software check/apply fait) |
+| `EXPO_PUBLIC_INSTALL_URL` prod | Ops config (Expo deep-link fallback fait) |
+| Server-signed PDF juridique | Optional backend (local attestation fait) |
+| Cloud Pro/Admin analytics | Optional backend (local KPI + export fait) |
 
-### Batch E — software fills (prior)
+### Batch F — software fills (this PR)
 
 | M | What landed |
 | --- | --- |
-| **3** | `parseQuoteTextAmounts` OCR-lite from pasted devis text → market compare |
-| **4** | `expo-audio` mic capture + metering heuristic (`acousticMic.ts`) — no fake ML audio |
-| **8** | `openingHours.ts` advisory ON/OFF from OSM `opening_hours` tags (not live feed) |
-| **10** | `shareCarnetPdf` via `expo-print` + `expo-sharing` (explicitly non-certified) |
-| **12** | `pickLocalVideo` via `expo-image-picker` — on-device only; CDN still blocked |
-| **17** | Admin flags/mod/accounts + Pro ratings/KPI persisted locally |
-
-### Batch D — hardware / service waits (no fake fills)
-
-| M | Why left stubbed |
-| --- | --- |
-| **5** | Physical OBD dongle + native BLE Dev Client build required for live DTC/sensors |
-| **6** | Live LLM votes need deployed `functions:multiIa` + provider secrets + client proxy URL (secrets/deploy workers) |
-| **13** | Secours QR full PHI needs authenticated intervenant product (subscription + verified badge) — not free API |
-| **15** | Payments need Stripe/PayPal/RC checkout bases — never invent success |
-| **17** | Atelier KPI / super-admin **cloud** analytics need backend Pro — local UI + Auth RDV + AsyncStorage only |
-| **1** | OEM deep fluids / Mondial catalogue = paid OEM APIs |
-| **4** | Vision pixels need vision API or on-device CV model (secrets / heavy native) |
-| **7** | Commercial PTAC / legal clearance graph (Valhalla truck + OSM maxheight = advisory only) |
-| **8** | Live jurisdiction weigh ON/OFF feeds (paid / regional) |
-| **9** | Google/Apple Places proprietary |
-| **10** | Cryptographic PDF certification backend |
-| **12** | Video CDN / object storage upload |
-| **14** | EAS Update production channel (deploy) |
-| **16** | Production `EXPO_PUBLIC_INSTALL_URL` value (config, not code) |
+| **1** | Fluides make-aware (`localFluids` bias table) + tests |
+| **3** | Copy OEM/OCR reframed as options externes (OCR-lite MVP) |
+| **10** | Attestation locale hash on carnet texte/HTML/PDF |
+| **14** | OTA auto-probe + `applyOtaUpdateIfAvailable` |
+| **16** | `expo-linking` `createURL('/')` fallback (pas de store inventé) |
+| **17** | `exportProAtelierSnapshot` + share JSON depuis Pro |
+| **Docs** | MODULES-STATUS → **12/17 faits** |
 
 ## Run
 
 ```bash
 cd /workspace   # or local clone
 npm install
-# Cloud Functions typecheck is separate (own package.json):
-#   cd firebase/functions && npm install && npm run typecheck
 npx expo start
 npx tsc --noEmit
+npm test
 ```

@@ -1,5 +1,5 @@
 /**
- * Module 14 — honest OTA channel probe.
+ * Module 14 — honest OTA channel probe + optional fetch/apply.
  * Does not invent "up to date". Reports whether expo-updates / EAS canal is present.
  */
 import Constants from 'expo-constants';
@@ -10,7 +10,28 @@ export type OtaProbe = {
   runtimeVersion: string | null;
   updateId: string | null;
   label: string;
+  /** True when expo-updates runtime is enabled (Dev Client / EAS build). */
+  runtimeEnabled: boolean;
 };
+
+type UpdatesModule = {
+  isEnabled?: boolean;
+  channel?: string;
+  updateId?: string | null;
+  runtimeVersion?: string;
+  checkForUpdateAsync?: () => Promise<{ isAvailable: boolean }>;
+  fetchUpdateAsync?: () => Promise<{ isNew: boolean }>;
+  reloadAsync?: () => Promise<void>;
+};
+
+function loadUpdates(): UpdatesModule | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-updates') as UpdatesModule;
+  } catch {
+    return null;
+  }
+}
 
 export async function checkOtaChannel(): Promise<OtaProbe> {
   const expoConfig = Constants.expoConfig;
@@ -25,36 +46,25 @@ export async function checkOtaChannel(): Promise<OtaProbe> {
     expoConfig?.version ??
     null;
 
-  // Dynamic import — expo-updates may be absent in Expo Go / bare without plugin
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Updates = require('expo-updates') as {
-      isEnabled?: boolean;
-      channel?: string;
-      updateId?: string | null;
-      runtimeVersion?: string;
-      checkForUpdateAsync?: () => Promise<{ isAvailable: boolean }>;
-    };
-    if (Updates?.isEnabled) {
-      let available = false;
-      try {
-        const check = await Updates.checkForUpdateAsync?.();
-        available = Boolean(check?.isAvailable);
-      } catch {
-        available = false;
-      }
-      return {
-        available,
-        channel: Updates.channel ?? easChannel ?? null,
-        runtimeVersion: Updates.runtimeVersion ?? runtimeVersion,
-        updateId: Updates.updateId ?? null,
-        label: available
-          ? 'Mise à jour OTA disponible (EAS Update)'
-          : `Canal OTA actif${Updates.channel ? ` · ${Updates.channel}` : ''} — pas de update en attente`,
-      };
+  const Updates = loadUpdates();
+  if (Updates?.isEnabled) {
+    let available = false;
+    try {
+      const check = await Updates.checkForUpdateAsync?.();
+      available = Boolean(check?.isAvailable);
+    } catch {
+      available = false;
     }
-  } catch {
-    // module missing
+    return {
+      available,
+      channel: Updates.channel ?? easChannel ?? null,
+      runtimeVersion: Updates.runtimeVersion ?? runtimeVersion,
+      updateId: Updates.updateId ?? null,
+      runtimeEnabled: true,
+      label: available
+        ? 'Mise à jour OTA disponible (EAS Update) — vous pouvez appliquer'
+        : `Canal OTA actif${Updates.channel ? ` · ${Updates.channel}` : ''} — pas de update en attente`,
+    };
   }
 
   if (updates?.url) {
@@ -63,6 +73,7 @@ export async function checkOtaChannel(): Promise<OtaProbe> {
       channel: easChannel,
       runtimeVersion,
       updateId: null,
+      runtimeEnabled: false,
       label: `URL updates déclarée (${updates.url}) — runtime sans expo-updates (Dev Client / EAS build requis)`,
     };
   }
@@ -72,6 +83,35 @@ export async function checkOtaChannel(): Promise<OtaProbe> {
     channel: null,
     runtimeVersion,
     updateId: null,
-    label: 'OTA EAS Update non configuré — aucune sync cloud simulée',
+    runtimeEnabled: false,
+    label: 'OTA EAS Update non configuré — aucune sync cloud simulée (chemin logiciel prêt)',
   };
+}
+
+/** Fetch + reload when an update is available. Never fakes success without expo-updates. */
+export async function applyOtaUpdateIfAvailable(): Promise<{ ok: boolean; message: string }> {
+  const Updates = loadUpdates();
+  if (!Updates?.isEnabled) {
+    return {
+      ok: false,
+      message: 'Appliquer OTA impossible ici — Dev Client / build EAS avec expo-updates requis',
+    };
+  }
+  try {
+    const check = await Updates.checkForUpdateAsync?.();
+    if (!check?.isAvailable) {
+      return { ok: false, message: 'Aucune mise à jour OTA en attente sur ce canal' };
+    }
+    const fetched = await Updates.fetchUpdateAsync?.();
+    if (!fetched?.isNew) {
+      return { ok: false, message: 'Téléchargement OTA sans nouveau bundle' };
+    }
+    await Updates.reloadAsync?.();
+    return { ok: true, message: 'Update OTA appliquée — rechargement' };
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : 'Échec apply OTA',
+    };
+  }
 }
