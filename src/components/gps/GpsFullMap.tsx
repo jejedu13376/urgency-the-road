@@ -1522,78 +1522,92 @@ export function GpsFullMap() {
         ) : null}
       </View>
 
-      {/* Hide while search hits open — results FlatList must win all taps. */}
+      {/* Left-side tool rail — hide while search hits open so FlatList wins taps. */}
       {!(searchOpen && searchHits.length > 0) ? (
         <View
           style={[
-            styles.reportRow,
+            styles.sideRail,
             {
               top: chromePads.padTop + 108,
-              left: chromePads.padLeft + 4,
+              left: chromePads.padLeft + 8,
               zIndex: 15,
               elevation: 15,
             },
           ]}
           pointerEvents="box-none"
         >
-          <Pressable style={styles.reportBtn} onPress={dropPoliceReport}>
-            <Text style={styles.reportTxt}>Police</Text>
-          </Pressable>
-          {canPublishPolice ? (
-            <Pressable style={styles.publishBtn} onPress={publishPoliceCloud}>
-              <Text style={styles.reportTxt}>Publier</Text>
+          <View style={styles.sideRailCard}>
+            <Pressable
+              style={styles.sideFabPolice}
+              onPress={dropPoliceReport}
+              accessibilityLabel="Signaler police"
+            >
+              <Text style={styles.sideFabTxt}>Police</Text>
             </Pressable>
-          ) : null}
+            {canPublishPolice ? (
+              <Pressable
+                style={styles.sideFabPublish}
+                onPress={publishPoliceCloud}
+                accessibilityLabel="Publier signalement"
+              >
+                <Text style={styles.sideFabTxt}>Publier</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              style={styles.sideFab}
+              onPress={() => {
+                const origin = lastWatchRef.current ?? liveOriginRef.current;
+                if (!origin || !gpsOk) {
+                  setHudNote('Enregistrer le lieu — GPS appareil requis');
+                  return;
+                }
+                void savePlace({
+                  lat: origin.lat,
+                  lon: origin.lon,
+                  label: `Position ${origin.lat.toFixed(4)}, ${origin.lon.toFixed(4)}`,
+                }).then((r) => {
+                  setHudNote(r.ok ? `Lieu GPS enregistré · ${r.place.label}` : r.error);
+                });
+              }}
+              accessibilityLabel="Enregistrer le lieu"
+            >
+              <Text style={styles.sideFabTxtDark}>Sauver</Text>
+            </Pressable>
+            <Pressable
+              style={styles.sideFab}
+              onPress={() => {
+                void loadTripHistory().then((rows) => {
+                  setTripHistory(rows);
+                  setHistoryOpen(true);
+                });
+              }}
+              accessibilityLabel="Voir l'historique"
+            >
+              <Text style={styles.sideFabTxtDark}>Histo</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.sideFab, voiceMuted && styles.sideFabMuted]}
+              onPress={() => {
+                const next = !voiceMuted;
+                setVoiceMuted(next);
+                void setNavSpeechMuted(next);
+                if (next) stopNavSpeech();
+                setHudNote(next ? 'Voix coupée' : 'Voix guidage activée');
+              }}
+              accessibilityLabel={voiceMuted ? 'Activer la voix' : 'Couper la voix'}
+            >
+              <Text style={voiceMuted ? styles.sideFabTxt : styles.sideFabTxtDark}>
+                {voiceMuted ? 'Mute' : 'Voix'}
+              </Text>
+            </Pressable>
+          </View>
           {lastRoute?.ok ? (
-            <Text style={styles.etaTxt} numberOfLines={1}>
-              ~{lastRoute.durationMin} min · {lastRoute.distanceKm} km
-            </Text>
+            <View style={styles.etaChip}>
+              <Text style={styles.etaTxt} numberOfLines={1}>
+                ~{lastRoute.durationMin} min · {lastRoute.distanceKm} km
+              </Text>
+            </View>
           ) : null}
-          <Pressable
-            style={styles.toolBtn}
-            onPress={() => {
-              const origin = lastWatchRef.current ?? liveOriginRef.current;
-              if (!origin || !gpsOk) {
-                setHudNote('Enregistrer le lieu — GPS appareil requis');
-                return;
-              }
-              void savePlace({
-                lat: origin.lat,
-                lon: origin.lon,
-                label: `Position ${origin.lat.toFixed(4)}, ${origin.lon.toFixed(4)}`,
-              }).then((r) => {
-                setHudNote(r.ok ? `Lieu GPS enregistré · ${r.place.label}` : r.error);
-              });
-            }}
-            accessibilityLabel="Enregistrer le lieu"
-          >
-            <Text style={styles.reportTxt}>Sauver</Text>
-          </Pressable>
-          <Pressable
-            style={styles.toolBtn}
-            onPress={() => {
-              void loadTripHistory().then((rows) => {
-                setTripHistory(rows);
-                setHistoryOpen(true);
-              });
-            }}
-            accessibilityLabel="Voir l'historique"
-          >
-            <Text style={styles.reportTxt}>Histo</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.toolBtn, voiceMuted && styles.toolBtnMuted]}
-            onPress={() => {
-              const next = !voiceMuted;
-              setVoiceMuted(next);
-              void setNavSpeechMuted(next);
-              if (next) stopNavSpeech();
-              setHudNote(next ? 'Voix coupée' : 'Voix guidage activée');
-            }}
-            accessibilityLabel={voiceMuted ? 'Activer la voix' : 'Couper la voix'}
-          >
-            <Text style={styles.reportTxt}>{voiceMuted ? 'Mute' : 'Voix'}</Text>
-          </Pressable>
         </View>
       ) : null}
 
@@ -1603,9 +1617,9 @@ export function GpsFullMap() {
           style={[
             styles.note,
             {
-              top: chromePads.padTop + 152,
-              left: chromePads.padLeft + 4,
-              right: chromePads.padRight + 4,
+              top: chromePads.padTop + 108,
+              left: chromePads.padLeft + 100,
+              right: chromePads.padRight + 56,
             },
           ]}
         >
@@ -1620,9 +1634,9 @@ export function GpsFullMap() {
           style={[
             styles.voiceCtaWrap,
             {
-              top: chromePads.padTop + (hudNote ? 220 : 152),
-              left: chromePads.padLeft + 4,
-              right: chromePads.padRight + 4,
+              top: chromePads.padTop + (hudNote ? 168 : 108),
+              left: chromePads.padLeft + 100,
+              right: chromePads.padRight + 56,
             },
           ]}
         >
@@ -1814,27 +1828,42 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.96)',
-    borderRadius: 11,
+    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: Platform.OS === 'ios' ? 10 : 8,
     fontSize: 13,
     fontWeight: '600',
     color: colors.ink,
+    shadowColor: '#101820',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 3,
   },
   searchBtn: {
     backgroundColor: colors.signal,
-    borderRadius: 11,
+    borderRadius: 14,
     paddingHorizontal: 14,
     justifyContent: 'center',
     alignItems: 'center',
     minWidth: 48,
+    shadowColor: '#101820',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.16,
+    shadowRadius: 6,
+    elevation: 3,
   },
   searchBtnTxt: { color: colors.white, fontWeight: '800', fontSize: 12 },
   hits: {
     marginTop: 4,
     maxHeight: 220,
     backgroundColor: 'rgba(255,255,255,0.97)',
-    borderRadius: 11,
+    borderRadius: 14,
+    shadowColor: '#101820',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 3,
   },
   hitRow: {
     paddingHorizontal: 12,
@@ -1847,7 +1876,7 @@ const styles = StyleSheet.create({
   note: {
     position: 'absolute',
     backgroundColor: 'rgba(27,36,48,0.9)',
-    borderRadius: 9,
+    borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
@@ -1862,55 +1891,90 @@ const styles = StyleSheet.create({
   voiceCta: {
     flex: 1,
     backgroundColor: colors.signal,
-    borderRadius: 11,
+    borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 14,
+    shadowColor: '#C45C26',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    elevation: 4,
   },
   voiceCtaTxt: { color: colors.white, fontWeight: '800', fontSize: 13 },
   voiceCtaDismiss: {
     backgroundColor: 'rgba(16,24,32,0.88)',
-    borderRadius: 11,
+    borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 12,
   },
   voiceCtaDismissTxt: { color: colors.white, fontWeight: '800', fontSize: 13 },
-  reportRow: {
+  sideRail: {
     position: 'absolute',
-    flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
   },
-  reportBtn: {
+  sideRailCard: {
+    width: 80,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 16,
+    padding: 4,
+    gap: 2,
+    shadowColor: '#101820',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    elevation: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.7)',
+  },
+  sideFab: {
+    minWidth: 72,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  sideFabPolice: {
+    minWidth: 72,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'rgba(59,91,219,0.95)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 11,
   },
-  publishBtn: {
+  sideFabPublish: {
+    minWidth: 72,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'rgba(31,107,74,0.95)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 11,
   },
-  reportTxt: { color: colors.white, fontWeight: '800', fontSize: 12 },
+  sideFabMuted: {
+    backgroundColor: 'rgba(166,27,27,0.92)',
+  },
+  sideFabTxt: { color: colors.white, fontWeight: '800', fontSize: 12 },
+  sideFabTxtDark: { color: colors.ink, fontWeight: '700', fontSize: 12 },
+  etaChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(27,36,48,0.9)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    maxWidth: 180,
+    shadowColor: '#101820',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 3,
+  },
   etaTxt: {
     color: colors.white,
     fontSize: 11,
     fontWeight: '700',
-    backgroundColor: 'rgba(27,36,48,0.85)',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 9,
-    overflow: 'hidden',
-    maxWidth: 180,
-  },
-  toolBtn: {
-    backgroundColor: 'rgba(44,58,71,0.95)',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 11,
-  },
-  toolBtnMuted: {
-    backgroundColor: 'rgba(166,27,27,0.92)',
   },
 });

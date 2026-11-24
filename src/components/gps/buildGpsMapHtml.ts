@@ -1,6 +1,6 @@
 /**
  * Self-contained Leaflet map HTML for WebView.
- * Map-type menu (+): Default roads · Satellite · Terrain · Transit · Traffic · 3D · AQI.
+ * Right-side icon rail: Roads · Satellite · Terrain · Traffic · Transit · 3D · AQI · Street View.
  * Extends Esri/#47 basemap work (Esri imagery + Carto/OSM roads) with Terrain + overlays.
  * Vehicle DivIcon = LIVE GPS — not a canned polyline demo.
  */
@@ -140,8 +140,9 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   }
   .chip-row{display:flex;gap:6px;pointer-events:auto}
   .chip{
-    flex:1;border:0;border-radius:11px;padding:9px 10px;font:650 12px/1.15 system-ui,sans-serif;
-    background:rgba(255,255,255,.94);color:var(--ink);box-shadow:0 1px 8px rgba(0,0,0,.16);
+    flex:1;border:0;border-radius:14px;padding:10px 12px;font:650 12px/1.15 system-ui,sans-serif;
+    background:rgba(255,255,255,.96);color:var(--ink);
+    box-shadow:0 2px 10px rgba(16,24,32,.14),0 1px 2px rgba(16,24,32,.06);
     transition:background .2s ease,color .2s ease,transform .15s ease;
   }
   .chip.on{background:var(--signal);color:#fff}
@@ -162,43 +163,60 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   }
   .bottom > *{pointer-events:auto}
   .go{
-    border:0;border-radius:13px;padding:12px 16px;font:750 13px system-ui,sans-serif;
-    background:var(--signal);color:#fff;box-shadow:0 3px 12px rgba(196,92,38,.38);
-    transition:opacity .2s ease,transform .15s ease;
+    border:0;border-radius:16px;padding:13px 18px;font:750 13px system-ui,sans-serif;
+    background:var(--signal);color:#fff;box-shadow:0 4px 14px rgba(196,92,38,.32);
+    transition:opacity .2s ease,transform .15s ease,box-shadow .2s ease;
     letter-spacing:.01em;
   }
-  .go:disabled{opacity:.4}
+  .go:disabled{opacity:.4;box-shadow:none}
+  .go:active:not(:disabled){transform:scale(.97)}
   .ghost{
-    border:0;border-radius:13px;padding:12px 11px;font:650 11px system-ui,sans-serif;
-    background:rgba(255,255,255,.94);color:var(--ink);
+    border:0;border-radius:16px;padding:13px 14px;font:650 12px system-ui,sans-serif;
+    background:rgba(255,255,255,.96);color:var(--ink);
+    box-shadow:0 2px 10px rgba(16,24,32,.14);
   }
-  /* Google Maps-style small + map-type control (extends Esri Sat/Routes). */
-  .maptype-wrap{
+  .ghost:active{transform:scale(.97)}
+  /* Right-side map control rail — icon FABs, rounded cards, light shadows. */
+  .map-rail{
     position:absolute;z-index:1100;
     right:calc(10px + var(--pad-right));
-    bottom:calc(14px + var(--pad-bottom));
-    display:flex;flex-direction:column;align-items:flex-end;gap:6px;
+    top:50%;
+    transform:translateY(-42%);
+    display:flex;flex-direction:column;align-items:flex-end;gap:10px;
     pointer-events:none;
   }
-  .maptype-wrap > *{pointer-events:auto}
-  .maptype-plus{
-    width:44px;height:44px;border:0;border-radius:13px;
-    font:800 22px/1 system-ui,sans-serif;background:rgba(255,255,255,.96);color:var(--ink);
-    box-shadow:0 2px 10px rgba(0,0,0,.22);
+  .map-rail-card{
+    pointer-events:auto;
+    display:flex;flex-direction:column;gap:2px;
+    padding:4px;
+    background:rgba(255,255,255,.96);
+    border-radius:16px;
+    box-shadow:0 2px 12px rgba(16,24,32,.16),0 1px 3px rgba(16,24,32,.08);
+    border:1px solid rgba(255,255,255,.7);
   }
-  .maptype-menu{
-    display:none;flex-direction:column;gap:2px;min-width:168px;
-    background:rgba(255,255,255,.97);border-radius:12px;padding:6px;
-    box-shadow:0 4px 18px rgba(0,0,0,.28);
+  .map-fab{
+    width:42px;height:42px;border:0;border-radius:12px;
+    display:flex;align-items:center;justify-content:center;
+    background:transparent;color:var(--slate);
+    transition:background .18s ease,color .18s ease,transform .12s ease;
+    -webkit-appearance:none;appearance:none;
   }
-  .maptype-menu.open{display:flex}
-  .maptype-menu button{
-    border:0;background:transparent;text-align:left;padding:9px 10px;border-radius:8px;
-    font:650 12px/1.2 system-ui,sans-serif;color:var(--ink);
+  .map-fab svg{width:20px;height:20px;display:block;pointer-events:none}
+  .map-fab:active{transform:scale(.94)}
+  .map-fab.on{
+    background:rgba(196,92,38,.14);color:var(--signal);
   }
-  .maptype-menu button.on{background:rgba(196,92,38,.14);color:var(--signal);font-weight:800}
-  .maptype-menu button:disabled{opacity:.45}
-  .maptype-menu .sep{height:1px;background:rgba(0,0,0,.08);margin:4px 2px}
+  .map-fab.on[data-tog]{
+    background:rgba(31,107,74,.12);color:var(--garage);
+  }
+  .map-fab:disabled{opacity:.38}
+  .map-fab.locked{color:var(--muted)}
+  .map-fab[data-act="streetview"]{color:var(--ink)}
+  .map-rail-hint{
+    pointer-events:none;
+    font:600 9px/1 system-ui,sans-serif;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--muted);text-align:center;padding:2px 0 4px;
+  }
   .vehicle-wrap{
     width:42px;height:42px;display:flex;align-items:center;justify-content:center;
     transition:transform .18s linear;will-change:transform;
@@ -260,20 +278,37 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   <button type="button" class="go" id="btnGo" disabled>itinéraire</button>
   <button type="button" class="ghost" id="btnRecenter">GPS</button>
 </div>
-<div class="maptype-wrap">
-  <div class="maptype-menu" id="mapTypeMenu" role="menu">
-    <button type="button" data-base="roads" class="on">Default · routes</button>
-    <button type="button" data-base="satellite">Satellite</button>
-    <button type="button" data-base="terrain">Terrain</button>
-    <div class="sep"></div>
-    <button type="button" data-tog="transit">Transport en commun</button>
-    <button type="button" data-tog="traffic" id="btnTraffic">Trafic temps réel</button>
-    <button type="button" data-tog="buildings3d">Bâtiments 3D</button>
-    <button type="button" data-tog="aqi">Qualité de l’air</button>
-    <div class="sep"></div>
-    <button type="button" data-act="streetview">Street View (pin)</button>
+<div class="map-rail" id="mapTypeMenu" role="toolbar" aria-label="Contrôles carte">
+  <div class="map-rail-card" aria-label="Fonds de carte">
+    <button type="button" class="map-fab on" data-base="roads" title="Routes" aria-label="Routes" aria-pressed="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4l-3 16"/><path d="M15 4l3 16"/><path d="M4 9h16"/><path d="M3 15h18"/></svg>
+    </button>
+    <button type="button" class="map-fab" data-base="satellite" title="Satellite" aria-label="Satellite" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M3 12h18"/><path d="M12 4a14 14 0 0 1 0 16"/><path d="M12 4a14 14 0 0 0 0 16"/></svg>
+    </button>
+    <button type="button" class="map-fab" data-base="terrain" title="Terrain" aria-label="Terrain" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18l6-9 4 5 3-4 5 8H3z"/><path d="M14 10l2-3 3 3"/></svg>
+    </button>
   </div>
-  <button type="button" class="maptype-plus" id="btnMapType" aria-label="Types de carte" aria-expanded="false">+</button>
+  <div class="map-rail-card" aria-label="Couches">
+    <button type="button" class="map-fab" data-tog="traffic" id="btnTraffic" title="Trafic temps réel" aria-label="Trafic temps réel" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 19V9a4 4 0 0 1 8 0v10"/><path d="M8 13h8"/><circle cx="9.5" cy="17" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="17" r="1.2" fill="currentColor" stroke="none"/><path d="M10 6h4"/></svg>
+    </button>
+    <button type="button" class="map-fab" data-tog="transit" title="Transport en commun" aria-label="Transport en commun" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="12" height="14" rx="3"/><path d="M6 10h12"/><path d="M9 18v2"/><path d="M15 18v2"/><circle cx="9" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1" fill="currentColor" stroke="none"/></svg>
+    </button>
+    <button type="button" class="map-fab" data-tog="buildings3d" title="Bâtiments 3D" aria-label="Bâtiments 3D" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V9l8-4 8 4v11"/><path d="M9 20v-6h6v6"/><path d="M4 12h16"/></svg>
+    </button>
+    <button type="button" class="map-fab" data-tog="aqi" title="Qualité de l’air" aria-label="Qualité de l’air" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14c2-1 3-1 5 0s3 1 5 0 3-1 5 0"/><path d="M4 10c2-1 3-1 5 0s3 1 5 0 3-1 5 0"/><path d="M4 18c2-1 3-1 5 0s3 1 5 0 3-1 5 0"/></svg>
+    </button>
+  </div>
+  <div class="map-rail-card">
+    <button type="button" class="map-fab" data-act="streetview" title="Street View (pin)" aria-label="Street View">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="3"/><path d="M6 20c1.5-4 4-6 6-6s4.5 2 6 6"/><path d="M12 10v3"/></svg>
+    </button>
+  </div>
 </div>
 <script>
 (function(){
@@ -466,8 +501,9 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     if (!btn) return;
     if (!trafficLayer) {
       btn.disabled = true;
-      btn.title = 'Clé requise: EXPO_PUBLIC_TOMTOM_API_KEY (préf.) ou EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN';
-      btn.textContent = 'Trafic (clé requise)';
+      btn.classList.add('locked');
+      btn.title = 'Trafic — clé requise (TomTom ou Mapbox)';
+      btn.setAttribute('aria-label', 'Trafic indisponible — clé requise');
     }
   })();
 
@@ -501,16 +537,20 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     var buttons = menu.querySelectorAll('button[data-base]');
     for (var i = 0; i < buttons.length; i++) {
       var b = buttons[i];
-      b.classList.toggle('on', b.getAttribute('data-base') === baseKind);
+      var active = b.getAttribute('data-base') === baseKind;
+      b.classList.toggle('on', active);
+      b.setAttribute('aria-pressed', active ? 'true' : 'false');
     }
-    var togTransit = menu.querySelector('button[data-tog="transit"]');
-    var togTraffic = menu.querySelector('button[data-tog="traffic"]');
-    var tog3d = menu.querySelector('button[data-tog="buildings3d"]');
-    var togAqi = menu.querySelector('button[data-tog="aqi"]');
-    if (togTransit) togTransit.classList.toggle('on', transitOn);
-    if (togTraffic) togTraffic.classList.toggle('on', trafficOn);
-    if (tog3d) tog3d.classList.toggle('on', buildingsOn);
-    if (togAqi) togAqi.classList.toggle('on', aqiOn);
+    function syncTog(sel, on){
+      var el = menu.querySelector(sel);
+      if (!el) return;
+      el.classList.toggle('on', !!on);
+      el.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    syncTog('button[data-tog="transit"]', transitOn);
+    syncTog('button[data-tog="traffic"]', trafficOn);
+    syncTog('button[data-tog="buildings3d"]', buildingsOn);
+    syncTog('button[data-tog="aqi"]', aqiOn);
   }
 
   function maptypePayload(){
@@ -1147,16 +1187,14 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   };
 
   var menu = document.getElementById('mapTypeMenu');
-  var btnMapType = document.getElementById('btnMapType');
-  btnMapType.onclick = function(ev){
-    if (ev && ev.stopPropagation) ev.stopPropagation();
-    var open = menu.classList.toggle('open');
-    btnMapType.setAttribute('aria-expanded', open ? 'true' : 'false');
-  };
   menu.onclick = function(ev){
     if (ev && ev.stopPropagation) ev.stopPropagation();
     var t = ev.target;
-    if (!t || t.tagName !== 'BUTTON') return;
+    if (t && t.closest) t = t.closest('button');
+    else {
+      while (t && t.tagName !== 'BUTTON' && t !== menu) t = t.parentNode;
+    }
+    if (!t || t.tagName !== 'BUTTON' || t.disabled) return;
     var base = t.getAttribute('data-base');
     var tog = t.getAttribute('data-tog');
     var act = t.getAttribute('data-act');
@@ -1168,8 +1206,6 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     else if (act === 'streetview') {
       var focus = dest || origin;
       post({ type: 'streetview', lat: focus.lat, lon: focus.lon });
-      menu.classList.remove('open');
-      btnMapType.setAttribute('aria-expanded', 'false');
     }
   };
 
