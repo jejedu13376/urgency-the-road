@@ -595,6 +595,43 @@ export function GpsFullMap() {
     [injectJs],
   );
 
+  const notifyReportResult = useCallback(
+    (payload: { ok: boolean; label?: string; error?: string }) => {
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, { cmd: 'reportResult', ...payload });
+        return;
+      }
+      injectJs(
+        `window.__gpsReportResult && window.__gpsReportResult(${JSON.stringify(payload)})`,
+      );
+    },
+    [injectJs],
+  );
+
+  /** Paint crowd report pins even when Overpass refresh is gated on device GPS. */
+  const paintCrowdReports = useCallback(async () => {
+    if (!bootHtml) return;
+    const [localReports, cloudHazards] = await Promise.all([
+      loadCrowdReports(),
+      listRoadHazards(),
+    ]);
+    const reports = mergeCloudHazards(localReports, cloudHazards.data ?? []);
+    reportsRef.current = reports;
+    const prev = lastLayersRef.current ?? { bridges: [], weigh: [], reports: [] };
+    injectLayers({
+      bridges: prev.bridges ?? [],
+      weigh: prev.weigh ?? [],
+      reports: reports.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        lat: r.lat,
+        lon: r.lon,
+        note: r.note ? r.note.replace(/[<>&"'`]/g, '').slice(0, 80) : undefined,
+        source: r.source,
+      })),
+    });
+  }, [bootHtml, injectLayers]);
+
   const refreshLayers = useCallback(async () => {
     // Overpass around a real device fix only — never France overview centroid.
     const origin = lastWatchRef.current ?? (gpsOk ? liveOriginRef.current : null);
@@ -1194,6 +1231,7 @@ export function GpsFullMap() {
           });
           if (!local.ok) {
             setHudNote(local.error);
+            notifyReportResult({ ok: false, error: local.error });
             return;
           }
           if (msg.kind === 'police') {
@@ -1201,7 +1239,10 @@ export function GpsFullMap() {
             setCanPublishPolice(true);
           }
           setHudNote(`${label} posé sur la carte (~45 min)`);
-          void refreshLayers();
+          // Always paint the new pin (refreshLayers no-ops without device GPS).
+          await paintCrowdReports();
+          if (gpsOk) void refreshLayers();
+          notifyReportResult({ ok: true, label });
         })();
         return;
       }
@@ -1218,6 +1259,8 @@ export function GpsFullMap() {
       applyItineraryPlan,
       setMapOrigin,
       refreshLayers,
+      paintCrowdReports,
+      notifyReportResult,
       injectLayers,
       runTruckerBrief,
       destSelection?.label,

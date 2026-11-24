@@ -1290,6 +1290,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     else if (msg.cmd === 'highlightWeigh') window.__gpsHighlightWeigh(msg.id);
     else if (msg.cmd === 'setAqi') window.__gpsSetAqi(msg.payload);
     else if (msg.cmd === 'setMapType') window.__gpsSetMapType(msg);
+    else if (msg.cmd === 'reportResult') window.__gpsReportResult && window.__gpsReportResult(msg);
   });
 
   /* Mouse: single click opens right report bubble (draft pin).
@@ -1330,6 +1331,47 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     openReportBubble(ll);
   }
 
+  var reportBusy = false;
+
+  function setReportBubbleBusy(busy){
+    reportBusy = !!busy;
+    var bubble = document.getElementById('reportBubble');
+    if (!bubble) return;
+    var buttons = bubble.querySelectorAll('button');
+    for (var i = 0; i < buttons.length; i++) {
+      var b = buttons[i];
+      if (b.id === 'reportCancel') {
+        b.disabled = !!busy;
+        continue;
+      }
+      b.disabled = !!busy;
+    }
+  }
+
+  window.__gpsReportResult = function(msg){
+    msg = msg || {};
+    setReportBubbleBusy(false);
+    if (msg.ok) {
+      closeReportBubble();
+      setStatus(msg.label
+        ? ('Signalement · ' + msg.label + ' · posé')
+        : 'Signalement posé sur la carte');
+      return;
+    }
+    /* Keep draft pin + bubble so the user can retry without re-tapping. */
+    if (draftLL) {
+      var bubble = document.getElementById('reportBubble');
+      if (bubble) {
+        bubble.classList.add('on');
+        bubble.removeAttribute('hidden');
+        bubble.setAttribute('aria-hidden', 'false');
+      }
+    }
+    setStatus(msg.error
+      ? String(msg.error).slice(0, 120)
+      : 'Signalement refusé — réessayez');
+  };
+
   var reportBubbleEl = document.getElementById('reportBubble');
   if (reportBubbleEl) {
     reportBubbleEl.addEventListener('click', function(ev){
@@ -1339,8 +1381,9 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       else {
         while (t && t.tagName !== 'BUTTON' && t !== reportBubbleEl) t = t.parentNode;
       }
-      if (!t || t.tagName !== 'BUTTON') return;
+      if (!t || t.tagName !== 'BUTTON' || t.disabled) return;
       if (t.id === 'reportCancel') {
+        if (reportBusy) return;
         closeReportBubble();
         setStatus(mode === 'camion'
           ? 'Mode camion — touchez / cherchez une destination'
@@ -1362,9 +1405,11 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
         obstacle: 1,
       };
       if (!allowed[kind]) return;
+      if (reportBusy) return;
       var lat = draftLL.lat;
       var lon = draftLL.lon;
-      closeReportBubble();
+      /* Keep draft until RN ack — rate-limit must not strand status on « envoi… ». */
+      setReportBubbleBusy(true);
       setStatus('Signalement · ' + kind + ' · envoi…');
       post({ type: 'report', kind: kind, lat: lat, lon: lon });
     });
@@ -1495,7 +1540,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     else if (tog === 'buildings3d') setBuildings3d(!buildingsOn);
     else if (tog === 'aqi') setAqiOverlay(!aqiOn);
     else if (act === 'streetview') {
-      var focus = dest || origin;
+      var focus = draftLL || dest || origin;
       post({ type: 'streetview', lat: focus.lat, lon: focus.lon });
     }
   };
