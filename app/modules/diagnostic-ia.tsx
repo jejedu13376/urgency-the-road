@@ -27,6 +27,7 @@ import {
 } from '../../src/services/diagnostic/cameraTextDiag';
 import { stubAcoustic } from '../../src/services/stubs';
 import { searchYoutubeVideos, type YoutubeVideoHit } from '../../src/services/youtube/youtubeSearch';
+import { SpeakButton } from '../../src/components/speech/SpeakButton';
 import { colors } from '../../src/theme/colors';
 import { useI18n } from '../../src/context/I18nContext';
 
@@ -523,6 +524,18 @@ export default function DiagnosticIaScreen() {
                   {photoOutcome.partPrice + photoOutcome.laborPrice} {photoOutcome.currency}
                 </Text>
               </View>
+              <SpeakButton
+                text={t('tts.diagPriceLine', {
+                  problem: photoOutcome.problem,
+                  partName: photoOutcome.partName,
+                  partPrice: photoOutcome.partPrice,
+                  laborPrice: photoOutcome.laborPrice,
+                  total: photoOutcome.partPrice + photoOutcome.laborPrice,
+                  currency: photoOutcome.currency,
+                })}
+                labelKey="tts.speakDiag"
+                testID="diag-speak-result"
+              />
               <View style={styles.linkCol}>
                 <Link href="/modules/pieces" asChild>
                   <Pressable style={styles.linkCta}>
@@ -572,6 +585,11 @@ export default function DiagnosticIaScreen() {
           ) : (
             <>
               <Text style={styles.result}>{qResult}</Text>
+              <SpeakButton
+                text={qResult}
+                labelKey="tts.speakResult"
+                testID="diag-speak-questions"
+              />
               <Pressable style={styles.linkSoft} onPress={resetQuestions}>
                 <Text style={styles.linkSoftTxt}>Recommencer le questionnaire</Text>
               </Pressable>
@@ -620,6 +638,13 @@ export default function DiagnosticIaScreen() {
           </Pressable>
           {acousticLabel ? <Text style={styles.meta}>{acousticLabel}</Text> : null}
           {acousticGuess ? <Text style={styles.result}>{acousticGuess}</Text> : null}
+          {acousticGuess ? (
+            <SpeakButton
+              text={acousticGuess}
+              labelKey="tts.speakResult"
+              testID="diag-speak-acoustic"
+            />
+          ) : null}
           {acousticPhase === 'done' && acousticFocus ? (
             <Link href="/modules/pieces" asChild>
               <Pressable style={styles.linkCta}>
@@ -676,6 +701,13 @@ export default function DiagnosticIaScreen() {
             </Text>
           </Pressable>
           {freeResult ? <Text style={styles.result}>{freeResult}</Text> : null}
+          {freeResult ? (
+            <SpeakButton
+              text={freeResult}
+              labelKey="tts.speakDiag"
+              testID="diag-speak-free"
+            />
+          ) : null}
         </Card>
 
         <Card title="Suggestions YouTube">

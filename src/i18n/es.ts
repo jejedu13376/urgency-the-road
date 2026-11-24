@@ -563,6 +563,40 @@ export const es: FrDict = {
     arrivedHud: 'Llegada animada — pulse Maps / Waze para guía en vivo',
   },
 
+  tts: {
+    speak: 'Escuchar',
+    speaking: 'Leyendo…',
+    stop: 'Parar voz',
+    mute: 'Mute',
+    unmute: 'Voz',
+    muteA11y: 'Silenciar la voz',
+    unmuteA11y: 'Activar la voz',
+    mutedHud: 'Voz silenciada',
+    unmutedHud: 'Voz de guía activada',
+    mutedHint: 'Voz silenciada — actívela con Mute en el mapa GPS',
+    speakDiag: 'Escuchar el diagnóstico',
+    speakPrice: 'Escuchar los precios',
+    speakResult: 'Escuchar el resultado',
+    speakAlert: 'Escuchar la alerta',
+    meters: '%{m} metros',
+    kilometers: '%{km} kilómetros',
+    upcomingTurn: 'En %{distance}: %{instruction}',
+    arrival: 'Llegada al destino',
+    arrivalEta: 'tiempo estimado %{minutes} minutos',
+    weighDefault: 'báscula',
+    weighNamed: 'báscula %{name}',
+    weighAlert: 'Atención, %{label} a %{distance}',
+    weighNear: 'Atención, %{label} cerca',
+    navStartedCar:
+      'Navegación iniciada. %{distance} kilómetros, unos %{minutes} minutos.',
+    navStartedTruck:
+      'Navegación camión iniciada. %{distance} kilómetros, unos %{minutes} minutos.',
+    partPriceLine:
+      '%{name}. Nuevo %{priceNew}, OEM %{priceOem}, adaptable %{priceAftermarket} %{currency}. Mano de obra %{labor} %{currency}.',
+    diagPriceLine:
+      '%{problem}. Pieza %{partName}. Pieza %{partPrice} más mano de obra %{laborPrice}, total %{total} %{currency}.',
+  },
+
   voiceLogbook: {
     stub: 'LIVE expo-audio · AsyncStorage local · compartir OS / Fil (audio on-device, sin CDN)',
     tripContext: 'Contexto del viaje',

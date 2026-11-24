@@ -59,11 +59,12 @@ import {
   estimateProgressKm,
   upcomingTurnAt,
 } from '../../services/gps/routeManeuvers';
+import { useI18n } from '../../context/I18nContext';
 import {
   loadNavSpeechMuted,
   setNavSpeechMuted,
   speakArrival,
-  speakNav,
+  speakNavStarted,
   speakUpcomingTurn,
   stopNavSpeech,
 } from '../../services/gps/navSpeech';
@@ -290,6 +291,7 @@ export function GpsFullMap() {
   /** Carte tab is full-bleed under the status inset; modules/gps sits under a white Stack header.
    * Pathname flips immediately on tab change (component stays mounted) — no focus lag flag. */
   const onCarteTab = pathname === '/carte' || Boolean(pathname?.endsWith('/carte'));
+  const { t } = useI18n();
   const { active } = useFleet();
   const { profile } = useAuth();
   const webRef = useRef<WebViewHandle | null>(null);
@@ -952,13 +954,15 @@ export function GpsFullMap() {
                 if (announcedWeighIdsRef.current.has(s.id)) continue;
                 announcedWeighIdsRef.current.add(s.id);
                 const rounded = d <= 2.2 ? 2 : 3;
+                const weighLabel = t('tts.weighDefault');
+                const distSpoken = t('tts.kilometers', { km: rounded });
                 enqueueAlerts([
                   {
                     id: `weigh-nav-${s.id}`,
                     kind: 'weigh',
                     title: `Balance à ${rounded} km`,
                     detail: `${s.name} · OSM weigh_station / weighbridge (CA/US/EU) — overlay immédiat`,
-                    voice: `Attention, balance à ${rounded} kilomètres.`,
+                    voice: t('tts.weighAlert', { label: weighLabel, distance: distSpoken }),
                     severity: 'warn',
                     lat: s.lat,
                     lon: s.lon,
@@ -1009,14 +1013,15 @@ export function GpsFullMap() {
       applyModeInMap,
       bootHtml,
       navWatchBoost,
+      t,
     ]),
   );
 
   useEffect(() => {
     if (!bootHtml || !gpsOk || !mapReady) return;
     void refreshLayers();
-    const t = setInterval(() => void refreshLayers(), 90_000);
-    return () => clearInterval(t);
+    const layerTimer = setInterval(() => void refreshLayers(), 90_000);
+    return () => clearInterval(layerTimer);
   }, [bootHtml, gpsOk, mapReady, modeLabel, refreshLayers]);
 
   useEffect(() => {
@@ -1239,11 +1244,11 @@ export function GpsFullMap() {
               void loadTripHistory().then(setTripHistory);
             }
           });
-          speakNav(
-            msg.mode === 'camion'
-              ? `Navigation camion démarrée. ${route.distanceKm} kilomètres, environ ${route.durationMin} minutes.`
-              : `Navigation démarrée. ${route.distanceKm} kilomètres, environ ${route.durationMin} minutes.`,
-          );
+          speakNavStarted({
+            mode: msg.mode === 'camion' ? 'camion' : 'voiture',
+            distanceKm: route.distanceKm,
+            durationMin: route.durationMin,
+          });
         }
         return;
       }
@@ -1977,12 +1982,15 @@ export function GpsFullMap() {
                 setVoiceMuted(next);
                 void setNavSpeechMuted(next);
                 if (next) stopNavSpeech();
-                setHudNote(next ? 'Voix coupée' : 'Voix guidage activée');
+                setHudNote(next ? t('tts.mutedHud') : t('tts.unmutedHud'));
               }}
-              accessibilityLabel={voiceMuted ? 'Activer la voix' : 'Couper la voix'}
+              accessibilityRole="button"
+              accessibilityLabel={voiceMuted ? t('tts.unmuteA11y') : t('tts.muteA11y')}
+              accessibilityState={{ checked: voiceMuted }}
+              testID="gps-voice-mute"
             >
               <Text style={voiceMuted ? styles.sideFabTxt : styles.sideFabTxtDark}>
-                {voiceMuted ? 'Mute' : 'Voix'}
+                {voiceMuted ? t('tts.mute') : t('tts.unmute')}
               </Text>
             </Pressable>
           </View>

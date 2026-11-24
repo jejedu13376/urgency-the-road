@@ -6,6 +6,7 @@ import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { CatalogProductCard } from '../../src/components/CatalogProductCard';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
+import { SpeakButton } from '../../src/components/speech/SpeakButton';
 import { useFleet } from '../../src/context/FleetContext';
 import { useI18n } from '../../src/context/I18nContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
@@ -168,6 +169,19 @@ export default function PiecesScreen() {
                 <Text style={styles.buyTxt}>{b.label}</Text>
               </PressScale>
             ))}
+            <SpeakButton
+              text={t('tts.partPriceLine', {
+                name: selected.name,
+                priceNew: selected.priceNew,
+                priceOem: selected.priceOem,
+                priceAftermarket: selected.priceAftermarket,
+                currency: selected.currency,
+                labor: Math.round(selected.laborHours * selected.laborRate),
+              })}
+              labelKey="tts.speakPrice"
+              style={{ marginTop: 10 }}
+              testID="parts-speak-selected"
+            />
           </FadeInBlock>
         ) : null}
       </Screen>
