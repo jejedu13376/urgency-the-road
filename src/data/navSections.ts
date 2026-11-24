@@ -82,6 +82,12 @@ export const NAV_SECTIONS: NavSection[] = [
         moduleTag: 'M15',
       },
       {
+        id: 'set-support',
+        title: 'Support',
+        short: 'Email support entreprise',
+        href: '/modules/support',
+      },
+      {
         id: 'set-bases',
         title: 'Bases auto-évolutives',
         short: 'OTA · apprentissage pannes',
