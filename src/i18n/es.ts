@@ -147,6 +147,8 @@ export const es: FrDict = {
     sellerStrip: '🔥 %{days} d · %{xp} XP · %{pct}% · %{badges} insignia',
     sellerStripPlural: '🔥 %{days} d · %{xp} XP · %{pct}% · %{badges} insignias',
     navSectionsTitle: 'Acceso rápido',
+    modulesTitle: 'Módulos',
+    modulesSubtitle: 'Rejilla clara — tarjetas opacas',
   },
 
   nav: {
@@ -274,6 +276,11 @@ export const es: FrDict = {
     recallsTitle: 'Recalls del fabricante (NHTSA)',
     switchTitle: 'Cambiar rápido (flota)',
     docsTitle: 'Documentos y recordatorios',
+    obdTitle: 'Diagnóstico OBD (puerto del vehículo)',
+    obdHint:
+      'Conecte la maleta al puerto OBD del vehículo, luego lea los códigos de fallo (DTC) y el estado del motor.',
+    obdCta: 'Iniciar diagnóstico OBD',
+    obdCtaA11y: 'Iniciar diagnóstico OBD por el puerto del vehículo',
   },
 
   diagnostic: {

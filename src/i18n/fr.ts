@@ -144,6 +144,8 @@ export const fr = {
     sellerStrip: '🔥 %{days} j · %{xp} XP · %{pct}% · %{badges} badge',
     sellerStripPlural: '🔥 %{days} j · %{xp} XP · %{pct}% · %{badges} badges',
     navSectionsTitle: 'Accès rapide',
+    modulesTitle: 'Modules',
+    modulesSubtitle: 'Grille claire — cartes opaques',
   },
 
   nav: {
@@ -270,6 +272,11 @@ export const fr = {
     recallsTitle: 'Rappels constructeur (NHTSA recalls)',
     switchTitle: 'Basculer rapidement (flotte)',
     docsTitle: 'Documents & rappels',
+    obdTitle: 'Diagnostic OBD (prise véhicule)',
+    obdHint:
+      'Branchez la valise sur la prise OBD du véhicule, puis lisez les codes défauts (DTC) et l’état moteur.',
+    obdCta: 'Démarrer le diagnostic OBD',
+    obdCtaA11y: 'Démarrer le diagnostic OBD via la prise du véhicule',
   },
 
   diagnostic: {

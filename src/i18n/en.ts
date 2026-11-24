@@ -147,6 +147,8 @@ export const en: FrDict = {
     sellerStrip: '🔥 %{days} d · %{xp} XP · %{pct}% · %{badges} badge',
     sellerStripPlural: '🔥 %{days} d · %{xp} XP · %{pct}% · %{badges} badges',
     navSectionsTitle: 'Quick access',
+    modulesTitle: 'Modules',
+    modulesSubtitle: 'Clear grid — opaque cards',
   },
 
   nav: {
@@ -274,6 +276,11 @@ export const en: FrDict = {
     recallsTitle: 'Manufacturer recalls (NHTSA)',
     switchTitle: 'Quick switch (fleet)',
     docsTitle: 'Documents & reminders',
+    obdTitle: 'OBD diagnostic (vehicle port)',
+    obdHint:
+      'Plug the scan tool into the vehicle OBD port, then read fault codes (DTCs) and engine status.',
+    obdCta: 'Start OBD diagnostic',
+    obdCtaA11y: 'Start OBD diagnostic via the vehicle port',
   },
 
   diagnostic: {
