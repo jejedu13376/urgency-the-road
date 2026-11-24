@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { CatalogProductCard } from '../../src/components/CatalogProductCard';
 import { Screen } from '../../src/components/Screen';
@@ -16,6 +16,7 @@ import {
 } from '../../src/services/carnet/exportCarnet';
 import type { MaintenanceItem } from '../../src/types/modules';
 import { colors } from '../../src/theme/colors';
+import { FadeInBlock, PressScale } from '../../src/theme/motion';
 
 type CarnetEntry = {
   id: string;
@@ -227,7 +228,7 @@ export default function EntretienScreen() {
       >
         <StubBanner text="Carnet persisté + texte/HTML-lite + PDF LIVE avec attestation locale (hash) · signature serveur = option externe" />
 
-        <View style={styles.vehicleWrap}>
+        <FadeInBlock style={styles.vehicleWrap}>
           <CatalogProductCard
             title={vehicleTitle}
             priceLine={vehicleKeyInfo}
@@ -236,7 +237,7 @@ export default function EntretienScreen() {
             fullWidth
             accessibilityLabel={`Fiche véhicule ${vehicleTitle}`}
           />
-        </View>
+        </FadeInBlock>
 
         <View style={styles.searchWrap}>
           <TextInput
@@ -259,7 +260,7 @@ export default function EntretienScreen() {
               : 'Aucun entretien.'}
           </Text>
         ) : (
-          <View style={styles.grid}>
+          <FadeInBlock delayMs={50} style={styles.grid}>
             {filteredMaint.map((m) => {
               const overdue = maintOverdue(m, km, todayIso);
               // Always show status so tap-to-cycle has readable feedback; dépassé is additive.
@@ -278,7 +279,7 @@ export default function EntretienScreen() {
                 />
               );
             })}
-          </View>
+          </FadeInBlock>
         )}
 
         <Text style={styles.section}>Carnet</Text>
@@ -290,9 +291,9 @@ export default function EntretienScreen() {
           style={styles.input}
           accessibilityLabel="Ajouter une intervention"
         />
-        <Pressable style={styles.btnDark} onPress={addCarnet} accessibilityRole="button">
+        <PressScale style={styles.btnDark} onPress={addCarnet} accessibilityRole="button">
           <Text style={styles.btnTxt}>Ajouter</Text>
-        </Pressable>
+        </PressScale>
 
         {filteredCarnet.length === 0 ? (
           <Text style={styles.empty}>
@@ -325,24 +326,24 @@ export default function EntretienScreen() {
           {items.filter((i) => i.status === 'fait').length} entretiens « fait »). PDF réel via
           expo-print + hash local — signature serveur = option externe.
         </Text>
-        <Pressable
+        <PressScale
           style={styles.btnDark}
           onPress={() => void shareCarnetText(exportPayload()).then((r) => setPdfMsg(r.message))}
         >
           <Text style={styles.btnTxt}>Partager (texte)</Text>
-        </Pressable>
-        <Pressable
+        </PressScale>
+        <PressScale
           style={styles.btnSignal}
           onPress={() => void shareCarnetHtmlLite(exportPayload()).then((r) => setPdfMsg(r.message))}
         >
           <Text style={styles.btnTxt}>Partager HTML</Text>
-        </Pressable>
-        <Pressable
+        </PressScale>
+        <PressScale
           style={styles.btnGarage}
           onPress={() => void shareCarnetPdf(exportPayload()).then((r) => setPdfMsg(r.message))}
         >
           <Text style={styles.btnTxt}>PDF</Text>
-        </Pressable>
+        </PressScale>
         {pdfMsg ? <Text style={styles.pdfMsg}>{pdfMsg}</Text> : null}
       </Screen>
     </>
@@ -357,9 +358,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 2,
     borderColor: colors.ink,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 14,
   },
   search: {
     fontSize: 18,
@@ -369,10 +370,11 @@ const styles = StyleSheet.create({
     minHeight: 28,
   },
   section: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '900',
     color: colors.ink,
-    marginTop: 4,
+    marginTop: 6,
+    letterSpacing: 0.15,
   },
   empty: {
     color: colors.ink,
@@ -389,7 +391,7 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 2,
     borderColor: colors.ink,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 14,
     backgroundColor: colors.white,
     color: colors.ink,
@@ -398,21 +400,27 @@ const styles = StyleSheet.create({
   },
   btnDark: {
     backgroundColor: colors.asphalt,
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 14,
+    paddingVertical: 16,
     alignItems: 'center',
+    minHeight: 52,
+    justifyContent: 'center',
   },
   btnSignal: {
     backgroundColor: colors.signal,
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 14,
+    paddingVertical: 16,
     alignItems: 'center',
+    minHeight: 52,
+    justifyContent: 'center',
   },
   btnGarage: {
     backgroundColor: colors.garage,
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 14,
+    paddingVertical: 16,
     alignItems: 'center',
+    minHeight: 52,
+    justifyContent: 'center',
   },
   btnTxt: {
     color: colors.white,

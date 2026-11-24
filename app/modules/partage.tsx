@@ -4,6 +4,8 @@ import { Stack } from 'expo-router';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
+import { BRAND_NAME } from '../../src/brand';
+import { useI18n } from '../../src/context/I18nContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import {
   openInstallUrl,
@@ -11,7 +13,7 @@ import {
   shareInstallLink,
 } from '../../src/services/share/installUrl';
 import { colors } from '../../src/theme/colors';
-import { useI18n } from '../../src/context/I18nContext';
+import { FadeInBlock, PressScale } from '../../src/theme/motion';
 
 /** Module 16 — partage viral SMS / WhatsApp / email / share sheet + install URL wiring. */
 export default function PartageScreen() {
@@ -122,15 +124,27 @@ export default function PartageScreen() {
           }
         />
 
+        <FadeInBlock>
+          <View style={styles.hero} accessibilityLabel={t('referral.title')}>
+            <Text style={styles.heroBrand}>{BRAND_NAME}</Text>
+            <Text style={styles.heroKicker}>{t('referral.kicker')}</Text>
+            <Text style={styles.heroTitle}>{t('referral.title')}</Text>
+            <Text style={styles.heroBody}>{t('referral.body')}</Text>
+            <PressScale style={styles.heroCta} onPress={shareLinkOnly} accessibilityRole="button">
+              <Text style={styles.heroCtaTxt}>{t('referral.shareCta')}</Text>
+            </PressScale>
+          </View>
+        </FadeInBlock>
+
         <Card title="Lien d’installation">
           <Text style={styles.meta}>Source : {install.source} · configuré : {install.configured ? 'oui' : 'non'}</Text>
           <Text style={styles.url}>{canShareLink ? INSTALL_URL : '(non configuré)'}</Text>
-          <Pressable style={styles.btn} onPress={openLink}>
+          <PressScale style={styles.btn} onPress={openLink}>
             <Text style={styles.btnTxt}>Ouvrir le lien install</Text>
-          </Pressable>
-          <Pressable style={styles.btnDark} onPress={shareLinkOnly}>
+          </PressScale>
+          <PressScale style={styles.btnDark} onPress={shareLinkOnly}>
             <Text style={styles.btnTxt}>Partager le lien seul</Text>
-          </Pressable>
+          </PressScale>
         </Card>
 
         <Card title="Région destinataire">
@@ -210,43 +224,115 @@ export default function PartageScreen() {
 }
 
 const styles = StyleSheet.create({
-  regionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  hero: {
+    backgroundColor: colors.asphalt,
+    borderRadius: 20,
+    paddingVertical: 22,
+    paddingHorizontal: 18,
+    gap: 8,
+  },
+  heroBrand: {
+    color: colors.white,
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+    lineHeight: 34,
+  },
+  heroKicker: {
+    color: colors.signalSoft,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  heroTitle: {
+    color: colors.white,
+    fontSize: 22,
+    fontWeight: '900',
+    lineHeight: 28,
+  },
+  heroBody: {
+    color: colors.mist,
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 24,
+  },
+  heroCta: {
+    marginTop: 8,
+    backgroundColor: colors.signal,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    minHeight: 54,
+    justifyContent: 'center',
+  },
+  heroCtaTxt: { color: colors.white, fontWeight: '900', fontSize: 16 },
+  regionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.line,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     backgroundColor: colors.mist,
   },
   chipOn: { backgroundColor: colors.asphalt, borderColor: colors.asphalt },
-  chipTxt: { fontWeight: '700', color: colors.slate, fontSize: 12 },
+  chipTxt: { fontWeight: '800', color: colors.slate, fontSize: 14 },
   chipTxtOn: { color: colors.white },
   input: {
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.line,
-    borderRadius: 10,
-    padding: 10,
+    borderRadius: 12,
+    padding: 14,
     backgroundColor: colors.mist,
     color: colors.ink,
     marginTop: 6,
+    fontSize: 16,
+    fontWeight: '600',
+    minHeight: 48,
   },
-  btn: { backgroundColor: colors.signal, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 8 },
-  btnWa: { backgroundColor: '#128C7E', borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 8 },
-  btnDark: { backgroundColor: colors.asphalt, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 8 },
+  btn: {
+    backgroundColor: colors.signal,
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 8,
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  btnWa: {
+    backgroundColor: '#128C7E',
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 8,
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  btnDark: {
+    backgroundColor: colors.asphalt,
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 8,
+    minHeight: 48,
+    justifyContent: 'center',
+  },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   btnGrid: {
     backgroundColor: colors.signal,
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingVertical: 14,
     minWidth: '46%',
     flexGrow: 1,
     alignItems: 'center',
+    minHeight: 48,
+    justifyContent: 'center',
   },
-  btnTxt: { color: colors.white, fontWeight: '800', fontSize: 12, textAlign: 'center' },
-  line: { color: colors.ink, fontWeight: '700', marginBottom: 4 },
-  meta: { color: colors.muted, fontSize: 12 },
-  url: { color: colors.ink, fontWeight: '700', fontSize: 13, marginTop: 4 },
-  ok: { color: colors.garage, fontWeight: '700', marginTop: 8 },
+  btnTxt: { color: colors.white, fontWeight: '800', fontSize: 14, textAlign: 'center' },
+  line: { color: colors.ink, fontWeight: '700', marginBottom: 4, fontSize: 15, lineHeight: 22 },
+  meta: { color: colors.muted, fontSize: 14, lineHeight: 20, fontWeight: '600' },
+  url: { color: colors.ink, fontWeight: '700', fontSize: 15, marginTop: 4, lineHeight: 22 },
+  ok: { color: colors.garage, fontWeight: '700', marginTop: 8, fontSize: 14 },
 });

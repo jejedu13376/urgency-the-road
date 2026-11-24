@@ -1,7 +1,9 @@
 import { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
+import { type as typeScale } from '../theme/type';
 
+/** Interaction / form container — not a decorative hero card. */
 export function Card({ title, children }: { title?: string; children: ReactNode }) {
   return (
     <View style={styles.card}>
@@ -14,11 +16,15 @@ export function Card({ title, children }: { title?: string; children: ReactNode 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.white,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1.5,
     borderColor: colors.line,
-    gap: 8,
+    gap: 10,
   },
-  title: { fontSize: 15, fontWeight: '700', color: colors.ink },
+  title: {
+    ...typeScale.section,
+    color: colors.ink,
+    marginBottom: 2,
+  },
 });

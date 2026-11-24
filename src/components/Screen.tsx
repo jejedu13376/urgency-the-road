@@ -88,7 +88,19 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.line,
     backgroundColor: colors.white,
   },
-  title: { fontSize: 22, fontWeight: '800', color: colors.ink, letterSpacing: -0.3 },
-  sub: { marginTop: 0, color: colors.muted, fontSize: 13 },
-  content: { padding: 16, paddingBottom: SOS_FAB_CLEARANCE, gap: 12 },
+  title: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: colors.ink,
+    letterSpacing: -0.3,
+    lineHeight: 30,
+  },
+  sub: {
+    marginTop: 4,
+    color: colors.slate,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '600',
+  },
+  content: { padding: 16, paddingBottom: SOS_FAB_CLEARANCE, gap: 14 },
 });
