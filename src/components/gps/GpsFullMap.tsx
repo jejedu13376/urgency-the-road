@@ -60,6 +60,7 @@ import {
   upcomingTurnAt,
 } from '../../services/gps/routeManeuvers';
 import { useI18n } from '../../context/I18nContext';
+import { t as translate } from '../../i18n';
 import {
   loadNavSpeechMuted,
   setNavSpeechMuted,
@@ -954,15 +955,19 @@ export function GpsFullMap() {
                 if (announcedWeighIdsRef.current.has(s.id)) continue;
                 announcedWeighIdsRef.current.add(s.id);
                 const rounded = d <= 2.2 ? 2 : 3;
-                const weighLabel = t('tts.weighDefault');
-                const distSpoken = t('tts.kilometers', { km: rounded });
+                // Module-level translate — do not close over hook `t` (would restart GPS watch on locale change).
+                const weighLabel = translate('tts.weighDefault');
+                const distSpoken = translate('tts.kilometers', { km: rounded });
                 enqueueAlerts([
                   {
                     id: `weigh-nav-${s.id}`,
                     kind: 'weigh',
                     title: `Balance à ${rounded} km`,
                     detail: `${s.name} · OSM weigh_station / weighbridge (CA/US/EU) — overlay immédiat`,
-                    voice: t('tts.weighAlert', { label: weighLabel, distance: distSpoken }),
+                    voice: translate('tts.weighAlert', {
+                      label: weighLabel,
+                      distance: distSpoken,
+                    }),
                     severity: 'warn',
                     lat: s.lat,
                     lon: s.lon,
@@ -1013,7 +1018,6 @@ export function GpsFullMap() {
       applyModeInMap,
       bootHtml,
       navWatchBoost,
-      t,
     ]),
   );
 
