@@ -279,9 +279,9 @@ function postGpsCmd(win: MapWindow | null, cmd: Record<string, unknown>) {
 export function GpsFullMap() {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
-  /** Carte tab is full-bleed under the status inset; modules/gps sits under a white Stack header. */
+  /** Carte tab is full-bleed under the status inset; modules/gps sits under a white Stack header.
+   * Pathname flips immediately on tab change (component stays mounted) — no focus lag flag. */
   const onCarteTab = pathname === '/carte' || Boolean(pathname?.endsWith('/carte'));
-  const [mapFocused, setMapFocused] = useState(false);
   const { active } = useFleet();
   const { profile } = useAuth();
   const webRef = useRef<WebViewHandle | null>(null);
@@ -808,7 +808,6 @@ export function GpsFullMap() {
    * Also reload gabarit from AsyncStorage (profil-camion may have updated while away). */
   useFocusEffect(
     useCallback(() => {
-      setMapFocused(true);
       let sub: { remove: () => void } | null = null;
       let cancelled = false;
       void (async () => {
@@ -955,7 +954,6 @@ export function GpsFullMap() {
       })();
       return () => {
         cancelled = true;
-        setMapFocused(false);
         sub?.remove();
       };
     }, [injectLivePosition, setMapOrigin, injectHighlightWeigh, enqueueAlerts, applyModeInMap, bootHtml]),
@@ -1680,14 +1678,12 @@ export function GpsFullMap() {
     })();
   }, [profile, refreshLayers]);
 
-  // Light icons only while Carte tab is focused (tabs stay mounted — do not leak to paper screens).
-  // modules/gps keeps root dark StatusBar for the white Stack header above the map.
-  const lightStatus = mapFocused && onCarteTab;
-
+  // Light icons only on Carte tab (pathname). Tabs stay mounted — leaving Carte clears this
+  // immediately. modules/gps keeps root dark StatusBar for the white Stack header.
   if (!bootHtml) {
     return (
       <View style={[styles.fill, styles.boot]}>
-        {lightStatus ? <StatusBar style="light" /> : null}
+        {onCarteTab ? <StatusBar style="light" /> : null}
         <Text style={styles.bootTxt}>Chargement carte GPS…</Text>
       </View>
     );
@@ -1695,7 +1691,7 @@ export function GpsFullMap() {
 
   return (
     <View style={styles.fill} accessibilityLabel={`Carte GPS mode ${modeLabel}`}>
-      {lightStatus ? <StatusBar style="light" /> : null}
+      {onCarteTab ? <StatusBar style="light" /> : null}
       {Platform.OS === 'web' ? (
         <WebIframe
           html={bootHtml}
