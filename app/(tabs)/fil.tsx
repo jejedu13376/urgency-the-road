@@ -159,6 +159,10 @@ export default function FilMecaniqueScreen() {
       <StubBanner text={t('fil.stub')} />
       {feedLabel ? <Text style={styles.meta}>{feedLabel}</Text> : null}
 
+      <Card title={t('fil.aiTitle')}>
+        <Text style={styles.aiHint}>{t('fil.aiGlobalHint')}</Text>
+      </Card>
+
       <Pressable style={styles.refreshBar} onPress={onRefresh}>
         <Text style={styles.refreshTxt}>
           {refreshing ? 'Actualisation…' : '↓ Actualiser le fil (pull ou tap)'}
@@ -286,6 +290,12 @@ const styles = StyleSheet.create({
   },
   refreshTxt: { color: colors.garage, fontWeight: '800' },
   meta: { color: colors.muted, fontSize: 12 },
+  aiHint: {
+    color: colors.slate,
+    fontSize: 16,
+    lineHeight: 26,
+    letterSpacing: 0.3,
+  },
   caption: { color: colors.slate },
   videoStub: {
     backgroundColor: colors.mist,
