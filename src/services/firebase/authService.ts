@@ -139,7 +139,12 @@ export async function signUpEmail(
       referralCode: undefined,
     });
     const applied = await applyReferralOnSignup(local, pending);
-    return mockResult(applied.data, applied.stubLabel ?? 'MOCK Auth — inscription locale');
+    // Account always created — referral failure is a side note, not ok:false.
+    const base = 'MOCK Auth — inscription locale';
+    if (applied.ok === false) {
+      return mockResult(local, `${base} · parrainage: ${applied.stubLabel ?? 'échec'}`);
+    }
+    return mockResult(applied.data, applied.stubLabel ?? base);
   }
 
   try {
@@ -153,11 +158,12 @@ export async function signUpEmail(
     let profile = await ensureUserDoc(cred.user.uid, email, displayName);
     profile = await ensureUserReferralCode(profile);
     const applied = await applyReferralOnSignup(profile, pending);
-    return liveResult(
-      applied.data,
-      applied.stubLabel ??
-        'Compte créé — vérifie ton email (lien envoyé) avant le Multi-IA LIVE',
-    );
+    const created =
+      'Compte créé — vérifie ton email (lien envoyé) avant le Multi-IA LIVE';
+    if (applied.ok === false) {
+      return liveResult(profile, `${created} · parrainage: ${applied.stubLabel ?? 'échec'}`);
+    }
+    return liveResult(applied.data, applied.stubLabel ?? created);
   } catch (e) {
     return failResult(null, authErrorMessage(e));
   }

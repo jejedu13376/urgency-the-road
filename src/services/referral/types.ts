@@ -22,4 +22,6 @@ export type ReferralRewardState = {
   referrerDiscountActive: boolean;
   referrerDiscountStartedAt: string | null;
   referrerDiscountEndsAt: string | null;
+  /** Event ids already credited locally — prevents double-count on retry. */
+  rewardedEventIds?: string[];
 };

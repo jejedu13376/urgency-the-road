@@ -155,14 +155,17 @@ export async function applyReferralOnSignup(
     return liveResult(newUser);
   }
   if (!isValidReferralCodeShape(clean)) {
+    await clearPendingReferralCode();
     return failResult(newUser, 'Code de parrainage invalide');
   }
 
   const hit = await lookupReferrerByCode(clean);
   if (!hit) {
+    await clearPendingReferralCode();
     return failResult(newUser, 'Code de parrainage introuvable');
   }
   if (hit.uid === newUser.uid) {
+    await clearPendingReferralCode();
     return failResult(newUser, 'Vous ne pouvez pas utiliser votre propre code');
   }
 
@@ -230,15 +233,19 @@ function emptyRewardState(): ReferralRewardState {
     referrerDiscountActive: false,
     referrerDiscountStartedAt: null,
     referrerDiscountEndsAt: null,
+    rewardedEventIds: [],
   };
 }
 
 function mergeRewardOnClaim(
   prev: ReferralRewardState,
-  claimCount: number,
+  eventIds: string[],
   nowIso: string,
 ): ReferralRewardState {
+  const claimCount = eventIds.length;
   if (claimCount <= 0) return prev;
+  const prevIds = new Set(prev.rewardedEventIds ?? []);
+  for (const id of eventIds) prevIds.add(id);
   const credits = prev.referralRewardCredits + claimCount * REFERRAL_SIGNUP_REWARD_CREDITS;
   const successfulReferralCount = prev.successfulReferralCount + claimCount;
   // Extend / (re)start the 3-month $12 window from now for each claim batch.
@@ -250,8 +257,14 @@ function mergeRewardOnClaim(
     referrerDiscountActive: true,
     referrerDiscountStartedAt: startedAt,
     referrerDiscountEndsAt: endsAt,
+    rewardedEventIds: [...prevIds],
   };
 }
+
+/** Serialize claims — overlapping Compte taps must not double-credit. */
+let claimInFlight: Promise<
+  ServiceResult<{ profile: UserDoc; claimed: number; creditsAdded: number }>
+> | null = null;
 
 /**
  * Referrer claims unclaimed signup events → credits + $12/mo for 3 months.
@@ -260,9 +273,31 @@ function mergeRewardOnClaim(
 export async function claimReferralRewards(profile: UserDoc): Promise<
   ServiceResult<{ profile: UserDoc; claimed: number; creditsAdded: number }>
 > {
+  if (claimInFlight) return claimInFlight;
+  claimInFlight = claimReferralRewardsInner(profile).finally(() => {
+    claimInFlight = null;
+  });
+  return claimInFlight;
+}
+
+async function claimReferralRewardsInner(profile: UserDoc): Promise<
+  ServiceResult<{ profile: UserDoc; claimed: number; creditsAdded: number }>
+> {
   const nowIso = new Date().toISOString();
+  const localPrev =
+    (await loadLocalRewardState(profile.uid)) ??
+    ({
+      referralRewardCredits: profile.referralRewardCredits ?? 0,
+      successfulReferralCount: profile.successfulReferralCount ?? 0,
+      referrerDiscountActive: Boolean(profile.referrerDiscountActive),
+      referrerDiscountStartedAt: profile.referrerDiscountStartedAt ?? null,
+      referrerDiscountEndsAt: profile.referrerDiscountEndsAt ?? null,
+      rewardedEventIds: [],
+    } satisfies ReferralRewardState);
+  const alreadyRewarded = new Set(localPrev.rewardedEventIds ?? []);
+
   let unclaimed: ReferralEventDoc[] = await listLocalReferralEventsForReferrer(profile.uid).then((list) =>
-    list.filter((e) => !e.claimed),
+    list.filter((e) => !e.claimed && !alreadyRewarded.has(e.id)),
   );
 
   const fb = getFirebase();
@@ -280,7 +315,7 @@ export async function claimReferralRewards(profile: UserDoc): Promise<
       });
       const byId = new Map<string, ReferralEventDoc>();
       for (const e of [...unclaimed, ...cloud]) byId.set(e.id, e);
-      unclaimed = [...byId.values()].filter((e) => !e.claimed);
+      unclaimed = [...byId.values()].filter((e) => !e.claimed && !alreadyRewarded.has(e.id));
     } catch (e) {
       if (!(isPermissionDenied(e) || isDevSoftAuth())) {
         // keep local list
@@ -289,48 +324,39 @@ export async function claimReferralRewards(profile: UserDoc): Promise<
   }
 
   if (unclaimed.length === 0) {
-    // Refresh active flag from endsAt even when nothing to claim.
-    const endsAt = profile.referrerDiscountEndsAt ?? null;
+    const endsAt = localPrev.referrerDiscountEndsAt ?? profile.referrerDiscountEndsAt ?? null;
     const active = isReferrerDiscountWindowActive(endsAt);
     const synced: UserDoc = {
       ...profile,
       referrerDiscountActive: active,
+      referralRewardCredits: localPrev.referralRewardCredits,
+      successfulReferralCount: localPrev.successfulReferralCount,
+      referrerDiscountEndsAt: endsAt ?? undefined,
     };
     return liveResult({ profile: synced, claimed: 0, creditsAdded: 0 });
   }
 
-  const localPrev =
-    (await loadLocalRewardState(profile.uid)) ??
-    ({
-      referralRewardCredits: profile.referralRewardCredits ?? 0,
-      successfulReferralCount: profile.successfulReferralCount ?? 0,
-      referrerDiscountActive: Boolean(profile.referrerDiscountActive),
-      referrerDiscountStartedAt: profile.referrerDiscountStartedAt ?? null,
-      referrerDiscountEndsAt: profile.referrerDiscountEndsAt ?? null,
-    } satisfies ReferralRewardState);
-
-  const nextReward = mergeRewardOnClaim(localPrev, unclaimed.length, nowIso);
+  // Lock event ids locally before cloud writes so a retry cannot re-credit.
+  const eventIds = unclaimed.map((e) => e.id);
+  await markLocalReferralEventsClaimed(profile.uid, eventIds);
+  const nextReward = mergeRewardOnClaim(localPrev, eventIds, nowIso);
   await saveLocalRewardState(profile.uid, nextReward);
-  await markLocalReferralEventsClaimed(
-    profile.uid,
-    unclaimed.map((e) => e.id),
-  );
 
   if (fb && isFirebaseConfigured()) {
-    try {
-      // Claim events only (false → true). Billing fields on users/ are frozen —
-      // Admin SDK / Cloud Function must persist referrerDiscount* server-side.
-      for (const e of unclaimed) {
+    for (const e of unclaimed) {
+      try {
+        // Claim events only (false → true). Billing fields on users/ are frozen —
+        // Admin SDK / Cloud Function must persist referrerDiscount* server-side.
         await updateDoc(doc(fb.db, COLLECTIONS.referralEvents, e.id), { claimed: true });
-      }
-    } catch (e) {
-      if (!(isPermissionDenied(e) || isDevSoftAuth())) {
-        // local reward still applied
+      } catch (err) {
+        if (!(isPermissionDenied(err) || isDevSoftAuth())) {
+          // Local reward already locked via rewardedEventIds — do not roll back credits.
+        }
       }
     }
   }
 
-  const creditsAdded = unclaimed.length * REFERRAL_SIGNUP_REWARD_CREDITS;
+  const creditsAdded = eventIds.length * REFERRAL_SIGNUP_REWARD_CREDITS;
   const updated: UserDoc = {
     ...profile,
     referralRewardCredits: nextReward.referralRewardCredits,
@@ -342,7 +368,7 @@ export async function claimReferralRewards(profile: UserDoc): Promise<
   };
 
   return mockResult(
-    { profile: updated, claimed: unclaimed.length, creditsAdded },
+    { profile: updated, claimed: eventIds.length, creditsAdded },
     `Récompense parrain : +${creditsAdded} crédits · $12/mois pendant ${REFERRER_DISCOUNT_MONTHS} mois`,
   );
 }

@@ -52,6 +52,7 @@ export default function CompteScreen() {
   const [paying, setPaying] = useState(false);
   const [method, setMethod] = useState<PaymentMethod>('stripe_card');
   const [rewardNote, setRewardNote] = useState<string | null>(null);
+  const [claimBusy, setClaimBusy] = useState(false);
 
   const priceQuote = useMemo(
     () =>
@@ -62,13 +63,18 @@ export default function CompteScreen() {
   );
 
   const onClaimReferralRewards = async () => {
-    if (!profile) return;
-    const r = await claimReferralRewards(profile);
-    if (r.data.claimed > 0) {
-      setRewardNote(r.stubLabel ?? null);
-      await refresh();
-    } else {
-      setRewardNote(null);
+    if (!profile || claimBusy) return;
+    setClaimBusy(true);
+    try {
+      const r = await claimReferralRewards(profile);
+      if (r.data.claimed > 0) {
+        setRewardNote(r.stubLabel ?? null);
+        await refresh();
+      } else {
+        setRewardNote(null);
+      }
+    } finally {
+      setClaimBusy(false);
     }
   };
 
@@ -241,7 +247,8 @@ export default function CompteScreen() {
             </Pressable>
           </Link>
           <Pressable
-            style={[styles.btnDark, { marginTop: 8 }]}
+            style={[styles.btnDark, { marginTop: 8 }, claimBusy && styles.payDisabled]}
+            disabled={claimBusy}
             onPress={() => void onClaimReferralRewards()}
             accessibilityRole="button"
             accessibilityLabel={t('referral.claimCta')}

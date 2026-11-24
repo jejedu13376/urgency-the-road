@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Linking,
@@ -42,6 +42,9 @@ export function RegisterGateScreen() {
   const [pwOk, setPwOk] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Once the user edits referral, never overwrite from profile refresh / deep link reseed. */
+  const referralTouchedRef = useRef(false);
+  const referralSeededRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,28 +54,47 @@ export function RegisterGateScreen() {
       const seed = mergeAutofill(local, profile);
       setEmail(seed.email);
       setDisplayName(seed.displayName);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile]);
+
+  // Seed referral once on mount — do not re-run when Auth refresh mutates profile.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (referralSeededRef.current || referralTouchedRef.current) return;
       const pending = await loadPendingReferralCode();
-      if (!cancelled && pending) setReferralCode(pending);
+      if (cancelled || referralTouchedRef.current) return;
+      if (pending) {
+        setReferralCode(pending);
+        referralSeededRef.current = true;
+      }
       try {
         const initial = await Linking.getInitialURL();
-        if (initial && !cancelled) {
+        if (initial && !cancelled && !referralTouchedRef.current) {
           const captured = await captureReferralFromUrl(initial);
-          if (captured) setReferralCode(captured);
+          if (captured && !referralTouchedRef.current) {
+            setReferralCode(captured);
+            referralSeededRef.current = true;
+          }
         }
       } catch {
         // soft-fail deep link
       }
     })();
     const sub = Linking.addEventListener('url', ({ url }) => {
+      if (referralTouchedRef.current) return;
       void captureReferralFromUrl(url).then((c) => {
-        if (c) setReferralCode(c);
+        if (c && !referralTouchedRef.current) setReferralCode(c);
       });
     });
     return () => {
       cancelled = true;
       sub.remove();
     };
-  }, [profile]);
+  }, []);
 
   const onRegister = async () => {
     if (!isValidEmail(email)) {
@@ -192,7 +214,10 @@ export function RegisterGateScreen() {
 
         <TextInput
           value={referralCode}
-          onChangeText={setReferralCode}
+          onChangeText={(txt) => {
+            referralTouchedRef.current = true;
+            setReferralCode(txt);
+          }}
           placeholder={t('referral.codePlaceholder')}
           placeholderTextColor={colors.muted}
           style={styles.input}
