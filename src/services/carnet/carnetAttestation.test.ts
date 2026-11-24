@@ -41,4 +41,11 @@ describe('carnetAttestation', () => {
     assert.equal(h, digestCarnetPayload('hello'));
     assert.match(h, /^[0-9a-f]{64}$/);
   });
+
+  it('covers late entries (same length edit at end changes hash)', () => {
+    const longPrefix = 'x'.repeat(200);
+    const a = digestCarnetPayload(`${longPrefix}ENTRY-AAA`);
+    const b = digestCarnetPayload(`${longPrefix}ENTRY-BBB`);
+    assert.notEqual(a, b);
+  });
 });

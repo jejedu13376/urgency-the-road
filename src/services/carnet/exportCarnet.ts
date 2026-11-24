@@ -7,7 +7,7 @@
 import { Share, Platform } from 'react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { attestCarnet } from './carnetAttestation';
+import { attestCarnet, type CarnetAttestation } from './carnetAttestation';
 
 export type CarnetExportLine = {
   title: string;
@@ -26,25 +26,32 @@ export type CarnetExportInput = {
   maintenanceDone?: string[];
 };
 
-function attestationFor(input: CarnetExportInput) {
+/** Single frozen timestamp so text + HTML in one share share the same hash. */
+function attestationFor(
+  input: CarnetExportInput,
+  exportedAtIso: string,
+): CarnetAttestation {
   return attestCarnet({
     vehicleLabel: input.vehicleLabel,
     vin: input.vin,
     odometerKm: input.odometerKm,
     entries: input.entries,
     maintenanceDone: input.maintenanceDone,
-    exportedAtIso: new Date().toISOString(),
+    exportedAtIso,
   });
 }
 
-export function buildCarnetText(input: CarnetExportInput): string {
-  const att = attestationFor(input);
+export function buildCarnetText(
+  input: CarnetExportInput,
+  exportedAtIso: string = new Date().toISOString(),
+): string {
+  const att = attestationFor(input, exportedAtIso);
   const lines: string[] = [
     'URGENCE MÉCANIQUE — CARNET NUMÉRIQUE',
     `Véhicule : ${input.vehicleLabel}`,
     input.vin ? `VIN : ${input.vin}` : 'VIN : —',
     `Km actuel : ${input.odometerKm.toLocaleString('fr-FR')}`,
-    `Export : ${new Date().toLocaleString('fr-FR')}`,
+    `Export : ${new Date(exportedAtIso).toLocaleString('fr-FR')}`,
     `Attestation locale : ${att.hash}`,
     '',
     '— Interventions —',
@@ -74,8 +81,11 @@ export function buildCarnetText(input: CarnetExportInput): string {
 }
 
 /** Printable HTML-lite for mail clients / browsers — local attestation, not server-signed. */
-export function buildCarnetHtml(input: CarnetExportInput): string {
-  const att = attestationFor(input);
+export function buildCarnetHtml(
+  input: CarnetExportInput,
+  exportedAtIso: string = new Date().toISOString(),
+): string {
+  const att = attestationFor(input, exportedAtIso);
   const esc = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const rows = input.entries.length
@@ -98,7 +108,7 @@ th{background:#f4f4f4}.note{color:#666;font-size:12px;margin-top:24px}code{font-
 <p><strong>Véhicule :</strong> ${esc(input.vehicleLabel)}<br/>
 <strong>VIN :</strong> ${esc(input.vin ?? '—')}<br/>
 <strong>Km :</strong> ${input.odometerKm.toLocaleString('fr-FR')}<br/>
-<strong>Export :</strong> ${esc(new Date().toLocaleString('fr-FR'))}<br/>
+<strong>Export :</strong> ${esc(new Date(exportedAtIso).toLocaleString('fr-FR'))}<br/>
 <strong>Attestation locale :</strong> <code>${esc(att.hash)}</code></p>
 <table><thead><tr><th>Date</th><th>Km</th><th>Intervention</th><th>Coût</th><th>Facture</th></tr></thead>
 <tbody>${rows}</tbody></table>
@@ -116,7 +126,8 @@ export async function shareCarnetPdf(input: CarnetExportInput): Promise<{
   message: string;
   uri?: string;
 }> {
-  const html = buildCarnetHtml(input);
+  const iso = new Date().toISOString();
+  const html = buildCarnetHtml(input, iso);
   try {
     const file = await Print.printToFileAsync({ html });
     const canShare = await Sharing.isAvailableAsync();
@@ -176,8 +187,11 @@ export async function shareCarnetHtmlLite(input: CarnetExportInput): Promise<{
   ok: boolean;
   message: string;
 }> {
-  const html = buildCarnetHtml(input);
-  const message = `${buildCarnetText(input)}\n\n—— HTML-lite ——\n${html}`;
+  // One frozen ISO so text + HTML embed the same attestation hash.
+  const iso = new Date().toISOString();
+  const html = buildCarnetHtml(input, iso);
+  const text = buildCarnetText(input, iso);
+  const message = `${text}\n\n—— HTML-lite ——\n${html}`;
   try {
     const res = await Share.share({
       message,
