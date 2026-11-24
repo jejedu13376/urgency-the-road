@@ -118,6 +118,11 @@ describe('resolveNavigableDestination', () => {
     const malta = resolveNavigableDestination(48.3594, -107.874, 'Malta, Montana, USA');
     assert.equal(malta.remapped, false);
     assert.equal(malta.lat, 48.3594);
+    // Country-only US secondary without a home-country hint must not remap.
+    const hollandUs = resolveNavigableDestination(42.7875, -86.1089, 'Holland, USA');
+    assert.equal(hollandUs.remapped, false);
+    const luxBe = resolveNavigableDestination(50.0, 5.5, 'Luxembourg, Belgium');
+    assert.equal(luxBe.remapped, false);
   });
 
   it('still remaps bare Holland / Scotland / Malta as nations', () => {
@@ -127,6 +132,13 @@ describe('resolveNavigableDestination', () => {
     const sco = resolveNavigableDestination(57.2, -4.5, 'Scotland, United Kingdom');
     assert.equal(sco.remapped, true);
     assert.match(sco.label, /Edinburgh/i);
+    // Open-Meteo/Photon style: name, admin1, country (repeated region).
+    const scoPhoton = resolveNavigableDestination(57.2, -4.5, 'Scotland, Scotland, United Kingdom');
+    assert.equal(scoPhoton.remapped, true);
+    assert.match(scoPhoton.label, /Edinburgh/i);
+    const wales = resolveNavigableDestination(52.1, -3.8, 'Wales, Wales, United Kingdom');
+    assert.equal(wales.remapped, true);
+    assert.match(wales.label, /Cardiff/i);
     const malta = resolveNavigableDestination(36.5, 14.2, 'Malta');
     assert.equal(malta.remapped, true);
     assert.match(malta.label, /Valletta/i);
