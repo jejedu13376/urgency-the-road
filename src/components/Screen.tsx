@@ -1,13 +1,9 @@
 import { ReactNode } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CHROME_STACK_BELOW_STATUS } from '../chromeInsets';
 import { colors } from '../theme/colors';
 
-/**
- * Room below status bar for GlobalTopBar overlay + Connexion + weather chrome stack.
- * Keep in sync with GlobalTopBar / ConnexionChip / WeatherBanner offsets.
- */
-const CHROME_BELOW_INSET = 132;
 /** SOS FAB sits at bottom ~92 with height 58 — clear last CTAs. */
 const SOS_FAB_CLEARANCE = 166;
 
@@ -34,7 +30,7 @@ export function Screen({
 }) {
   const insets = useSafeAreaInsets();
   const isStack = variant === 'stack';
-  const headerPadTop = isStack ? 8 : insets.top + CHROME_BELOW_INSET;
+  const headerPadTop = isStack ? 8 : insets.top + CHROME_STACK_BELOW_STATUS;
 
   const body = scroll ? (
     <ScrollView
