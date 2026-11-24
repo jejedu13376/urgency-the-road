@@ -118,7 +118,7 @@ export default function PartageScreen() {
           text={
             canShareLink
               ? `Lien install LIVE (${install.source}) · ${INSTALL_URL}`
-              : 'Lien install non configuré — définissez EXPO_PUBLIC_INSTALL_URL ; aucun listing inventé'
+              : 'Lien install non configuré — EXPO_PUBLIC_INSTALL_URL ou deep link Expo ; aucun listing inventé'
           }
         />
 

@@ -35,7 +35,7 @@ export const fr = {
   },
 
   stub: 'STUB — service non connecté',
-  stubVin: 'VIN — NHTSA vPIC live ; fluides locaux ; recalls NHTSA ; pas d’API fluides OEM',
+    stubVin: 'VIN — NHTSA vPIC live ; fluides locaux make-aware ; recalls NHTSA ; OEM fluides = option',
   stubObd: 'STUB OBD — pas de liaison Bluetooth/USB réelle (valise / Dev Client)',
   stubAi: 'Multi-IA — heuristique croisée ; proxy/clés optionnels',
   stubPay: 'Paiement — Stripe / PayPal / Apple Pay / Google Pay (pas de Lydia)',

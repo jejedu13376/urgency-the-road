@@ -269,7 +269,7 @@ export default function EntretienScreen() {
         title={t('moduleTitles.entretien')}
         subtitle={`${t('moduleTitles.entretienSub')} · ${active?.label ?? '—'} · ${km.toLocaleString('fr-FR')} km`}
       >
-        <StubBanner text="Carnet persisté + texte/HTML-lite + PDF imprimable LIVE · signature certifiée serveur non branchée" />
+        <StubBanner text="Carnet persisté + texte/HTML-lite + PDF LIVE avec attestation locale (hash) · signature serveur = option externe" />
 
         <Card title="Maintenance automatique (km)">
           <Text style={styles.meta}>
@@ -371,10 +371,11 @@ export default function EntretienScreen() {
             <Text style={styles.exportTxt}>Partager HTML-lite (imprimable)</Text>
           </Pressable>
           <Pressable style={styles.exportPdf} onPress={exportPdf}>
-            <Text style={styles.exportTxt}>Générer PDF (non certifié)</Text>
+            <Text style={styles.exportTxt}>Générer PDF (attestation locale)</Text>
           </Pressable>
           <Text style={styles.meta}>
-            PDF réel via expo-print — pas certifié / signé. Backend de signature = séparément.
+            PDF réel via expo-print + hash d’intégrité local — signature serveur juridique =
+            option externe.
           </Text>
           {pdfMsg ? <Text style={styles.pdfMsg}>{pdfMsg}</Text> : null}
         </Card>

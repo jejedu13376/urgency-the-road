@@ -12,7 +12,11 @@ import {
   recordLearnedFailure,
   type LearnedFailure,
 } from '../../src/services/firebase/learnedFailuresService';
-import { checkOtaChannel, type OtaProbe } from '../../src/services/ota/checkOtaChannel';
+import {
+  applyOtaUpdateIfAvailable,
+  checkOtaChannel,
+  type OtaProbe,
+} from '../../src/services/ota/checkOtaChannel';
 import { colors } from '../../src/theme/colors';
 import { useI18n } from '../../src/context/I18nContext';
 
@@ -28,6 +32,7 @@ export default function BasesScreen() {
   const [partsDraft, setPartsDraft] = useState('');
   const [ota, setOta] = useState<OtaProbe | null>(null);
   const [otaStatus, setOtaStatus] = useState<'idle' | 'checking' | 'done'>('idle');
+  const [applyBusy, setApplyBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -84,6 +89,30 @@ export default function BasesScreen() {
     });
   };
 
+  const applyOta = () => {
+    if (applyBusy) return;
+    setApplyBusy(true);
+    void applyOtaUpdateIfAvailable().then((r) => {
+      setMsg(r.message);
+      setApplyBusy(false);
+      void checkOtaChannel().then((p) => {
+        setOta(p);
+        setOtaStatus('done');
+      });
+    });
+  };
+
+  useEffect(() => {
+    // Soft auto-probe once — never invents "à jour" if runtime absent.
+    const t = setTimeout(() => {
+      void checkOtaChannel().then((r) => {
+        setOta(r);
+        setOtaStatus('done');
+      });
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
     <>
       <Stack.Screen options={{ title: t('moduleTitles.bases') }} />
@@ -92,7 +121,7 @@ export default function BasesScreen() {
         <StubBanner
           text={
             label ??
-            'Apprentissage owner-only Firestore si Auth · OTA EAS sondé sans faux « à jour »'
+            'Apprentissage owner-only Firestore si Auth · OTA check/apply honnête (expo-updates)'
           }
         />
 
@@ -109,22 +138,39 @@ export default function BasesScreen() {
             >
               {otaStatus === 'idle' && 'Non vérifié'}
               {otaStatus === 'checking' && 'Vérif…'}
-              {otaStatus === 'done' && (ota?.available ? 'Update dispo' : 'Canal absent / à jour')}
+              {otaStatus === 'done' &&
+                (ota?.available
+                  ? 'Update dispo'
+                  : ota?.runtimeEnabled
+                    ? 'À jour / rien en attente'
+                    : 'Runtime OTA absent')}
             </Text>
           </View>
           <Text style={styles.meta}>
-            Sonde expo-updates / EAS si présents — jamais de « sync réussie » inventée.
+            Sonde + apply expo-updates / EAS si présents — jamais de « sync réussie » inventée.
           </Text>
           {ota ? (
             <View style={styles.syncBox}>
               <Text style={styles.meta}>Canal : {ota.channel ?? '—'}</Text>
               <Text style={styles.meta}>Runtime : {ota.runtimeVersion ?? '—'}</Text>
+              <Text style={styles.meta}>
+                Runtime enabled : {ota.runtimeEnabled ? 'oui' : 'non'}
+              </Text>
               <Text style={styles.meta}>{ota.label}</Text>
             </View>
           ) : null}
           <Pressable style={styles.btn} onPress={runOta} disabled={otaStatus === 'checking'}>
             <Text style={styles.btnTxt}>
               {otaStatus === 'checking' ? 'Vérification…' : 'Vérifier canal OTA'}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={styles.btnDark}
+            onPress={applyOta}
+            disabled={applyBusy || !ota?.available}
+          >
+            <Text style={styles.btnTxt}>
+              {applyBusy ? 'Application…' : 'Appliquer update OTA'}
             </Text>
           </Pressable>
         </Card>

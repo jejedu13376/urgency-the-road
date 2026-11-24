@@ -52,3 +52,35 @@ export async function loadProKpi(): Promise<LocalProKpi | null> {
 export async function saveProKpi(kpi: LocalProKpi): Promise<void> {
   await saveJson(KPI_KEY, kpi);
 }
+
+/** Exportable atelier snapshot for Pro/Admin (local MVP — cloud KPI = optional backend). */
+export type ProAtelierExport = {
+  exportedAt: string;
+  kpi: LocalProKpi | null;
+  ratings: unknown;
+  flags: unknown;
+  moderation: unknown;
+  accounts: unknown;
+};
+
+export async function exportProAtelierSnapshot(): Promise<ProAtelierExport> {
+  const [kpi, ratings, flags, moderation, accounts] = await Promise.all([
+    loadProKpi(),
+    loadJson(adminKeys.ratings),
+    loadJson(adminKeys.flags),
+    loadJson(adminKeys.mod),
+    loadJson(adminKeys.accounts),
+  ]);
+  return {
+    exportedAt: new Date().toISOString(),
+    kpi,
+    ratings,
+    flags,
+    moderation,
+    accounts,
+  };
+}
+
+export function formatProAtelierExport(snap: ProAtelierExport): string {
+  return JSON.stringify(snap, null, 2);
+}

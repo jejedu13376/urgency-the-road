@@ -114,7 +114,12 @@ export async function decodeVinNhtsa(vinRaw: string): Promise<NhtsaDecodeOutcome
     const country = guessCountry(continent, plantCountry);
     const powertrain = guessPowertrain(fuel, bodyClass, gvwr);
     const vehicleClass = guessClass(bodyClass, powertrain, gvwr);
-    const fluidsEst = estimateLocalFluids({ vehicleClass, powertrain, displacementL });
+    const fluidsEst = estimateLocalFluids({
+      vehicleClass,
+      powertrain,
+      displacementL,
+      make: make || undefined,
+    });
     const nhtsaHints = [
       bodyClass ? `Carrosserie: ${bodyClass}` : '',
       plantCountry ? `Usine: ${plantCountry}` : '',
@@ -137,7 +142,11 @@ export async function decodeVinNhtsa(vinRaw: string): Promise<NhtsaDecodeOutcome
       vehicleClass,
       fluids: fluidsEst.fluids,
       fluidsSource: 'local_estimate',
-      techNotes: [...nhtsaHints, fluidsEst.label, 'API fluides OEM constructeur : non branchée'],
+      techNotes: [
+        ...nhtsaHints,
+        fluidsEst.label,
+        'API fluides OEM constructeur : option externe (MVP = estimation locale)',
+      ],
       commonFailures: buildLocalCommonFailures({
         make: make || 'Inconnu',
         powertrain,
