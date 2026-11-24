@@ -14,3 +14,6 @@ export const CHROME_GAP = 6;
  * Allows two lines (`numberOfLines={2}`) without covering weather below.
  */
 export const HOS_CHIP_ROW_HEIGHT = 48;
+
+/** Custom modules stack header row height (`app/modules/_layout.tsx`). */
+export const MODULES_HEADER_HEIGHT = 44;

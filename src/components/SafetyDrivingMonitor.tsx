@@ -3,6 +3,7 @@
  * GPS watch is motion-based (not app-open wall clock).
  */
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { belowGlobalTopBar, CHROME_GAP } from '../chromeInsets';
 import { HosLivePanel } from './HosLivePanel';
@@ -20,6 +21,10 @@ function formatHms(totalSec: number): string {
 
 export function SafetyDrivingMonitor() {
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
+  // Match Connexion/Weather: hide floating chip on /modules/* so the custom
+  // stack header (title + back) stays visible and tappable. Modals still fire.
+  const onModules = pathname?.includes('/modules');
   const {
     breakState,
     fatigue,
@@ -39,23 +44,25 @@ export function SafetyDrivingMonitor() {
 
   return (
     <>
-      <View
-        style={[styles.chip, { top: belowGlobalTopBar(insets) + CHROME_GAP }]}
-        pointerEvents="box-none"
-      >
-        <Pressable
-          style={[styles.chipBtn, monitoring ? styles.chipOn : styles.chipOff]}
-          onPress={() => setMonitoring((v) => !v)}
-          accessibilityLabel="Safety driving monitor"
+      {!onModules ? (
+        <View
+          style={[styles.chip, { top: belowGlobalTopBar(insets) + CHROME_GAP }]}
+          pointerEvents="box-none"
         >
-          <Text style={[styles.chipTxt, !monitoring && styles.chipTxtOff]} numberOfLines={2}>
-            {monitoring ? 'HOS ON' : 'HOS OFF'} · {hosRegion} · reste {hosLive.hoursLeftLabel}
-            {speedKmh != null ? ` · ${Math.round(speedKmh)}/${speedLimit.limitKmh}` : ''}
-            {overspeed ? ' · VITESSE' : ''}
-            {fatigue.level !== 'ok' ? ` · fatigue ${fatigue.score}` : ''}
-          </Text>
-        </Pressable>
-      </View>
+          <Pressable
+            style={[styles.chipBtn, monitoring ? styles.chipOn : styles.chipOff]}
+            onPress={() => setMonitoring((v) => !v)}
+            accessibilityLabel="Safety driving monitor"
+          >
+            <Text style={[styles.chipTxt, !monitoring && styles.chipTxtOff]} numberOfLines={2}>
+              {monitoring ? 'HOS ON' : 'HOS OFF'} · {hosRegion} · reste {hosLive.hoursLeftLabel}
+              {speedKmh != null ? ` · ${Math.round(speedKmh)}/${speedLimit.limitKmh}` : ''}
+              {overspeed ? ' · VITESSE' : ''}
+              {fatigue.level !== 'ok' ? ` · fatigue ${fatigue.score}` : ''}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <Modal visible={showHardStop || showBreak} animationType="fade" transparent>
         <View style={styles.modalBg}>

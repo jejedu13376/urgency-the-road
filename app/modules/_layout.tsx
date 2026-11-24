@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { belowGlobalTopBar } from '../../src/chromeInsets';
+import { belowGlobalTopBar, MODULES_HEADER_HEIGHT } from '../../src/chromeInsets';
 import { useI18n } from '../../src/context/I18nContext';
 import { colors } from '../../src/theme/colors';
 
@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   headerRow: {
-    minHeight: 44,
+    minHeight: MODULES_HEADER_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
