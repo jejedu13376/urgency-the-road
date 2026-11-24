@@ -12,7 +12,7 @@ import { BRAND_NAME } from '../brand';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../context/I18nContext';
 import { useRegisterGate } from '../context/RegisterGateContext';
-import { signInEmail, signUpEmail } from '../services/firebase';
+import { signInEmail, signUpEmail } from '../services/firebase/authService';
 import {
   isValidDisplayName,
   isValidEmail,

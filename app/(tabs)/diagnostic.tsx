@@ -10,7 +10,8 @@ import { useFleet } from '../../src/context/FleetContext';
 import { useI18n } from '../../src/context/I18nContext';
 import { useProgress } from '../../src/context/ProgressContext';
 import { MOCK_DTC } from '../../src/data/mocks';
-import { listPartsForVin, readObdSnapshot } from '../../src/services/firebase';
+import { listPartsForVin } from '../../src/services/firebase/partsService';
+import { readObdSnapshot } from '../../src/services/firebase/obdService';
 import {
   bleStatusLabel,
   connectAndInitElm,

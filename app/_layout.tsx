@@ -4,14 +4,16 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
-import { ConnexionChip } from '../src/components/ConnexionChip';
 import { GlobalAiBubble } from '../src/components/GlobalAiBubble';
 import { GlobalTopBar } from '../src/components/GlobalTopBar';
+import {
+  LazyConnexionChip,
+  LazySafetyDrivingMonitor,
+  LazySosButton,
+  LazyWeatherBanner,
+} from '../src/components/LazyAppChrome';
 import { RegisterGateScreen } from '../src/components/RegisterGateScreen';
-import { SafetyDrivingMonitor } from '../src/components/SafetyDrivingMonitor';
-import { SosButton } from '../src/components/SosButton';
 import { StartupGateScreen } from '../src/components/StartupGateScreen';
-import { WeatherBanner } from '../src/components/WeatherBanner';
 import { AuthProvider } from '../src/context/AuthContext';
 import { FleetProvider } from '../src/context/FleetContext';
 import { I18nProvider } from '../src/context/I18nContext';
@@ -62,17 +64,17 @@ function AppShell() {
     <>
       <StatusBar style="dark" />
       <GlobalTopBar />
-      <WeatherBanner />
-      <ConnexionChip />
+      <LazyWeatherBanner />
+      <LazyConnexionChip />
       <SafetyDrivingProvider>
-        <SafetyDrivingMonitor />
+        <LazySafetyDrivingMonitor />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="modules" options={{ headerShown: false, presentation: 'card' }} />
         </Stack>
         <GlobalAiBubble />
-        <SosButton />
+        <LazySosButton />
       </SafetyDrivingProvider>
     </>
   );

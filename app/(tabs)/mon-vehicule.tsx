@@ -14,7 +14,7 @@ import { useI18n } from '../../src/context/I18nContext';
 import { CASCADE } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { loadCarnet } from '../../src/services/carnet/carnetStorage';
-import { decodeVinRemote } from '../../src/services/firebase';
+import { decodeVinRemote } from '../../src/services/firebase/vehiclesService';
 import { fetchRecallsByVehicle, type RecallHit } from '../../src/services/recalls/nhtsaRecalls';
 import { estimateLocalFluids } from '../../src/services/vehicle/localFluids';
 import { colors } from '../../src/theme/colors';

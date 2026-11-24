@@ -15,13 +15,7 @@ import { useI18n } from '../../src/context/I18nContext';
 import { useNightMode } from '../../src/context/NightModeContext';
 import { useSafetyDriving } from '../../src/context/SafetyDrivingContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
-import {
-  ensurePersonalQr,
-  getOwnMedicalCard,
-  scanMedicalEmergency,
-  scanMedicalPublic,
-  upsertMedicalCard,
-} from '../../src/services/firebase';
+import { ensurePersonalQr, getOwnMedicalCard, scanMedicalEmergency, scanMedicalPublic, upsertMedicalCard } from '../../src/services/firebase/medicalService';
 import { getDeviceCoords, type DeviceCoords } from '../../src/services/geo/deviceLocation';
 import {
   BREAK_TTS_EN,

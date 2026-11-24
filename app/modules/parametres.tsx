@@ -7,7 +7,7 @@ import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
 import { useI18n } from '../../src/context/I18nContext';
-import { signInEmail, signUpEmail } from '../../src/services/firebase';
+import { signInEmail, signUpEmail } from '../../src/services/firebase/authService';
 import {
   DEFAULT_LOCAL_NOTIFS,
   DEFAULT_LOCAL_PREFS,

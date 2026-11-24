@@ -6,7 +6,7 @@ import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
-import { listWeighStations } from '../../src/services/firebase';
+import { listWeighStations } from '../../src/services/firebase/weighService';
 import type { WeighListMeta } from '../../src/services/firebase/weighService';
 import { haversineKm } from '../../src/services/geo/deviceLocation';
 import type { WeighStationDoc } from '../../src/types/firestore';

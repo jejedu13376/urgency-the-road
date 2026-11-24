@@ -20,7 +20,7 @@ import {
   scanBleDevices,
 } from '../../src/services/obd/bleScaffold';
 import { recommendValiseForVehicle } from '../../src/services/obd/recommendValise';
-import { listObdHistory, readObdSnapshot } from '../../src/services/firebase';
+import { listObdHistory, readObdSnapshot } from '../../src/services/firebase/obdService';
 import type { ObdProtocol, ObdReadingDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
 import { useI18n } from '../../src/context/I18nContext';

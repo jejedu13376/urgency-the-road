@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Tabs } from 'expo-router';
 import { Text, type ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -80,8 +79,12 @@ export default function TabsLayout() {
           title: t('tabs.monVehicule'),
           tabBarAccessibilityLabel: t('tabs.monVehicule'),
           tabBarLabel: ({ color }) => <TabLabel label={t('tabs.monVehiculeShort')} color={color} />,
-          tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="car-estate" size={ICON_SIZE} color={tint(color)} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'car-sport' : 'car-sport-outline'}
+              size={ICON_SIZE}
+              color={tint(color)}
+            />
           ),
         }}
       />
@@ -91,8 +94,12 @@ export default function TabsLayout() {
           title: t('tabs.diagnostic'),
           tabBarAccessibilityLabel: t('tabs.diagnostic'),
           tabBarLabel: ({ color }) => <TabLabel label={t('tabs.diagnosticShort')} color={color} />,
-          tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="car-wrench" size={ICON_SIZE} color={tint(color)} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'construct' : 'construct-outline'}
+              size={ICON_SIZE}
+              color={tint(color)}
+            />
           ),
         }}
       />

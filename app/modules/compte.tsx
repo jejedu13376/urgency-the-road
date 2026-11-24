@@ -11,12 +11,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useI18n } from '../../src/context/I18nContext';
 import { MOCK_PLANS } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
-import {
-  isCurrentEmailVerified,
-  resendEmailVerification,
-  signInEmail,
-  signUpEmail,
-} from '../../src/services/firebase';
+import { isCurrentEmailVerified, resendEmailVerification, signInEmail, signUpEmail } from '../../src/services/firebase/authService';
 import {
   isMethodConfigured,
   isPaymentsConfigured,
