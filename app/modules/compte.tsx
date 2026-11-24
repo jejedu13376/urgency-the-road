@@ -164,7 +164,14 @@ export default function CompteScreen() {
               </PressScale>
             ))}
             {pay ? (
-              <Text style={[styles.msg, isMethodConfigured(method) ? styles.ok : styles.bad]}>{pay}</Text>
+              <Text
+                style={[
+                  styles.msg,
+                  isMethodConfigured(method) ? styles.premiumOk : styles.premiumBad,
+                ]}
+              >
+                {pay}
+              </Text>
             ) : null}
           </View>
         </FadeInBlock>
@@ -408,6 +415,9 @@ const styles = StyleSheet.create({
   msg: { fontWeight: '700', fontSize: 14, lineHeight: 20 },
   ok: { color: colors.garage },
   bad: { color: colors.danger },
+  /** High-contrast status on asphalt Premium hero (not garage/danger on dark). */
+  premiumOk: { color: colors.garageSoft },
+  premiumBad: { color: colors.dangerSoft },
   meta: { color: colors.muted, fontSize: 14, lineHeight: 20, fontWeight: '600' },
   rule: { color: colors.slate, fontSize: 14, fontWeight: '600', lineHeight: 20 },
   methods: { gap: 8, marginTop: 8 },

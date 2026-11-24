@@ -139,7 +139,8 @@ const styles = StyleSheet.create({
   streakVal: { color: colors.white, fontWeight: '900', fontSize: 20, lineHeight: 22 },
   streakLbl: { color: colors.signalSoft, fontSize: 11, fontWeight: '700' },
   track: { height: 10, backgroundColor: colors.slate, borderRadius: 8, overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: 8 },
+  /** Keep signal fill for loading skeleton View; AnimatedBarFill also tints via prop. */
+  fill: { height: '100%', borderRadius: 8, backgroundColor: colors.signal },
   xpRow: { flexDirection: 'row', gap: 8 },
   xpCard: {
     flex: 1,
