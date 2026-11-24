@@ -3,7 +3,7 @@ import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../context/I18nContext';
-import { belowGlobalTopBar, CHROME_GAP } from '../chromeInsets';
+import { belowGlobalTopBar, CHROME_GAP, HOS_CHIP_ROW_HEIGHT } from '../chromeInsets';
 import { colors } from '../theme/colors';
 
 /** Fixed chrome width — weather sits below this row (see WeatherBanner). */
@@ -11,7 +11,7 @@ export const CONNEXION_CHIP_HEIGHT = 36;
 
 /**
  * Top-right « Connexion » chrome — always on tabs (hidden on /modules/* and carte plein écran).
- * Shares the row under GlobalTopBar with HOS (HOS leaves right clearance).
+ * Stacked under GlobalTopBar → HOS row so it never fights the full-width HOS chip.
  */
 export function ConnexionChip() {
   const insets = useSafeAreaInsets();
@@ -26,7 +26,7 @@ export function ConnexionChip() {
 
   // Keep label short — full email lives on Compte / Settings.
   const label = profile?.email ? t('connexion.chipSignedIn') : t('connexion.chip');
-  const top = belowGlobalTopBar(insets) + CHROME_GAP;
+  const top = belowGlobalTopBar(insets) + CHROME_GAP + HOS_CHIP_ROW_HEIGHT + 4;
 
   return (
     <View style={[styles.wrap, { top, right: 10 }]}>
