@@ -7,8 +7,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { useFleet } from '../context/FleetContext';
 import { GPS_WATCH_SAFETY, watchDevicePosition } from '../services/geo/deviceLocation';
+import { GPS_WATCH_SAFETY_DELTA_CAP_SEC } from '../services/geo/gpsWatchPresets';
 import {
   accumulateDrivingTime,
+  DRIVING_SPEED_MIN_MPS,
   isDrivingBreakDue,
   loadDrivingBreakState,
   markDrivingBreakAlertSpoken,
@@ -187,7 +189,12 @@ export function useSafetyDrivingMonitor() {
         });
         const prev = lastTickRef.current;
         lastTickRef.current = now;
-        const deltaSec = prev == null ? 0 : Math.min(5, Math.max(0, (now - prev) / 1000));
+        // Cap must cover slow motion at GPS_WATCH_SAFETY.distanceInterval / min speed.
+        const maxDelta = Math.max(
+          GPS_WATCH_SAFETY_DELTA_CAP_SEC,
+          Math.ceil(GPS_WATCH_SAFETY.distanceInterval / DRIVING_SPEED_MIN_MPS) + 1,
+        );
+        const deltaSec = prev == null ? 0 : Math.min(maxDelta, Math.max(0, (now - prev) / 1000));
 
         const kmh =
           typeof pos.speedMps === 'number' && Number.isFinite(pos.speedMps)

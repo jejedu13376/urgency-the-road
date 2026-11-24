@@ -22,9 +22,16 @@ export const GPS_WATCH_MAP_IDLE: GpsWatchPreset = {
   distanceInterval: 8,
 };
 
-/** Global HOS / fatigue monitor — motion sampling, not map paint. */
+/**
+ * Global HOS / fatigue monitor — motion sampling, not map paint.
+ * distanceInterval must stay short enough that at DRIVING_SPEED_MIN_MPS (~2 m/s)
+ * callbacks arrive within the accumulator's per-tick delta cap (see useSafetyDrivingMonitor).
+ */
 export const GPS_WATCH_SAFETY: GpsWatchPreset = {
   accuracy: 3, // Balanced
-  timeInterval: 3000,
-  distanceInterval: 15,
+  timeInterval: 2500,
+  distanceInterval: 5,
 };
+
+/** Max credited seconds per GPS callback for HOS — ≥ distanceInterval / 2 m/s. */
+export const GPS_WATCH_SAFETY_DELTA_CAP_SEC = 8;

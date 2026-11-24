@@ -358,6 +358,8 @@ export function GpsFullMap() {
   const alertQueueRef = useRef<RouteAlert[]>([]);
   const shownAlertIdsRef = useRef<Set<string>>(new Set());
   const navigatingRef = useRef(false);
+  /** React state mirrors navigatingRef so useFocusEffect can restart the GPS watch. */
+  const [navWatchBoost, setNavWatchBoost] = useState(false);
   const navDestRef = useRef<{ lat: number; lon: number } | null>(null);
   const activeTripIdRef = useRef<string | null>(null);
   const lastRouteRef = useRef<VehicleRouteResult | null>(null);
@@ -880,6 +882,7 @@ export function GpsFullMap() {
                 if (toDestKm <= 0.06) {
                   // Sync clear before any async — HTML may also post `arrived`.
                   navigatingRef.current = false;
+                  setNavWatchBoost(false);
                   navDestRef.current = null;
                   shownAlertIdsRef.current = new Set();
                   highlightedWeighIdRef.current = null;
@@ -975,7 +978,7 @@ export function GpsFullMap() {
             }
             setHudNote(`GPS live — ${err}`);
           },
-          navigatingRef.current ? GPS_WATCH_NAVIGATING : GPS_WATCH_MAP_IDLE,
+          navWatchBoost ? GPS_WATCH_NAVIGATING : GPS_WATCH_MAP_IDLE,
         );
         if (cancelled) {
           next?.remove();
@@ -991,7 +994,15 @@ export function GpsFullMap() {
         }
         sub?.remove();
       };
-    }, [injectLivePosition, setMapOrigin, injectHighlightWeigh, enqueueAlerts, applyModeInMap, bootHtml]),
+    }, [
+      injectLivePosition,
+      setMapOrigin,
+      injectHighlightWeigh,
+      enqueueAlerts,
+      applyModeInMap,
+      bootHtml,
+      navWatchBoost,
+    ]),
   );
 
   useEffect(() => {
@@ -1186,6 +1197,7 @@ export function GpsFullMap() {
       if (msg.type === 'navigating' && msg.to) {
         setTripEnded(null);
         navigatingRef.current = true;
+        setNavWatchBoost(true);
         navDestRef.current = { lat: msg.to.lat, lon: msg.to.lon };
         // Reset per-nav speak/announce state — do NOT clear shownAlertIdsRef or
         // re-run trucker brief (route handler already queued overlays once).
@@ -1233,6 +1245,7 @@ export function GpsFullMap() {
         // Idempotent — HTML + RN watch may both detect ~60–80 m arrival.
         if (!navigatingRef.current && !activeTripIdRef.current) return;
         navigatingRef.current = false;
+        setNavWatchBoost(false);
         navDestRef.current = null;
         shownAlertIdsRef.current = new Set();
         highlightedWeighIdRef.current = null;

@@ -915,10 +915,13 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
 
   function ensureOsmBuildings(done){
     if (typeof OSMBuildings !== 'undefined') {
+      if (!buildingsOn) { done(false); return; }
       done(mountOsmBuildings());
       return;
     }
     loadOsmBuildingsScript(function(ok){
+      // User may have toggled 3D off while the CDN script was in flight.
+      if (!buildingsOn) { done(false); return; }
       done(ok ? mountOsmBuildings() : false);
     });
   }
@@ -933,6 +936,13 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       return;
     }
     function finish(ok, viaMapbox){
+      if (!buildingsOn) {
+        destroyMapbox3d();
+        destroyOsmBuildings();
+        syncMapTypeMenu();
+        post(maptypePayload());
+        return;
+      }
       if (!ok) {
         buildingsOn = false;
         setStatus('Bâtiments 3D indisponibles — EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ou OSM Buildings CDN');
