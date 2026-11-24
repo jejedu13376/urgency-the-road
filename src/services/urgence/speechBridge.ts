@@ -1,7 +1,10 @@
 /**
  * Lazy expo-speech bridge so Node unit tests can import urgence modules
  * without loading the Expo runtime (__DEV__).
- * Honors app-wide mute + dyslexia-friendly default rate when available.
+ *
+ * Safety alerts (break / drowsiness / fatigue / overspeed) intentionally
+ * ignore the GPS nav mute flag — mute only gates speakApp / speakNav.
+ * Dyslexia-friendly default rate when appSpeech is available.
  */
 
 type SpeakOpts = {
@@ -32,16 +35,6 @@ async function loadSpeech(): Promise<SpeechApi | null> {
   }
 }
 
-async function isMuted(): Promise<boolean> {
-  try {
-    const { isAppSpeechMutedSync, loadAppSpeechMuted } = await import('../speech/appSpeech');
-    await loadAppSpeechMuted();
-    return isAppSpeechMutedSync();
-  } catch {
-    return false;
-  }
-}
-
 export async function speechStop(): Promise<void> {
   const s = await loadSpeech();
   try {
@@ -54,16 +47,10 @@ export async function speechStop(): Promise<void> {
 export function speakViaExpo(
   language: string,
   text: string,
-  opts?: Omit<SpeakOpts, 'language' | 'onDone' | 'onStopped' | 'onError'> & {
-    force?: boolean;
-  },
+  opts?: Omit<SpeakOpts, 'language' | 'onDone' | 'onStopped' | 'onError'>,
 ): Promise<void> {
   return new Promise((resolve) => {
     void (async () => {
-      if (!opts?.force && (await isMuted())) {
-        resolve();
-        return;
-      }
       const s = await loadSpeech();
       if (!s) {
         resolve();
