@@ -62,3 +62,10 @@ firebase/functions/node_modules/
 # generated native folders
 /ios
 /android
+
+# ngrok helper (restart-ngrok.sh)
+.ngrok-tunnel.log
+.ngrok-tunnel.pid
+.ngrok-exp-url.txt
+.ngrok-https-url.txt
+
