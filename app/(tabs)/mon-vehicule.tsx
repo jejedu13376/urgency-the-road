@@ -344,6 +344,29 @@ export default function MonVehiculeScreen() {
       )}
 
       {active ? (
+        <View style={styles.obdPanel}>
+          <Text style={styles.obdTitle}>{t('monVehicule.obdTitle')}</Text>
+          <Text style={styles.obdHint}>{t('monVehicule.obdHint')}</Text>
+          <Text style={styles.obdVehicle}>
+            {active.make} {active.model} · {active.year}
+            {active.vin ? ` · …${active.vin.slice(-8)}` : ''}
+          </Text>
+          <Link
+            href={{ pathname: '/modules/obd', params: { from: 'vin' } }}
+            asChild
+          >
+            <Pressable
+              style={styles.obdCta}
+              accessibilityRole="button"
+              accessibilityLabel={t('monVehicule.obdCtaA11y')}
+            >
+              <Text style={styles.obdCtaTxt}>{t('monVehicule.obdCta')}</Text>
+            </Pressable>
+          </Link>
+        </View>
+      ) : null}
+
+      {active ? (
         <Card title={t('monVehicule.recallsTitle')}>
           {recallsLoading ? (
             <Text style={styles.hint}>Chargement NHTSA recallsByVehicle…</Text>
@@ -527,4 +550,48 @@ const styles = StyleSheet.create({
   chipTxtOn: { color: colors.white },
   linkBtn: { paddingVertical: 8 },
   linkTxt: { color: colors.signal, fontWeight: '700' },
+  obdPanel: {
+    backgroundColor: colors.asphalt,
+    borderRadius: 14,
+    padding: 18,
+    gap: 10,
+    borderWidth: 2,
+    borderColor: colors.signal,
+  },
+  obdTitle: {
+    color: colors.white,
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 28,
+    letterSpacing: 0.2,
+  },
+  obdHint: {
+    color: colors.mist,
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 24,
+  },
+  obdVehicle: {
+    color: colors.signalSoft,
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 22,
+  },
+  obdCta: {
+    marginTop: 4,
+    backgroundColor: colors.signal,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    minHeight: 56,
+    justifyContent: 'center',
+  },
+  obdCtaTxt: {
+    color: colors.white,
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    textAlign: 'center',
+  },
 });

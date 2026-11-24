@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Link, Stack } from 'expo-router';
+import { Link, Stack, useLocalSearchParams } from 'expo-router';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
@@ -45,10 +45,14 @@ const SEV_STYLE = {
   critical: { bg: colors.signalSoft, fg: colors.danger },
 } as const;
 
+type FlowStep = 'connect' | 'read' | 'results';
+
 /** Module 5 — VIN → recommandation prise/valise (achat abonné) + BLE / DTC. */
 export default function ObdScreen() {
   const { t } = useI18n();
   useModuleVisit(5);
+  const params = useLocalSearchParams<{ from?: string }>();
+  const fromVin = params.from === 'vin';
   const { profile } = useAuth();
   const { active } = useFleet();
   const recommendation = useMemo(() => recommendValiseForVehicle(active), [active]);
@@ -68,6 +72,8 @@ export default function ObdScreen() {
   const [liveBle, setLiveBle] = useState(false);
   const [busy, setBusy] = useState(false);
   const cap = getBleCapability();
+
+  const flowStep: FlowStep = reading ? 'results' : connectedId ? 'read' : 'connect';
 
   useEffect(() => {
     if (!recommendation?.recommendedProtocol) return;
@@ -251,6 +257,69 @@ export default function ObdScreen() {
             'Après VIN : l’app recommande la prise + la valise — l’abonné achète (pas fourni par l’éditeur).'
           }
         />
+
+        <View style={styles.guidePanel}>
+          <Text style={styles.guideTitle}>
+            {fromVin ? 'Diagnostic OBD — après VIN' : 'Diagnostic OBD — 3 étapes'}
+          </Text>
+          {active ? (
+            <Text style={styles.guideVehicle}>
+              {active.make} {active.model} · {active.year}
+            </Text>
+          ) : (
+            <Text style={styles.guideVehicle}>Aucun véhicule actif — décodez un VIN d’abord.</Text>
+          )}
+          <Text style={styles.guideBody}>
+            1. Branchez la valise sur la prise OBD du véhicule.{'\n'}
+            2. Scannez et connectez en Bluetooth.{'\n'}
+            3. Lisez les codes défauts (DTC) et l’état moteur.
+          </Text>
+          <View style={styles.stepRow}>
+            {(
+              [
+                { id: 'connect' as const, label: '1 · Connecter' },
+                { id: 'read' as const, label: '2 · Lire' },
+                { id: 'results' as const, label: '3 · Résultats' },
+              ] as const
+            ).map((s) => (
+              <View
+                key={s.id}
+                style={[styles.stepChip, flowStep === s.id && styles.stepChipOn]}
+              >
+                <Text style={[styles.stepChipTxt, flowStep === s.id && styles.stepChipTxtOn]}>
+                  {s.label}
+                </Text>
+              </View>
+            ))}
+          </View>
+          {!connectedId ? (
+            <Pressable
+              style={[styles.guideCta, busy && styles.btnDisabled]}
+              disabled={busy}
+              onPress={() => void onBleScan()}
+              accessibilityRole="button"
+              accessibilityLabel="Scanner les appareils OBD Bluetooth"
+            >
+              <Text style={styles.guideCtaTxt}>
+                {busy ? 'Scan…' : 'Étape 1 — Scanner la valise OBD'}
+              </Text>
+            </Pressable>
+          ) : !reading ? (
+            <Pressable
+              style={[styles.guideCta, busy && styles.btnDisabled]}
+              disabled={busy}
+              onPress={() => void onRead()}
+              accessibilityRole="button"
+              accessibilityLabel="Lire les codes défauts DTC"
+            >
+              <Text style={styles.guideCtaTxt}>
+                {busy ? 'Lecture…' : 'Étape 2 — Lire DTC + capteurs'}
+              </Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.guideDone}>Étape 3 — résultats ci-dessous</Text>
+          )}
+        </View>
 
         <Card title="Onboarding — prise & valise (via VIN)">
           {!active ? (
@@ -485,6 +554,70 @@ export default function ObdScreen() {
 }
 
 const styles = StyleSheet.create({
+  guidePanel: {
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    padding: 16,
+    gap: 10,
+    borderWidth: 2,
+    borderColor: colors.asphalt,
+  },
+  guideTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: colors.ink,
+    lineHeight: 28,
+  },
+  guideVehicle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.signal,
+    lineHeight: 24,
+  },
+  guideBody: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.slate,
+    lineHeight: 26,
+  },
+  stepRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  stepChip: {
+    backgroundColor: colors.mist,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  stepChipOn: {
+    backgroundColor: colors.asphalt,
+    borderColor: colors.asphalt,
+  },
+  stepChipTxt: { fontSize: 14, fontWeight: '800', color: colors.slate },
+  stepChipTxtOn: { color: colors.white },
+  guideCta: {
+    backgroundColor: colors.signal,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    minHeight: 56,
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  guideCtaTxt: {
+    color: colors.white,
+    fontSize: 17,
+    fontWeight: '900',
+    textAlign: 'center',
+    letterSpacing: 0.2,
+  },
+  guideDone: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.garage,
+    lineHeight: 24,
+  },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.mist },
   chipOn: { backgroundColor: colors.asphalt },
@@ -493,15 +626,15 @@ const styles = StyleSheet.create({
   btn: { backgroundColor: colors.signal, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 8 },
   btnDisabled: { opacity: 0.55 },
   btnTxt: { color: colors.white, fontWeight: '800', fontSize: 13 },
-  dtc: { borderRadius: 10, padding: 10, gap: 4 },
+  dtc: { borderRadius: 10, padding: 12, gap: 6 },
   dtcHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  code: { fontWeight: '900', fontSize: 15 },
-  sevBadge: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  plain: { color: colors.slate },
-  meta: { color: colors.muted, fontSize: 12, marginTop: 4 },
-  hint: { color: colors.muted, fontSize: 12, lineHeight: 18 },
-  ok: { color: colors.garage, fontWeight: '700', fontSize: 12, marginTop: 6 },
-  section: { fontWeight: '800', color: colors.ink, fontSize: 13 },
+  code: { fontWeight: '900', fontSize: 20, lineHeight: 28 },
+  sevBadge: { fontSize: 13, fontWeight: '800', textTransform: 'uppercase' },
+  plain: { color: colors.slate, fontSize: 15, lineHeight: 22, fontWeight: '600' },
+  meta: { color: colors.muted, fontSize: 13, marginTop: 4, lineHeight: 20 },
+  hint: { color: colors.muted, fontSize: 14, lineHeight: 22 },
+  ok: { color: colors.garage, fontWeight: '700', fontSize: 13, marginTop: 6, lineHeight: 20 },
+  section: { fontWeight: '800', color: colors.ink, fontSize: 15, lineHeight: 22 },
   clear: { backgroundColor: colors.asphalt, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 8 },
   deviceRow: {
     flexDirection: 'row',
