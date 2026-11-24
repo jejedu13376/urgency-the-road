@@ -955,7 +955,128 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     else if (msg.cmd === 'setMapType') window.__gpsSetMapType(msg);
   });
 
+  /* Mouse: single click places pin (unchanged).
+     Touch: long-press ~2s OR double-tap places pin — pan/zoom must not count as a press. */
+  var LONG_PRESS_MS = 2000;
+  var TOUCH_MOVE_PX = 12;
+  var DOUBLE_TAP_MS = 350;
+  var DOUBLE_TAP_PX = 36;
+  var touchPressTimer = null;
+  var touchStartPt = null;
+  var touchStartLL = null;
+  var touchMoved = false;
+  var longPressPlaced = false;
+  var suppressClickUntil = 0;
+  var lastTapAt = 0;
+  var lastTapPt = null;
+  var mapEl = map.getContainer();
+
+  function clearTouchPressTimer(){
+    if (touchPressTimer) {
+      clearTimeout(touchPressTimer);
+      touchPressTimer = null;
+    }
+  }
+
+  function touchPoint(t){
+    return L.point(t.clientX, t.clientY);
+  }
+
+  function latLngFromTouch(t){
+    return map.mouseEventToLatLng(t);
+  }
+
+  function placePinFromTouch(ll){
+    if (!ll) return;
+    /* Block Leaflet/browser ghost clicks after touch pin placement. */
+    suppressClickUntil = Date.now() + 500;
+    setDestination(ll);
+  }
+
+  mapEl.addEventListener('touchstart', function(ev){
+    /* Any finger contact: ignore following synthetic click (mouse stays intact). */
+    suppressClickUntil = Date.now() + 700;
+    if (ev.touches.length !== 1) {
+      clearTouchPressTimer();
+      touchMoved = true;
+      longPressPlaced = false;
+      touchStartPt = null;
+      touchStartLL = null;
+      lastTapAt = 0;
+      lastTapPt = null;
+      return;
+    }
+    var t = ev.touches[0];
+    touchStartPt = touchPoint(t);
+    touchStartLL = latLngFromTouch(t);
+    touchMoved = false;
+    longPressPlaced = false;
+    clearTouchPressTimer();
+    touchPressTimer = setTimeout(function(){
+      touchPressTimer = null;
+      if (!touchMoved && touchStartLL) {
+        longPressPlaced = true;
+        placePinFromTouch(touchStartLL);
+      }
+    }, LONG_PRESS_MS);
+  }, { passive: true });
+
+  mapEl.addEventListener('touchmove', function(ev){
+    if (!touchStartPt || !ev.touches.length) return;
+    var t = ev.touches[0];
+    if (touchStartPt.distanceTo(touchPoint(t)) > TOUCH_MOVE_PX) {
+      touchMoved = true;
+      clearTouchPressTimer();
+    }
+  }, { passive: true });
+
+  mapEl.addEventListener('touchend', function(ev){
+    clearTouchPressTimer();
+    if (longPressPlaced) {
+      longPressPlaced = false;
+      touchStartPt = null;
+      touchStartLL = null;
+      lastTapAt = 0;
+      lastTapPt = null;
+      return;
+    }
+    if (touchMoved || !touchStartPt || !ev.changedTouches || !ev.changedTouches.length) {
+      touchStartPt = null;
+      touchStartLL = null;
+      return;
+    }
+    var t = ev.changedTouches[0];
+    var pt = touchPoint(t);
+    var now = Date.now();
+    if (
+      lastTapAt &&
+      (now - lastTapAt) <= DOUBLE_TAP_MS &&
+      lastTapPt &&
+      lastTapPt.distanceTo(pt) <= DOUBLE_TAP_PX
+    ) {
+      lastTapAt = 0;
+      lastTapPt = null;
+      placePinFromTouch(latLngFromTouch(t));
+      /* Prefer pin over Leaflet double-tap zoom for this gesture. */
+      if (ev.cancelable && ev.preventDefault) ev.preventDefault();
+    } else {
+      lastTapAt = now;
+      lastTapPt = pt;
+    }
+    touchStartPt = null;
+    touchStartLL = null;
+  }, { passive: false });
+
+  mapEl.addEventListener('touchcancel', function(){
+    clearTouchPressTimer();
+    touchMoved = true;
+    longPressPlaced = false;
+    touchStartPt = null;
+    touchStartLL = null;
+  }, { passive: true });
+
   map.on('click', function(e){
+    if (Date.now() < suppressClickUntil) return;
     setDestination(e.latlng);
   });
 
