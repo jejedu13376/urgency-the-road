@@ -593,12 +593,12 @@ export async function scanMedicalEmergency(
   }
 
   try {
-    // Online: cloud index wins — avoid stale / rotated cache when network works.
+    // Online: cloud index wins — do not serve stale cache when the index is absent.
     const snap = await getDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, code));
     if (!snap.exists()) {
-      if (local) {
-        await removeMedicalCardByScanCode(code);
-      }
+      // Keep local store intact — index may never have been uploaded / rolled back after
+      // a successful local save. Owner hydrate still needs that fiche. Online emergency
+      // simply refuses to show PHI without a live index (no wipe).
       if (code === MOCK_CARD.scanCode.toUpperCase()) {
         return flaggedDemoResult(
           toEmergencyView({ ...MOCK_CARD }),
@@ -640,20 +640,25 @@ export async function scanMedicalEmergency(
     });
     return liveResult(view);
   } catch (e) {
-    // Network / soft fail — fall back to on-device fiche if present.
+    // Auth/rules deny: never mockResult PHI — drop revoked cache, soft-fail empty.
+    if (isPermissionDenied(e)) {
+      if (local) {
+        await removeMedicalCardByScanCode(code);
+      }
+      return failResult(
+        null,
+        'SOFT vue urgence — permission refusée (pas de PHI mock, UI charge)',
+      );
+    }
+    // True network / soft DEV errors — fall back to on-device fiche if present.
     if (local) {
       return mockResult(
         toEmergencyView(local),
         'LOCAL vue urgence — cloud indisponible, fiche appareil',
       );
     }
-    if (isPermissionDenied(e) || softDev) {
-      return failResult(
-        null,
-        isPermissionDenied(e)
-          ? 'SOFT vue urgence — permission refusée (pas de PHI mock, UI charge)'
-          : 'SOFT vue urgence — DEV (pas de PHI inventé)',
-      );
+    if (softDev) {
+      return failResult(null, 'SOFT vue urgence — DEV (pas de PHI inventé)');
     }
     return failResult(null, e instanceof Error ? e.message : 'Scan urgence refusé');
   }
