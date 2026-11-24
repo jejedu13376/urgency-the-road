@@ -14,6 +14,20 @@ export function medicalLocalKeyForUid(uid: string): string {
   return `um.urgence.medicalQr.v1:${uid}`;
 }
 
+/** Sign-out barrier — in-flight saves must not rewrite PHI after clear. */
+let writeEpoch = 0;
+let writesAllowed = true;
+
+export function suspendMedicalLocalWrites(): number {
+  writesAllowed = false;
+  writeEpoch += 1;
+  return writeEpoch;
+}
+
+export function resumeMedicalLocalWrites(): void {
+  writesAllowed = true;
+}
+
 type LocalMedicalStore = {
   /** Owner fiche only (at most one personal QR). */
   card: MedicalCardDoc | null;
@@ -94,9 +108,10 @@ export function isIsoNewer(a?: string, b?: string): boolean {
  * Refuses third-party / unsigned cards so rescuer scans never land in AsyncStorage.
  */
 export async function saveMedicalCardLocal(card: MedicalCardDoc): Promise<MedicalCardDoc> {
+  const epochAtStart = writeEpoch;
   const uid = getSignedInUid();
   const code = card.scanCode.trim().toUpperCase();
-  if (!uid || !code.startsWith('UM-QR-') || card.ownerUid !== uid) {
+  if (!writesAllowed || !uid || !code.startsWith('UM-QR-') || card.ownerUid !== uid) {
     return card;
   }
   const normalized: MedicalCardDoc = {
@@ -109,6 +124,10 @@ export async function saveMedicalCardLocal(card: MedicalCardDoc): Promise<Medica
     emergencyContacts: card.emergencyContacts ?? [],
     updatedAt: card.updatedAt || new Date().toISOString(),
   };
+  // Re-check barrier after any await gap callers may have had before this call.
+  if (!writesAllowed || epochAtStart !== writeEpoch || getSignedInUid() !== uid) {
+    return card;
+  }
   await writeStoreForUid(uid, { card: normalized, updatedAt: normalized.updatedAt });
   return normalized;
 }

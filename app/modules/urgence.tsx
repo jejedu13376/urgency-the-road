@@ -84,7 +84,8 @@ export default function UrgenceScreen() {
   const [medications, setMedications] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
-  const [scanCode, setScanCode] = useState('');
+  /** Lookup field for scan UI only — never fed into personal QR mint/save. */
+  const [lookupCode, setLookupCode] = useState('');
   const [badgeId, setBadgeId] = useState(profile?.rescuerBadgeId ?? '');
   const [publicView, setPublicView] = useState<MedicalPublicPreview | null>(null);
   const [emergencyView, setEmergencyView] = useState<MedicalEmergencyView | null>(null);
@@ -200,7 +201,6 @@ export default function UrgenceScreen() {
         }
         if (qr.data.card?.scanCode) {
           setCard(qr.data.card);
-          setScanCode(qr.data.scanCode);
           hydrateForm(qr.data.card);
         } else {
           const res = await getOwnMedicalCard(uid);
@@ -211,7 +211,6 @@ export default function UrgenceScreen() {
           setCard(res.data);
           setLabel(res.stubLabel ?? qr.stubLabel);
           if (res.data) {
-            setScanCode(res.data.scanCode);
             hydrateForm(res.data);
           }
         }
@@ -227,8 +226,9 @@ export default function UrgenceScreen() {
       return;
     }
     const uid = profile.uid;
-    // Never derive from uid — empty → upsertMedicalCard mints opaque UM-QR-* (mintScanCode).
-    const code = (card?.scanCode || scanCode || '').trim().toUpperCase();
+    // Personal QR only — never the scan/lookup field (may be a third-party code).
+    // Empty → upsertMedicalCard mints opaque UM-QR-* (mintScanCode).
+    const code = (card?.scanCode || '').trim().toUpperCase();
     const payload: MedicalCardDoc = {
       id: `med-${uid}`,
       ownerUid: uid,
@@ -257,14 +257,13 @@ export default function UrgenceScreen() {
     };
     const res = await upsertMedicalCard(payload);
     setCard(res.data);
-    setScanCode(res.data.scanCode);
     setSaveMsg(res.stubLabel ?? 'Fiche + QR personnel enregistrés');
     setLabel(res.stubLabel);
   };
 
   const onPublicScan = async () => {
     setEmergencyView(null);
-    const res = await scanMedicalPublic(scanCode);
+    const res = await scanMedicalPublic(lookupCode);
     setPublicView(res.data);
     setScanMsg(res.stubLabel ?? (res.data ? 'Vue publique limitée' : 'QR inconnu'));
   };
@@ -285,7 +284,7 @@ export default function UrgenceScreen() {
       profile?.role === 'rescuer'
         ? { ...profile, rescuerBadgeId: badgeId || profile.rescuerBadgeId }
         : profile;
-    const res = await scanMedicalEmergency(scanCode, rescuer ?? null);
+    const res = await scanMedicalEmergency(lookupCode, rescuer ?? null);
     // ok:false demo can still carry flagged PHI for UX — never present as live.
     setEmergencyView(res.data);
     const demoFlag =
@@ -302,8 +301,8 @@ export default function UrgenceScreen() {
   };
 
   const onCameraScan = (raw: string) => {
-    // Visible scanCode is the single source of truth (opaque id / legacy → scanCode).
-    setScanCode(extractScanCode(raw));
+    // Lookup only — never becomes the owner's personal QR on save.
+    setLookupCode(extractScanCode(raw));
     setScanMsg('QR lu — choisissez vue publique ou vue urgence (hors ligne OK).');
   };
 
@@ -397,7 +396,7 @@ export default function UrgenceScreen() {
           <MedicalQrCode
             value={qrPrintValue}
             size={196}
-            label={(card?.scanCode ?? scanCode) || '— (abonné requis)'}
+            label={card?.scanCode || '— (abonné requis)'}
           />
           <Text style={styles.meta}>
             Statut abonnement : {subscriberActive ? 'actif → QR disponible' : 'inactif → pas de QR'}
@@ -430,16 +429,16 @@ export default function UrgenceScreen() {
         <Card title="Scan — accès contrôlé">
           <Text style={styles.meta}>
             (1) Public limité : SOS sans données médicales. (2) Urgence complète : nom, adresse,
-            contact d’urgence, fiche médicale — secours autorisés. Lecture locale d’abord (hors
-            ligne), cloud ensuite si dispo.
+            contact d’urgence, fiche médicale — secours autorisés. Hors ligne : fiche propriétaire
+            sur cet appareil ; secours : cloud quand disponible.
           </Text>
           <Pressable style={styles.gpsBtn} onPress={() => setScannerOpen(true)}>
             <Text style={styles.sosTxt}>Scanner QR caméra (hors ligne)</Text>
           </Pressable>
           <Text style={styles.label}>Code QR scanné</Text>
           <TextInput
-            value={scanCode}
-            onChangeText={setScanCode}
+            value={lookupCode}
+            onChangeText={setLookupCode}
             style={styles.input}
             placeholder="UM-QR-…"
             placeholderTextColor={colors.muted}

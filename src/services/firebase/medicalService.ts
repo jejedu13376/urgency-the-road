@@ -246,6 +246,26 @@ export async function ensurePersonalQr(
           label || 'DEMO QR personnel existant (ok:false, pas live)',
         );
       }
+      // Push unsynced local fiche to cloud when possible so rescuers can resolve the QR.
+      if (getFirebase() && getSignedInUid()) {
+        const synced = await upsertMedicalCard({
+          ...existing.data,
+          subscriberActive: true,
+        });
+        if (synced.source === 'firebase' && synced.ok !== false) {
+          return liveResult(
+            { scanCode: synced.data.scanCode, card: synced.data },
+            'QR local synchronisé cloud',
+          );
+        }
+        // Keep local hydrate if sync failed (network); permission deny is ok:false from upsert.
+        if (synced.ok === false && /permission|refus/i.test(synced.stubLabel ?? '')) {
+          return failResult(
+            { scanCode: existing.data.scanCode, card: existing.data },
+            synced.stubLabel ?? 'Sync cloud refusé',
+          );
+        }
+      }
       return mockResult(
         { scanCode: existing.data.scanCode, card: existing.data },
         label || 'LOCAL QR personnel (appareil)',
@@ -445,7 +465,13 @@ export async function upsertMedicalCard(
         /* best-effort orphan cleanup */
       }
     }
-    // Network / rules failure — keep device copy so QR still works offline.
+    // Rules deny: never persist or mock PHI. Network errors: keep device copy.
+    if (isPermissionDenied(e)) {
+      return failResult(
+        payload,
+        'SOFT medical — écriture refusée (pas de PHI local forcé)',
+      );
+    }
     await saveMedicalCardLocal(payload);
     return mockResult(
       payload,
@@ -504,6 +530,13 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
     }
     return liveResult(null);
   } catch (e) {
+    // Rules deny first — never mockResult PHI on permission-denied.
+    if (isPermissionDenied(e)) {
+      return failResult(
+        null,
+        'SOFT medical — permission refusée (pas de PHI mock, UI charge)',
+      );
+    }
     const local = await loadMedicalCardByOwnerUid(uid);
     if (local) {
       return mockResult(
@@ -511,14 +544,8 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
         'LOCAL medical — cloud indisponible, fiche appareil hors ligne',
       );
     }
-    // Soft-fail: ok:false + null — NEVER mockResult(ok:true) with PHI.
-    if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return failResult(
-        null,
-        isPermissionDenied(e)
-          ? 'SOFT medical — permission refusée (pas de PHI mock, UI charge)'
-          : 'SOFT medical — DEV (pas de fiche, pas de PHI inventé)',
-      );
+    if (isDevSoftAuth()) {
+      return failResult(null, 'SOFT medical — DEV (pas de fiche, pas de PHI inventé)');
     }
     return failResult(null, e instanceof Error ? e.message : 'Lecture fiche médicale refusée');
   }
