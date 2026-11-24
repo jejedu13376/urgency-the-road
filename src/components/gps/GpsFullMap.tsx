@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Link, useFocusEffect } from 'expo-router';
+import { Link, useFocusEffect, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
@@ -284,6 +284,10 @@ function postGpsCmd(win: MapWindow | null, cmd: Record<string, unknown>) {
  */
 export function GpsFullMap() {
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
+  /** Carte tab is full-bleed under the status inset; modules/gps sits under a white Stack header.
+   * Pathname flips immediately on tab change (component stays mounted) — no focus lag flag. */
+  const onCarteTab = pathname === '/carte' || Boolean(pathname?.endsWith('/carte'));
   const { active } = useFleet();
   const { profile } = useAuth();
   const webRef = useRef<WebViewHandle | null>(null);
@@ -1726,11 +1730,12 @@ export function GpsFullMap() {
     })();
   }, [profile, refreshLayers]);
 
+  // Light icons only on Carte tab (pathname). Tabs stay mounted — leaving Carte clears this
+  // immediately. modules/gps keeps root dark StatusBar for the white Stack header.
   if (!bootHtml) {
     return (
       <View style={[styles.fill, styles.boot]}>
-        {/* Asphalt load / map under status inset — light icons. */}
-        <StatusBar style="light" />
+        {onCarteTab ? <StatusBar style="light" /> : null}
         <Text style={styles.bootTxt}>Chargement carte GPS…</Text>
       </View>
     );
@@ -1738,8 +1743,7 @@ export function GpsFullMap() {
 
   return (
     <View style={styles.fill} accessibilityLabel={`Carte GPS mode ${modeLabel}`}>
-      {/* Map/satellite under transparent GlobalTopBar — light status icons. */}
-      <StatusBar style="light" />
+      {onCarteTab ? <StatusBar style="light" /> : null}
       {Platform.OS === 'web' ? (
         <WebIframe
           html={bootHtml}
