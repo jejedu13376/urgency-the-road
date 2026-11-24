@@ -596,9 +596,13 @@ export async function scanMedicalEmergency(
     // Online: cloud index wins — do not serve stale cache when the index is absent.
     const snap = await getDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, code));
     if (!snap.exists()) {
-      // Keep local store intact — index may never have been uploaded / rolled back after
-      // a successful local save. Owner hydrate still needs that fiche. Online emergency
-      // simply refuses to show PHI without a live index (no wipe).
+      // Confirmed miss while online:
+      // - Drop third-party rescuer cache so a rotated/deleted QR cannot unlock PHI offline later.
+      // - Keep the signed-in owner's own unsynced fiche (index may never have been uploaded).
+      const uid = getSignedInUid();
+      if (local && local.ownerUid && local.ownerUid !== uid) {
+        await removeMedicalCardByScanCode(code);
+      }
       if (code === MOCK_CARD.scanCode.toUpperCase()) {
         return flaggedDemoResult(
           toEmergencyView({ ...MOCK_CARD }),
