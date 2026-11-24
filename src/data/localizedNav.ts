@@ -39,6 +39,13 @@ export function localizedNavSections(t: T): NavSection[] {
           href: '/(tabs)/carte',
           moduleTag: 'M7',
         },
+        {
+          id: 'mv-voice',
+          title: t('nav.monVehicule.voiceLog'),
+          short: t('nav.monVehicule.voiceLogShort'),
+          href: '/modules/carnet-vocal',
+          moduleTag: 'M7+',
+        },
       ],
     },
     {

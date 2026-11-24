@@ -14,7 +14,7 @@
         "NSBluetoothPeripheralUsageDescription": "Connexion à la valise diagnostic OBD (ELM327 / J1939).",
         "NSLocationWhenInUseUsageDescription": "Urgence Mécanique utilise votre position pour garages, balances et SOS.",
         "NSFaceIDUsageDescription": "Urgence Mécanique utilise Face ID pour sécuriser l’accès au compte.",
-        "NSMicrophoneUsageDescription": "Urgence Mécanique utilise le micro pour l’analyseur acoustique moteur (Module 4).",
+        "NSMicrophoneUsageDescription": "Urgence Mécanique utilise le micro pour l’analyseur acoustique moteur et le carnet vocal après trajet.",
         "NSCameraUsageDescription": "Urgence Mécanique utilise la caméra pour VIN, diagnostic, devis et surveillance somnolence (caméra frontale).",
         "NSPhotoLibraryUsageDescription": "Urgence Mécanique accède à la médiathèque pour sélectionner une vidéo locale (Fil) ou un devis."
       }
@@ -88,7 +88,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Urgence Mécanique utilise le micro pour l’analyseur acoustique moteur (Module 4).",
+          "microphonePermission": "Urgence Mécanique utilise le micro pour l’analyseur acoustique moteur et le carnet vocal après trajet.",
           "enableBackgroundPlayback": false,
           "enableBackgroundRecording": false,
           "recordAudioAndroid": true
@@ -99,7 +99,7 @@
         {
           "photosPermission": "Urgence Mécanique accède à vos photos/vidéos pour le fil mécanique et les devis (fichiers locaux, pas de CDN).",
           "cameraPermission": "Urgence Mécanique utilise la caméra pour VIN, diagnostic et devis.",
-          "microphonePermission": "Urgence Mécanique utilise le micro pour l’analyseur acoustique moteur (Module 4)."
+          "microphonePermission": "Urgence Mécanique utilise le micro pour l’analyseur acoustique moteur et le carnet vocal après trajet."
         }
       ],
       [

@@ -5,7 +5,6 @@ import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
-import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { listWeighStations } from '../../src/services/firebase';
 import type { WeighListMeta } from '../../src/services/firebase/weighService';
@@ -56,7 +55,6 @@ function statusBadge(w: WeighStationDoc): { lit: boolean; text: string } {
 export default function RoutiersScreen() {
   const { t } = useI18n();
   useModuleVisit(8);
-  const { active } = useFleet();
   const [stations, setStations] = useState<WeighStationDoc[]>([]);
   const [label, setLabel] = useState<string | undefined>();
   const [meta, setMeta] = useState<WeighListMeta | null>(null);
@@ -213,6 +211,11 @@ export default function RoutiersScreen() {
               · {line}
             </Text>
           ))}
+          <Link href="/modules/carnet-vocal?mode=camion" asChild>
+            <Pressable style={styles.linkBtn}>
+              <Text style={styles.linkTxt}>Carnet vocal trajets — notes micro + partage routiers →</Text>
+            </Pressable>
+          </Link>
           <Link href="/modules/gps" asChild>
             <Pressable style={styles.linkBtn}>
               <Text style={styles.linkTxt}>GPS mode camion — hauteur / PTAC (M7) →</Text>
