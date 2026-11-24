@@ -151,22 +151,19 @@ export default function CarnetVocalScreen() {
     keepTakeRef.current = true;
     setPhase('saving');
     void (async () => {
+      let uri: string | null = null;
+      let persisted = false;
       try {
         await audioRecorder.stop();
         const status = audioRecorder.getStatus();
-        const uri = audioRecorder.uri ?? status.url;
+        uri = audioRecorder.uri ?? status.url;
         if (!uri) {
-          keepTakeRef.current = false;
           setStatusMsg(t('voiceLogbook.noFile'));
-          setPhase('idle');
           return;
         }
         const durationMs = status.durationMillis ?? 0;
         if (durationMs < 400) {
-          keepTakeRef.current = false;
-          await deleteAudioFile(uri);
           setStatusMsg(t('voiceLogbook.tooShort'));
-          setPhase('idle');
           return;
         }
         await addVoiceNote({
@@ -178,6 +175,7 @@ export default function CarnetVocalScreen() {
           tripLon: Number.isFinite(tripLon) ? tripLon : undefined,
           vehicleMode,
         });
+        persisted = true;
         setStatusMsg(t('voiceLogbook.saved'));
         await reload();
       } catch (e) {
@@ -185,6 +183,10 @@ export default function CarnetVocalScreen() {
           e instanceof Error ? e.message : t('voiceLogbook.recordFail'),
         );
       } finally {
+        if (!persisted) {
+          keepTakeRef.current = false;
+          if (uri) await deleteAudioFile(uri);
+        }
         busyRef.current = false;
         setPhase('idle');
         try {
