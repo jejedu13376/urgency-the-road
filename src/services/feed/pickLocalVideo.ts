@@ -41,7 +41,7 @@ export async function pickLocalVideo(): Promise<LocalVideoPick> {
     fileName: asset.fileName ?? undefined,
     label: `Vidéo locale sélectionnée${
       durationSec != null ? ` · ~${durationSec}s` : ''
-    } — fichier on-device uniquement ; upload CDN non branché.`,
+    } — clip prêt ; upload CDN à la publication (Auth + rules).`,
   };
 }
 

@@ -138,13 +138,16 @@ export default function UrgenceScreen() {
     const uid = profile?.uid;
     if (!uid) {
       setEnrollment(null);
+      setBadgeId('');
       return;
     }
+    // Reset badge per account — never inherit another uid's KYC field.
+    setBadgeId(profile?.rescuerBadgeId ?? '');
     void loadRescuerEnrollment(uid).then((e) => {
       setEnrollment(e ?? defaultEnrollment(uid));
-      if (e?.badgeId) setBadgeId((prev) => prev || e.badgeId);
+      if (e?.badgeId) setBadgeId(e.badgeId);
     });
-  }, [profile?.uid]);
+  }, [profile?.uid, profile?.rescuerBadgeId]);
 
   const onSosEmailChange = (value: string) => {
     setSosEmail(value);

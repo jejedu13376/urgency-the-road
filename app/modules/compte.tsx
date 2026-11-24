@@ -109,13 +109,18 @@ export default function CompteScreen() {
 
   const payPlan = async (planId: string) => {
     setPaying(true);
-    const r = await startCheckout(planId, method, {
-      referrerDiscountEndsAt: profile?.referrerDiscountEndsAt ?? null,
-    });
-    const next = await recordPaymentAttempt(planId, r);
-    setJournal(next);
-    setPaying(false);
-    setPay(r.message);
+    try {
+      const r = await startCheckout(planId, method, {
+        referrerDiscountEndsAt: profile?.referrerDiscountEndsAt ?? null,
+      });
+      const next = await recordPaymentAttempt(planId, r);
+      setJournal(next);
+      setPay(r.message);
+    } catch (e) {
+      setPay(e instanceof Error ? e.message : 'Paiement interrompu — réessayez.');
+    } finally {
+      setPaying(false);
+    }
   };
 
   const onSignUp = async () => {

@@ -148,7 +148,9 @@ export default function FilMecaniqueScreen() {
         ? `${res.stubLabel ?? (res.ok ? 'Publié' : 'Échec')} · ${cdnNote}`
         : res.stubLabel ?? (res.ok ? 'Publié' : 'Échec publication'),
     );
-    if (res.data) {
+    // Only clear the local clip after a real publish success — soft-fail keeps
+    // the file so the user can retry (CDN object would otherwise be orphaned).
+    if (res.ok && res.data) {
       const post: FeedPost = {
         ...(res.data as FeedPost),
         localMediaUri: localVideoUri ?? undefined,
@@ -157,6 +159,7 @@ export default function FilMecaniqueScreen() {
       };
       setPosts((p) => [post, ...p]);
       setCaptionDraft('');
+      setTitleDraft('');
       setLocalVideoUri(null);
       setLocalVideoName(undefined);
     }

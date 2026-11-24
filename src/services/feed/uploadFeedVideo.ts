@@ -59,14 +59,15 @@ export async function uploadFeedVideo(opts: {
     const storage = getStorage(fb.app);
     const objectRef = ref(storage, storagePath);
 
+    // file:// / content:// often report status 0 / !ok — still read the blob.
     const res = await fetch(opts.localUri);
-    if (!res.ok) {
+    const blob = await res.blob();
+    if (!blob.size) {
       return failResult(
         { downloadUrl: null, storagePath, contentType },
-        `Lecture fichier locale échouée (HTTP ${res.status})`,
+        `Lecture fichier locale échouée (HTTP ${res.status}, blob vide)`,
       );
     }
-    const blob = await res.blob();
     await uploadBytes(objectRef, blob, { contentType });
     const downloadUrl = await getDownloadURL(objectRef);
     return liveResult(
@@ -74,12 +75,13 @@ export async function uploadFeedVideo(opts: {
       `CDN LIVE — Storage ${storagePath}`,
     );
   } catch (e) {
-    if (isPermissionDenied(e) || isDevSoftAuth()) {
+    // Soft-fail only for Storage permission denies — never mask file/network errors.
+    if (isPermissionDenied(e)) {
       return failResult(
         { downloadUrl: null, storagePath, contentType },
-        isPermissionDenied(e)
-          ? 'SOFT CDN — Storage permission refusée (rules / deploy). Fichier reste on-device.'
-          : 'SOFT CDN — DEV soft-auth ; upload non simulé. Fichier reste on-device.',
+        isDevSoftAuth()
+          ? 'SOFT CDN — DEV / rules refusées. Fichier reste on-device.'
+          : 'SOFT CDN — Storage permission refusée (rules / deploy). Fichier reste on-device.',
       );
     }
     return failResult(
