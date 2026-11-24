@@ -50,14 +50,13 @@ export async function uploadFeedVideo(opts: {
     );
   }
 
-  const safeName = (opts.fileName ?? 'clip.mp4').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
-  const storagePath = `feedVideos/${uid}/${Date.now()}-${safeName}`;
-  const contentType = guessContentType(safeName);
+  let safeName = (opts.fileName ?? 'clip.mp4').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+  let storagePath = `feedVideos/${uid}/${Date.now()}-${safeName}`;
+  let contentType = guessContentType(safeName);
 
   try {
     const fb = getFirebase()!;
     const storage = getStorage(fb.app);
-    const objectRef = ref(storage, storagePath);
 
     // file:// / content:// often report status 0 / !ok — still read the blob.
     const res = await fetch(opts.localUri);
@@ -68,6 +67,23 @@ export async function uploadFeedVideo(opts: {
         `Lecture fichier locale échouée (HTTP ${res.status}, blob vide)`,
       );
     }
+    // Prefer the blob's real MIME (iOS .mov often has no fileName).
+    if (blob.type?.startsWith('video/')) {
+      contentType = blob.type;
+      if (!opts.fileName) {
+        const ext =
+          contentType === 'video/quicktime'
+            ? 'mov'
+            : contentType === 'video/webm'
+              ? 'webm'
+              : contentType === 'video/x-matroska'
+                ? 'mkv'
+                : 'mp4';
+        safeName = `clip.${ext}`;
+        storagePath = `feedVideos/${uid}/${Date.now()}-${safeName}`;
+      }
+    }
+    const objectRef = ref(storage, storagePath);
     await uploadBytes(objectRef, blob, { contentType });
     const downloadUrl = await getDownloadURL(objectRef);
     return liveResult(

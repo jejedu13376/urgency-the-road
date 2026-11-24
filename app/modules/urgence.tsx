@@ -135,18 +135,25 @@ export default function UrgenceScreen() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     const uid = profile?.uid;
     if (!uid) {
       setEnrollment(null);
       setBadgeId('');
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
     // Reset badge per account — never inherit another uid's KYC field.
     setBadgeId(profile?.rescuerBadgeId ?? '');
     void loadRescuerEnrollment(uid).then((e) => {
+      if (cancelled) return;
       setEnrollment(e ?? defaultEnrollment(uid));
       if (e?.badgeId) setBadgeId(e.badgeId);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [profile?.uid, profile?.rescuerBadgeId]);
 
   const onSosEmailChange = (value: string) => {

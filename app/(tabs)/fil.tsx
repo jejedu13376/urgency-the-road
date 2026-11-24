@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
@@ -38,6 +38,9 @@ export default function FilMecaniqueScreen() {
   const [localVideoUri, setLocalVideoUri] = useState<string | null>(null);
   const [localVideoName, setLocalVideoName] = useState<string | undefined>();
   const [uploadingCdn, setUploadingCdn] = useState(false);
+  /** Covers CDN upload + Firestore write — prevents double-publish taps. */
+  const [publishing, setPublishing] = useState(false);
+  const publishingRef = useRef(false);
 
   useEffect(() => {
     void (async () => {
@@ -99,69 +102,77 @@ export default function FilMecaniqueScreen() {
   };
 
   const publishCaption = async () => {
+    if (publishingRef.current) return;
     if (!captionDraft.trim() && !localVideoUri) return;
+    publishingRef.current = true;
+    setPublishing(true);
     let remoteMediaUrl: string | undefined;
     let cdnNote = '';
-    if (localVideoUri) {
-      setUploadingCdn(true);
-      try {
-        const cdn = await uploadFeedVideo({
-          localUri: localVideoUri,
-          fileName: localVideoName,
-        });
-        cdnNote = cdn.stubLabel ?? (cdn.ok ? 'CDN OK' : 'CDN soft-fail');
-        if (cdn.ok && cdn.data?.downloadUrl) {
-          remoteMediaUrl = cdn.data.downloadUrl;
+    try {
+      if (localVideoUri) {
+        setUploadingCdn(true);
+        try {
+          const cdn = await uploadFeedVideo({
+            localUri: localVideoUri,
+            fileName: localVideoName,
+          });
+          cdnNote = cdn.stubLabel ?? (cdn.ok ? 'CDN OK' : 'CDN soft-fail');
+          if (cdn.ok && cdn.data?.downloadUrl) {
+            remoteMediaUrl = cdn.data.downloadUrl;
+          }
+        } finally {
+          setUploadingCdn(false);
         }
-      } finally {
-        setUploadingCdn(false);
       }
-    }
-    // Always embed CDN URL in caption when present so reload stays honest even if fields lag.
-    let caption = captionDraft.trim();
-    if (remoteMediaUrl && !caption.includes(remoteMediaUrl)) {
-      caption = caption
-        ? `${caption}\n[vidéo CDN] ${remoteMediaUrl}`
-        : `[vidéo CDN] ${remoteMediaUrl}`;
-    } else if (!caption && localVideoUri) {
-      caption = '[vidéo locale] — fichier on-device (CDN soft-fail)';
-    }
-    const mediaKind: FeedPost['mediaKind'] = remoteMediaUrl
-      ? 'video_cdn'
-      : localVideoUri
-        ? 'video_local'
-        : 'text';
-    const res = await createTextFeedPost({
-      title:
-        titleDraft.trim() ||
-        (remoteMediaUrl ? 'Clip réparation (CDN)' : localVideoUri ? 'Clip réparation (local)' : 'Conseil mécanique'),
-      caption,
-      remoteMediaUrl,
-      mediaKind,
-      // Never publish email — feedPosts is world-readable
-      authorName:
-        profile?.displayName?.trim() ||
-        (profile?.uid ? `Conducteur-${profile.uid.slice(0, 6)}` : 'Conducteur'),
-    });
-    setUploadMsg(
-      localVideoUri
-        ? `${res.stubLabel ?? (res.ok ? 'Publié' : 'Échec')} · ${cdnNote}`
-        : res.stubLabel ?? (res.ok ? 'Publié' : 'Échec publication'),
-    );
-    // Only clear the local clip after a real publish success — soft-fail keeps
-    // the file so the user can retry (CDN object would otherwise be orphaned).
-    if (res.ok && res.data) {
-      const post: FeedPost = {
-        ...(res.data as FeedPost),
-        localMediaUri: localVideoUri ?? undefined,
-        remoteMediaUrl: remoteMediaUrl ?? res.data.remoteMediaUrl,
-        mediaKind: remoteMediaUrl ? 'video_cdn' : res.data.mediaKind ?? mediaKind,
-      };
-      setPosts((p) => [post, ...p]);
-      setCaptionDraft('');
-      setTitleDraft('');
-      setLocalVideoUri(null);
-      setLocalVideoName(undefined);
+      // Always embed CDN URL in caption when present so reload stays honest even if fields lag.
+      let caption = captionDraft.trim();
+      if (remoteMediaUrl && !caption.includes(remoteMediaUrl)) {
+        caption = caption
+          ? `${caption}\n[vidéo CDN] ${remoteMediaUrl}`
+          : `[vidéo CDN] ${remoteMediaUrl}`;
+      } else if (!caption && localVideoUri) {
+        caption = '[vidéo locale] — fichier on-device (CDN soft-fail)';
+      }
+      const mediaKind: FeedPost['mediaKind'] = remoteMediaUrl
+        ? 'video_cdn'
+        : localVideoUri
+          ? 'video_local'
+          : 'text';
+      const res = await createTextFeedPost({
+        title:
+          titleDraft.trim() ||
+          (remoteMediaUrl ? 'Clip réparation (CDN)' : localVideoUri ? 'Clip réparation (local)' : 'Conseil mécanique'),
+        caption,
+        remoteMediaUrl,
+        mediaKind,
+        // Never publish email — feedPosts is world-readable
+        authorName:
+          profile?.displayName?.trim() ||
+          (profile?.uid ? `Conducteur-${profile.uid.slice(0, 6)}` : 'Conducteur'),
+      });
+      setUploadMsg(
+        localVideoUri
+          ? `${res.stubLabel ?? (res.ok ? 'Publié' : 'Échec')} · ${cdnNote}`
+          : res.stubLabel ?? (res.ok ? 'Publié' : 'Échec publication'),
+      );
+      // Only clear the local clip after a real publish success — soft-fail keeps
+      // the file so the user can retry (CDN object would otherwise be orphaned).
+      if (res.ok && res.data) {
+        const post: FeedPost = {
+          ...(res.data as FeedPost),
+          localMediaUri: localVideoUri ?? undefined,
+          remoteMediaUrl: remoteMediaUrl ?? res.data.remoteMediaUrl,
+          mediaKind: remoteMediaUrl ? 'video_cdn' : res.data.mediaKind ?? mediaKind,
+        };
+        setPosts((p) => [post, ...p]);
+        setCaptionDraft('');
+        setTitleDraft('');
+        setLocalVideoUri(null);
+        setLocalVideoName(undefined);
+      }
+    } finally {
+      publishingRef.current = false;
+      setPublishing(false);
     }
   };
 
@@ -234,16 +245,18 @@ export default function FilMecaniqueScreen() {
           <Text style={styles.meta}>Vidéo locale prête — upload CDN tenté à la publication.</Text>
         ) : null}
         <Pressable
-          style={[styles.send, uploadingCdn && { opacity: 0.6 }]}
-          disabled={uploadingCdn}
+          style={[styles.send, (uploadingCdn || publishing) && { opacity: 0.6 }]}
+          disabled={uploadingCdn || publishing}
           onPress={() => void publishCaption()}
         >
           <Text style={styles.uploadTxt}>
             {uploadingCdn
               ? 'Upload CDN…'
-              : localVideoUri
-                ? 'Publier + tenter CDN'
-                : 'Publier le texte'}
+              : publishing
+                ? 'Publication…'
+                : localVideoUri
+                  ? 'Publier + tenter CDN'
+                  : 'Publier le texte'}
           </Text>
         </Pressable>
         <Pressable style={styles.upload} onPress={() => void tryPickVideo()}>
