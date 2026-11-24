@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { resolveNavigableDestination } from './navigableDestination';
+import {
+  EXPECTED_REGION_IDS,
+  reportNavigableCoverage,
+  resolveNavigableDestination,
+} from './navigableDestination';
 
 describe('resolveNavigableDestination', () => {
   it('remaps British Columbia wilderness centroid to Vancouver', () => {
@@ -42,6 +46,24 @@ describe('resolveNavigableDestination', () => {
     const de = resolveNavigableDestination(51.1, 10.4, 'Allemagne');
     assert.equal(de.remapped, true);
     assert.ok(Math.abs(de.lat - 52.52) < 0.01);
+    const al = resolveNavigableDestination(40.5, 20.5, 'Albania');
+    assert.equal(al.remapped, true);
+    assert.ok(Math.abs(al.lat - 41.3275) < 0.01);
+    const sco = resolveNavigableDestination(57.2, -4.5, 'Scotland');
+    assert.equal(sco.remapped, true);
+    assert.match(sco.label, /Edinburgh/i);
+  });
+
+  it('remaps every US state name sample (WY, AK, HI)', () => {
+    const wy = resolveNavigableDestination(43, -107, 'Wyoming, United States');
+    assert.equal(wy.remapped, true);
+    assert.match(wy.label, /Cheyenne/i);
+    const ak = resolveNavigableDestination(64, -153, 'Alaska');
+    assert.equal(ak.remapped, true);
+    assert.match(ak.label, /Anchorage/i);
+    const hi = resolveNavigableDestination(20.5, -156.5, 'Hawaii');
+    assert.equal(hi.remapped, true);
+    assert.match(hi.label, /Honolulu/i);
   });
 
   it('does not remap a street / unknown place', () => {
@@ -56,5 +78,23 @@ describe('resolveNavigableDestination', () => {
     assert.equal(orlando.lat, 28.5383);
     const miami = resolveNavigableDestination(25.77427, -80.19366, 'Miami, Florida, USA');
     assert.equal(miami.remapped, false);
+  });
+
+  it('covers all expected CA / US / AU / EU region ids (none missing)', () => {
+    const reports = reportNavigableCoverage();
+    for (const r of reports) {
+      assert.equal(
+        r.missingIds.length,
+        0,
+        `${r.scope} missing: ${r.missingIds.join(', ')}`,
+      );
+      assert.equal(r.coveredIds.length, r.expected);
+      assert.equal(r.expected, EXPECTED_REGION_IDS[r.scope].length);
+    }
+    const byScope = Object.fromEntries(reports.map((r) => [r.scope, r.expected]));
+    assert.equal(byScope.US, 52); // 50 states + DC + country
+    assert.equal(byScope.AU, 9); // 8 + country
+    assert.equal(byScope.CA, 14); // 13 + country
+    assert.ok(byScope.EU >= 50, `EU expected >= 50, got ${byScope.EU}`);
   });
 });
