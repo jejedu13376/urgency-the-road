@@ -7,6 +7,7 @@ import { colors } from '../theme/colors';
 /**
  * Module 13 — bouton SOS toujours accessible → écran Urgence (numéros régionaux + alerte).
  * First tap opens Urgence; second tap (while open) closes/collapses it.
+ * Emergency only — distinct from the bottom-right four-dot « Mise à jour » tab.
  * Sits above the tab bar: safe-area bottom + tab content (~40) + small gap.
  * Keep in sync with `app/(tabs)/_layout.tsx` TAB_CONTENT / PAD_TOP.
  */

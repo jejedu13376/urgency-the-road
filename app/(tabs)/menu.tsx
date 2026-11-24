@@ -4,6 +4,7 @@ import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
 import { ProgressHero } from '../../src/components/ProgressHero';
 import { Screen } from '../../src/components/Screen';
+import { UpdateButton } from '../../src/components/UpdateButton';
 import { BRAND_NAME } from '../../src/brand';
 import { useI18n } from '../../src/context/I18nContext';
 import { useProgress } from '../../src/context/ProgressContext';
@@ -47,6 +48,13 @@ export default function MenuScreen() {
 
   return (
     <Screen title={BRAND_NAME} subtitle={t('menu.subtitle')}>
+      {/* Four-dot tab hub = updates (not SOS). Same one-tap launch as top-right chrome. */}
+      <View style={styles.updateRow}>
+        <Text style={styles.updateHint} allowFontScaling maxFontSizeMultiplier={1.35}>
+          {t('update.hubHint')}
+        </Text>
+        <UpdateButton />
+      </View>
       <BackendStatusBanner />
       <ProgressHero />
 
@@ -127,6 +135,24 @@ export default function MenuScreen() {
 }
 
 const styles = StyleSheet.create({
+  updateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    backgroundColor: colors.signalSoft,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.signal,
+  },
+  updateHint: {
+    flex: 1,
+    color: colors.ink,
+    fontWeight: '700',
+    fontSize: 14,
+    lineHeight: 20,
+  },
   sellerStrip: {
     backgroundColor: colors.signalSoft,
     borderRadius: 12,

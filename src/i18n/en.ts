@@ -34,8 +34,21 @@ export const en: FrDict = {
     carteShort: 'Map',
     fil: 'Mech feed',
     filShort: 'Feed',
-    menu: 'Menu',
-    menuShort: 'Menu',
+    /** Bottom-right 4-square grid — updates (not SOS / emergency). */
+    menu: 'Update',
+    menuShort: 'Update',
+  },
+
+  update: {
+    button: 'Update',
+    buttonBusy: 'Updating…',
+    buttonDone: 'OK',
+    buttonFail: 'Failed',
+    a11y: 'Update — starts the app update immediately',
+    a11yBusy: 'Update in progress',
+    a11yHint: 'One tap launches the update. No menu and no confirmation.',
+    tabA11y: 'Update — the four dots bottom-right. Not an SOS emergency. Use the top-right Update button to launch.',
+    hubHint: 'App update — one tap. Not an SOS emergency.',
   },
 
   stub: 'STUB — service not connected',
@@ -98,7 +111,7 @@ export const en: FrDict = {
   },
 
   sos: {
-    a11y: 'Medical SOS — open Emergency module',
+    a11y: 'Medical SOS — open Emergency module. This is not the Update button.',
     a11yClose: 'Medical SOS — close Emergency module',
   },
 

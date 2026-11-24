@@ -3,12 +3,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BRAND_NAME } from '../brand';
 import { colors } from '../theme/colors';
 import { LanguagePicker } from './LanguagePicker';
+import { UpdateButton } from './UpdateButton';
 
 /** Reserved height below the status-bar inset for brand + FR/EN/ES squares. */
 export const GLOBAL_TOP_BAR_BODY = 44;
 
 /**
- * Persistent top overlay: English brand + FR/EN/ES squares on every page.
+ * Persistent top overlay: English brand + FR/EN/ES + Mise à jour on every page.
  * No full-width chrome strip — chips float over content.
  * Mount once from root AppShell (gates + main shell).
  */
@@ -26,7 +27,10 @@ export function GlobalTopBar() {
         <Text style={styles.brand} numberOfLines={1} accessibilityRole="header">
           {BRAND_NAME}
         </Text>
-        <LanguagePicker showTitle={false} compact square />
+        <View style={styles.right} pointerEvents="box-none">
+          <LanguagePicker showTitle={false} compact square />
+          <UpdateButton square />
+        </View>
       </View>
     </View>
   );
@@ -48,6 +52,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
     minHeight: GLOBAL_TOP_BAR_BODY - 8,
+  },
+  right: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
   },
   brand: {
     flexShrink: 1,

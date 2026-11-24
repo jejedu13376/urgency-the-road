@@ -34,8 +34,21 @@ export const es: FrDict = {
     carteShort: 'Mapa',
     fil: 'Feed meca',
     filShort: 'Feed',
-    menu: 'Menú',
-    menuShort: 'Menú',
+    /** Bottom-right 4-square grid — updates (not SOS / emergency). */
+    menu: 'Actualizar',
+    menuShort: 'Actu.',
+  },
+
+  update: {
+    button: 'Actualizar',
+    buttonBusy: 'Actu…',
+    buttonDone: 'OK',
+    buttonFail: 'Error',
+    a11y: 'Actualizar — inicia de inmediato la actualización de la app',
+    a11yBusy: 'Actualización en curso',
+    a11yHint: 'Un solo toque lanza la actualización. Sin menú ni confirmación.',
+    tabA11y: 'Actualizar — los cuatro puntos abajo a la derecha. No es una emergencia SOS. Use el botón Actualizar arriba a la derecha para lanzar.',
+    hubHint: 'Actualización de la app — un toque. No es una emergencia SOS.',
   },
 
   stub: 'STUB — servicio no conectado',
@@ -98,7 +111,7 @@ export const es: FrDict = {
   },
 
   sos: {
-    a11y: 'SOS Urgencia médica — abrir módulo Urgencia',
+    a11y: 'SOS Urgencia médica — abrir módulo Urgencia. No es el botón Actualizar.',
     a11yClose: 'SOS Urgencia médica — cerrar módulo Urgencia',
   },
 
