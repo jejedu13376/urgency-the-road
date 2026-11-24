@@ -104,7 +104,7 @@ Agis en tant qu'architecte logiciel senior et développeur full-stack expert. G�
 ### MODULE 15 : SÉCURITÉ BIOMÉTRIQUE, INSCRIPTION, ABONNEMENTS & PAIEMENTS
 - **Inscription Sécurisée :** Création de compte avec validation stricte du mot de passe (**minimum 6 caractères, dont au moins 1 lettre majuscule et 1 caractère spécial**).
 - **Authentification Biométrique :** Connexion par empreinte digitale ou reconnaissance faciale (Apple/Samsung/Google) et chiffrement des données de bout en bout.
-- **Abonnements & Paiements :** Gestion des formules d'abonnement (Particulier, Routier Pro, Flotte) avec **Stripe** (cartes bancaires), **PayPal**, **Apple Pay** et **Google Pay** uniquement. **Pas de Lydia.**
+- **Abonnements & Paiements :** Abonnement **Premium = 15 $ / mois ($15/month)** — débloque **toutes les options Urgency road**. Paiement via **Stripe** (cartes bancaires), **PayPal**, **Apple Pay**, **Google Pay** et **RevenueCat** (IAP). **Pas de Lydia.**
 
 ### MODULE 16 : SYSTÈME DE PARTAGE VIRAL & INSTALLATION UNIVERSELLE
 - **Partage en 1 Clic :** Bouton permettant d'envoyer le lien d'installation de l'application à un ami ou collègue (en France, au Canada, en Europe ou en Australie) par **SMS/Texto, WhatsApp, email et réseaux sociaux**.

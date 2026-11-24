@@ -1,7 +1,13 @@
 /** Firestore document models — Urgence Mécanique (17 modules). */
 
 export type UserRole = 'user' | 'garage_pro' | 'rescuer' | 'admin' | 'super_admin';
-export type SubscriptionTier = 'free' | 'particulier' | 'routier_pro' | 'flotte' | 'rescuer';
+export type SubscriptionTier =
+  | 'free'
+  | 'premium'
+  | 'particulier'
+  | 'routier_pro'
+  | 'flotte'
+  | 'rescuer';
 export type ObdProtocol = 'OBD2' | 'EOBD' | 'J1939' | 'J1708';
 
 export interface UserDoc {

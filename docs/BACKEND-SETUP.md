@@ -145,7 +145,7 @@ Live votes require Module 15 sign-in (Firebase ID token). Without proxy URL → 
 
 ## E) Optional later
 
-- Payments: `EXPO_PUBLIC_STRIPE_CHECKOUT_BASE` / `EXPO_PUBLIC_PAYPAL_CHECKOUT_BASE` (Module 15).
+- Payments: `EXPO_PUBLIC_STRIPE_CHECKOUT_BASE` / `EXPO_PUBLIC_PAYPAL_CHECKOUT_BASE` / `EXPO_PUBLIC_REVENUECAT_API_KEY` (Module 15). Catalog: **Premium = $15/month** (see `src/constants/subscription.ts`).
 - Install share: `EXPO_PUBLIC_INSTALL_URL` (Module 16) — set after EAS APK.
 - OBD BLE: Dev Client + `react-native-ble-plx` (Module 5).
 - Prefer moving YouTube key to a Cloud Function before production scale.

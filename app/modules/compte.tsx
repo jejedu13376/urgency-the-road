@@ -7,6 +7,7 @@ import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
+import { PREMIUM_PRICE_LABEL } from '../../src/constants/subscription';
 import { MOCK_PLANS } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import {
@@ -201,13 +202,17 @@ export default function CompteScreen() {
           </View>
         </Card>
 
-        <Card title="Formules d’abonnement">
+        <Card title={t('subscription.sectionTitle')}>
+          <Text style={styles.unlock}>{t('subscription.unlocksAll')}</Text>
+          <Text style={styles.meta}>{t('subscription.perksHint')}</Text>
           {MOCK_PLANS.map((p) => (
             <View key={p.id} style={styles.plan}>
               <Text style={styles.planName}>
-                {p.name} — {p.priceMonthly} {p.currency}/mois
+                {t('subscription.planName')} — {t('subscription.priceMonthly')}
               </Text>
-              <Text style={styles.meta}>{p.perks.join(' · ')}</Text>
+              <Text style={styles.priceTag}>
+                {PREMIUM_PRICE_LABEL} · {p.priceMonthly} {p.currency}/mo
+              </Text>
               <Pressable
                 style={[styles.pay, paying && styles.payDisabled]}
                 disabled={paying}
@@ -215,8 +220,8 @@ export default function CompteScreen() {
               >
                 <Text style={styles.btnTxt}>
                   {paying
-                    ? 'Ouverture…'
-                    : `Payer · ${PAYMENT_METHODS.find((x) => x.id === method)?.label ?? method}`}
+                    ? t('subscription.paying')
+                    : `${t('subscription.payCta')} · ${PAYMENT_METHODS.find((x) => x.id === method)?.label ?? method}`}
                 </Text>
               </Pressable>
             </View>
@@ -260,8 +265,10 @@ const styles = StyleSheet.create({
   methodTitleOn: { color: colors.white },
   methodHint: { color: colors.muted, fontSize: 11, marginTop: 2 },
   methodHintOn: { color: '#C5D2DE' },
+  unlock: { color: colors.ink, fontSize: 13, fontWeight: '700', lineHeight: 18, marginBottom: 4 },
   plan: { gap: 6, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.line },
-  planName: { fontWeight: '800', color: colors.ink },
+  planName: { fontWeight: '800', color: colors.ink, fontSize: 16 },
+  priceTag: { color: colors.garage, fontWeight: '800', fontSize: 14 },
   pay: { backgroundColor: colors.garage, borderRadius: 8, padding: 10, alignItems: 'center' },
   payDisabled: { opacity: 0.6 },
 });

@@ -20,7 +20,7 @@ const MOCK_USER: UserDoc = {
   email: 'demo@urgence-mecanique.local',
   displayName: 'Démo locale',
   role: 'user',
-  subscription: 'particulier',
+  subscription: 'premium',
   subscriptionActive: false,
   locale: 'fr',
   currency: 'EUR',

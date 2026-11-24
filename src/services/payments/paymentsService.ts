@@ -1,11 +1,36 @@
 /**
  * Module 15 payments — Stripe (cartes), PayPal, Apple Pay, Google Pay.
  * No Lydia. Never reports success without real config / URL / native wallet path.
+ * App catalog price: Premium = $15/month (see src/constants/subscription.ts).
  */
 import * as Linking from 'expo-linking';
+import {
+  PREMIUM_PLAN_ID,
+  PREMIUM_PRICE_MONTHLY_USD,
+  PREMIUM_PRICE_PER_MONTH_LABEL,
+  REVENUECAT_PREMIUM_ENTITLEMENT_PLACEHOLDER,
+  REVENUECAT_PREMIUM_PACKAGE_PLACEHOLDER,
+  REVENUECAT_PREMIUM_PRODUCT_ANDROID_PLACEHOLDER,
+  REVENUECAT_PREMIUM_PRODUCT_IOS_PLACEHOLDER,
+  STRIPE_PREMIUM_PRICE_PLACEHOLDER,
+} from '../../constants/subscription';
 
 export type PayPlanId = string;
 export type PlanId = PayPlanId;
+
+/** Default checkout plan — Premium $15/month. */
+export const DEFAULT_PLAN_ID: PlanId = PREMIUM_PLAN_ID;
+
+/** Stripe / RevenueCat placeholders (replace with live ids; keep amount at $15). */
+export const PAYMENT_PRODUCT_PLACEHOLDERS = {
+  stripePriceId: STRIPE_PREMIUM_PRICE_PLACEHOLDER,
+  revenueCatEntitlement: REVENUECAT_PREMIUM_ENTITLEMENT_PLACEHOLDER,
+  revenueCatPackage: REVENUECAT_PREMIUM_PACKAGE_PLACEHOLDER,
+  revenueCatProductIos: REVENUECAT_PREMIUM_PRODUCT_IOS_PLACEHOLDER,
+  revenueCatProductAndroid: REVENUECAT_PREMIUM_PRODUCT_ANDROID_PLACEHOLDER,
+  amountUsdMonthly: PREMIUM_PRICE_MONTHLY_USD,
+  priceLabel: PREMIUM_PRICE_PER_MONTH_LABEL,
+} as const;
 
 export type PaymentMethod = 'stripe_card' | 'paypal' | 'apple_pay' | 'google_pay';
 
@@ -117,7 +142,7 @@ export async function startCheckout(
           'Stripe cartes : définir EXPO_PUBLIC_STRIPE_CHECKOUT_BASE (Payment Link / Checkout). Aucun succès fictif.',
       };
     }
-    const url = `${base}?plan=${encodeURIComponent(planId)}&method=card&utm_source=urgence_mecanique`;
+    const url = `${base}?plan=${encodeURIComponent(planId)}&price=${PREMIUM_PRICE_MONTHLY_USD}&currency=USD&stripe_price=${encodeURIComponent(STRIPE_PREMIUM_PRICE_PLACEHOLDER)}&method=card&utm_source=urgence_mecanique`;
     return openCheckoutUrl(url, 'stripe_card', planId);
   }
 
@@ -133,7 +158,7 @@ export async function startCheckout(
           'PayPal : définir EXPO_PUBLIC_PAYPAL_CHECKOUT_BASE (lien Checkout / Hosted). Aucun succès fictif.',
       };
     }
-    const url = `${base}?plan=${encodeURIComponent(planId)}&utm_source=urgence_mecanique`;
+    const url = `${base}?plan=${encodeURIComponent(planId)}&price=${PREMIUM_PRICE_MONTHLY_USD}&currency=USD&utm_source=urgence_mecanique`;
     return openCheckoutUrl(url, 'paypal', planId);
   }
 
@@ -141,7 +166,7 @@ export async function startCheckout(
     const base = stripeBase();
     if (base) {
       const wallet = method === 'apple_pay' ? 'apple_pay' : 'google_pay';
-      const url = `${base}?plan=${encodeURIComponent(planId)}&method=${wallet}&utm_source=urgence_mecanique`;
+      const url = `${base}?plan=${encodeURIComponent(planId)}&price=${PREMIUM_PRICE_MONTHLY_USD}&currency=USD&stripe_price=${encodeURIComponent(STRIPE_PREMIUM_PRICE_PLACEHOLDER)}&method=${wallet}&utm_source=urgence_mecanique`;
       return openCheckoutUrl(url, method, planId);
     }
     if (revenueCatKey()) {
@@ -150,7 +175,7 @@ export async function startCheckout(
         provider: method,
         checkoutUrl: null,
         configured: true,
-        message: `${method === 'apple_pay' ? 'Apple Pay' : 'Google Pay'} via RevenueCat : clé publique OK — nécessite Dev Client + react-native-purchases (pas de succès simulé Expo Go).`,
+        message: `${method === 'apple_pay' ? 'Apple Pay' : 'Google Pay'} via RevenueCat (${REVENUECAT_PREMIUM_ENTITLEMENT_PLACEHOLDER} / ${REVENUECAT_PREMIUM_PACKAGE_PLACEHOLDER}, ${PREMIUM_PRICE_PER_MONTH_LABEL}) : clé publique OK — nécessite Dev Client + react-native-purchases (pas de succès simulé Expo Go).`,
       };
     }
     return {
