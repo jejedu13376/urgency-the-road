@@ -19,19 +19,20 @@ Cloud agents **cannot** `firebase login` or set your provider secrets. This ship
 | Success `200` | `{ "summary": string, "likelyParts": string[], "severity": "info"\|"warn"\|"critique", "engine", "provider", "latencyMs" }` |
 | Health | `GET` → `{ ok, enginesConfigured, … }` (no secrets) |
 
-URL after deploy looks like:
+**LIVE (2026-11-23, project `urgency-road`):** health `GET` returns `ok:true`.
 
-```text
-https://us-central1-<PROJECT_ID>.cloudfunctions.net/multiIa
-```
-
-Paste that into app `.env`:
+Lorenzo — paste this **exact** line into root `.env` (gitignored).  
+Windows path: `C:\Users\Jejedou13376\urgency-the-road\.env`
 
 ```bash
-EXPO_PUBLIC_MULTI_IA_PROXY_URL=https://us-central1-<PROJECT_ID>.cloudfunctions.net/multiIa
+EXPO_PUBLIC_MULTI_IA_PROXY_URL=https://us-central1-urgency-road.cloudfunctions.net/multiIa
 ```
 
 Then `npx expo start -c`.
+
+- URL is **not** a secret (function hostname). Provider LLM keys stay server-side only.
+- `cursor-cloud-bind-app-secrets` **refuses** `EXPO_PUBLIC_*` — use Cursor Dashboard → Cloud Agents → Secrets **and/or** local `.env` only.
+- Generic shape (other projects): `https://us-central1-<PROJECT_ID>.cloudfunctions.net/multiIa`
 
 ---
 
