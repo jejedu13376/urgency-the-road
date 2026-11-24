@@ -24,7 +24,7 @@ export type VehicleRouteResult = {
   coords: [number, number][];
   distanceKm: number;
   durationMin: number;
-  source: 'valhalla-auto' | 'valhalla-truck' | 'none';
+  source: 'valhalla-auto' | 'valhalla-truck' | 'osrm' | 'none';
   label: string;
   error?: string;
   /** True when truck succeeded only after relaxing dimensions (still truck costing). */
@@ -32,6 +32,14 @@ export type VehicleRouteResult = {
   /** Narrative turns for TTS (empty when Valhalla omits maneuvers). */
   maneuvers?: RouteManeuver[];
 };
+
+/** FOSSGIS Valhalla public demo rejects paths over this road distance. */
+export const VALHALLA_MAX_DISTANCE_M = 1_500_000;
+
+export function isValhallaMaxDistanceError(message?: string | null): boolean {
+  if (!message) return false;
+  return /max distance|exceeds the max distance|1500000/i.test(message);
+}
 
 /** Avoid / eco flags shared with TomTom itinerary planner. */
 export type ValhallaAvoidOpts = {

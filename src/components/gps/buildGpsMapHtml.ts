@@ -26,7 +26,13 @@ function mapboxToken(): string {
 }
 
 function tomtomKey(): string {
-  return (process.env.EXPO_PUBLIC_TOMTOM_API_KEY ?? '').trim().replace(/[^a-zA-Z0-9_-]/g, '');
+  return (
+    process.env.EXPO_PUBLIC_TOMTOM_API_KEY ??
+    process.env.TOMTOM_API_KEY ??
+    ''
+  )
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '');
 }
 
 /**

@@ -36,7 +36,7 @@ export type ItineraryRouteOption = {
   fuelLiters: number;
   fuelCostCad: number;
   fuelLabel: string;
-  source: 'tomtom' | 'valhalla-auto' | 'valhalla-truck';
+  source: 'tomtom' | 'valhalla-auto' | 'valhalla-truck' | 'osrm';
   label: string;
 };
 
@@ -46,17 +46,25 @@ export type ItineraryPlanResult = {
   options: ItineraryRouteOption[];
   /** Selected / primary option index. */
   selectedIndex: number;
-  engine: 'tomtom' | 'valhalla' | 'none';
+  engine: 'tomtom' | 'valhalla' | 'osrm' | 'none';
   error?: string;
   label: string;
 };
 
+/**
+ * Prefer EXPO_PUBLIC_TOMTOM_API_KEY (Expo client bundle). Also accept TOMTOM_API_KEY
+ * when injected in Node/cloud test shells so routing works without a rename.
+ */
 export function isTomTomRoutingConfigured(): boolean {
-  return !!(process.env.EXPO_PUBLIC_TOMTOM_API_KEY ?? '').trim();
+  return !!tomtomKey();
 }
 
 function tomtomKey(): string {
-  return (process.env.EXPO_PUBLIC_TOMTOM_API_KEY ?? '').trim();
+  return (
+    process.env.EXPO_PUBLIC_TOMTOM_API_KEY ??
+    process.env.TOMTOM_API_KEY ??
+    ''
+  ).trim();
 }
 
 type TomTomPoint = { latitude?: number; longitude?: number };
