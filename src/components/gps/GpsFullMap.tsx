@@ -384,7 +384,7 @@ export function GpsFullMap() {
 
   const chromePads = useMemo<ChromePads>(
     () => ({
-      // Clear persistent GlobalTopBar (brand + FR/EN/ES) on every page including Carte.
+      // Clear persistent GlobalTopBar overlay (brand + FR/EN/ES) on every page including Carte.
       padTop: belowGlobalTopBar(insets) + 4,
       padRight: Math.max(insets.right, 8),
       padBottom: Math.max(insets.bottom, 8) + SOS_FAB_CLEARANCE,

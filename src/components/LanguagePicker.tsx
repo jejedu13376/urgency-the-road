@@ -19,11 +19,11 @@ type Props = {
   /** Show full language names under the section title. */
   showTitle?: boolean;
   compact?: boolean;
-  /** Square FR/EN/ES tiles for the global top bar. */
+  /** Square FR/EN/ES tiles for the global top overlay. */
   square?: boolean;
 };
 
-/** EN / FR / ES selector — Settings + global top bar. */
+/** EN / FR / ES selector — Settings + global top overlay. */
 export function LanguagePicker({ showTitle = true, compact = false, square = false }: Props) {
   const { locale, setLocale, t, locales } = useI18n();
 
