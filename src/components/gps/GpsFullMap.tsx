@@ -1091,10 +1091,10 @@ export function GpsFullMap() {
 
       if (msg.type === 'mode') {
         setModeLabel(msg.mode);
+        // Save silently — no HUD toast on car/truck chip toggle.
         void saveGpsNavPrefs({ mode: msg.mode }).then((p) => {
           prefsRef.current = p;
         });
-        setHudNote(msg.mode === 'camion' ? 'Mode camion enregistré' : 'Mode voiture enregistré');
         return;
       }
 
