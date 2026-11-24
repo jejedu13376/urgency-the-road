@@ -225,7 +225,7 @@ export default function MultiIaScreen() {
             la carte GPS.
           </Text>
           <SpeakButton
-            text={out ?? t('tts.speakResult')}
+            text={out ?? t('tts.coachReady')}
             labelKey="tts.speakDiag"
             testID="multiia-speak"
           />

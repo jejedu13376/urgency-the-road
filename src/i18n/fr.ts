@@ -575,6 +575,7 @@ export const fr = {
     speakPrice: 'Écouter les prix',
     speakResult: 'Écouter le résultat',
     speakAlert: 'Écouter l’alerte',
+    coachReady: 'Coach vocal prêt. Lancez d’abord une analyse.',
     meters: '%{m} mètres',
     kilometers: '%{km} kilomètres',
     upcomingTurn: 'Dans %{distance}: %{instruction}',

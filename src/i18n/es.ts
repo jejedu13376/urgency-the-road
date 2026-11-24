@@ -578,6 +578,7 @@ export const es: FrDict = {
     speakPrice: 'Escuchar los precios',
     speakResult: 'Escuchar el resultado',
     speakAlert: 'Escuchar la alerta',
+    coachReady: 'Coach de voz listo. Lance primero un análisis.',
     meters: '%{m} metros',
     kilometers: '%{km} kilómetros',
     upcomingTurn: 'En %{distance}: %{instruction}',

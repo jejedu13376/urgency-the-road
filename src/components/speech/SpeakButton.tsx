@@ -1,7 +1,7 @@
 /**
  * Clear, dyslexia-friendly speak / stop control for diagnostics, prices, alerts.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
 import { useI18n } from '../../context/I18nContext';
 import {
@@ -30,28 +30,44 @@ export function SpeakButton({
 }: Props) {
   const { t } = useI18n();
   const [speaking, setSpeaking] = useState(false);
+  /** Only stop TTS on unmount when *this* button started the utterance. */
+  const ownedSpeechRef = useRef(false);
   const phrase = (text ?? '').replace(/\s+/g, ' ').trim();
   const disabled = !phrase;
 
   useEffect(() => {
     return () => {
-      stopAppSpeech();
+      if (ownedSpeechRef.current) {
+        ownedSpeechRef.current = false;
+        stopAppSpeech();
+      }
     };
   }, []);
 
   const onPress = () => {
     if (speaking) {
+      ownedSpeechRef.current = false;
       stopAppSpeech();
       setSpeaking(false);
       return;
     }
     if (!phrase) return;
+    ownedSpeechRef.current = true;
     setSpeaking(true);
     speakApp(phrase, {
       force,
-      onDone: () => setSpeaking(false),
-      onStopped: () => setSpeaking(false),
-      onError: () => setSpeaking(false),
+      onDone: () => {
+        ownedSpeechRef.current = false;
+        setSpeaking(false);
+      },
+      onStopped: () => {
+        ownedSpeechRef.current = false;
+        setSpeaking(false);
+      },
+      onError: () => {
+        ownedSpeechRef.current = false;
+        setSpeaking(false);
+      },
     });
   };
 
