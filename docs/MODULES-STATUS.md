@@ -27,8 +27,8 @@
 | 4 | `/modules/diagnostic-ia` | Camera LIVE + Multi-IA **texte** · YouTube · **micro LIVE expo-audio + metering** | Vision pixels (API / modèle vision) |
 | 5 | `/modules/obd` | VIN→valise reco · BLE scaffold · soft-fail permission **sans** DTC mock live | **Hardware:** Dev Client + dongle BLE |
 | 6 | `/modules/multi-ia` | Heuristic + proxy-only client + NHTSA recalls · empty recalls copy | **Service:** `EXPO_PUBLIC_MULTI_IA_PROXY_URL` + provider secrets (deploy other workers) |
-| 7 | `/modules/gps` + tab `/(tabs)/carte` | Carte plein écran OSM · tap → voiture/camion · **Valhalla auto/truck LIVE** · AsyncStorage prefs · maxheight OSM advisory · anim icône | Graphe PTAC commercial payant (honest) |
-| 8 | `/modules/routiers` | Overpass/Photon weigh + dépôts · radius · **opening_hours OSM advisory ON/OFF** (+ unit tests) | Feed ON/OFF juridiction payant (no free global live API) |
+| 7 | `/modules/gps` + tab `/(tabs)/carte` | Carte plein écran OSM · tap → voiture/camion · **Valhalla auto/truck LIVE** · AsyncStorage prefs (+ length/axles from profil) · maxheight OSM advisory · anim icône | Graphe PTAC commercial payant (honest) |
+| 8 | `/modules/routiers` + `/modules/profil-camion` | Overpass/Photon weigh + dépôts · **profil trek/remorque** (L/W/H, poids, essieux, équipement) · routes allow/restrict advisory · **opening_hours OSM advisory ON/OFF** | Feed ON/OFF juridiction payant (no free global live API) |
 | 9 | `/modules/garages` | Overpass/Photon around GPS · rating soft → **ok:false** | Places proprietary API |
 | 10 | `/modules/entretien` | Rappels km/admin · carnet AsyncStorage · empty carnet copy · PDF non certifié | PDF certifié signé (backend signature) |
 | 11 | `/modules/tutoriels` | YouTube suggestions + redirection | — (cahier: pas de vidéo embarquée) |

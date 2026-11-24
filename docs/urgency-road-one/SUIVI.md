@@ -84,8 +84,8 @@ Détail : `docs/MODULES-STATUS.md`.
 | 4 Diagnostic IA | LIVE camera + texte Multi-IA + YouTube | Vision pixels |
 | 5 OBD | Path BLE coded | **Hardware** Dev Client + dongle |
 | 6 Multi-IA | Heuristic + proxy client · rate-limit UID (#19) | **`EXPO_PUBLIC_MULTI_IA_PROXY_URL` + provider keys + deploy** |
-| 7 GPS | LIVE carte plein écran · Valhalla auto/truck · AsyncStorage · OSM maxheight · carnet vocal post-trajet | PTAC commercial |
-| 8 Routiers | LIVE Overpass/Photon | Feed juridiction |
+| 7 GPS | LIVE carte plein écran · Valhalla auto/truck · AsyncStorage · OSM maxheight · sync profil camion (L/W/H/essieux) · carnet vocal post-trajet | PTAC commercial |
+| 8 Routiers | LIVE Overpass/Photon · profil camion/remorque + routes allow/restrict advisory | Feed juridiction |
 | 9 Garages | LIVE Overpass/Photon | Places API |
 | 10 Entretien | LIVE carnet + share | PDF certifié |
 | 11 Tutoriels | LIVE YouTube redirect | — |
@@ -158,6 +158,7 @@ Deploy CLI : `--config firebase/firebase.json` · project `urgency-road`.
 
 | Quand (UTC) | Événement |
 | --- | --- |
+| ~23:30 | Profil camion / remorque (trek, L/W/H, essieux, équipement) + routes autorisées/restreintes advisory — PR ouverte |
 | ~11:50 | PR #12 mergée — docs deploy + checklist |
 | ~11:54 | PR #14 mergée — analyze/fix |
 | ~11:55 | PR #13 / #15 mergées — Batch A/B stubs |

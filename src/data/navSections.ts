@@ -61,6 +61,13 @@ export const NAV_SECTIONS: NavSection[] = [
         href: '/modules/carnet-vocal',
         moduleTag: 'M7+',
       },
+      {
+        id: 'mv-profil-camion',
+        title: 'Profil camion / remorque',
+        short: 'Trek · gabarit · routes autorisées / restreintes',
+        href: '/modules/profil-camion',
+        moduleTag: 'M8',
+      },
     ],
   },
   {

@@ -211,6 +211,11 @@ export default function RoutiersScreen() {
               · {line}
             </Text>
           ))}
+          <Link href="/modules/profil-camion" asChild>
+            <Pressable style={styles.linkBtn}>
+              <Text style={styles.linkTxt}>Profil camion — remorque · routes autorisées / restreintes →</Text>
+            </Pressable>
+          </Link>
           <Link href="/modules/carnet-vocal?mode=camion" asChild>
             <Pressable style={styles.linkBtn}>
               <Text style={styles.linkTxt}>Carnet vocal trajets — notes micro + partage routiers →</Text>

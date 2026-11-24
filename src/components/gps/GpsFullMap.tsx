@@ -132,7 +132,14 @@ type MapMsg =
       mode: GpsVehicleMode;
       from: { lat: number; lon: number };
       to: { lat: number; lon: number };
-      truck: { heightM: number; widthM: number; weightT: number };
+      truck: {
+        heightM: number;
+        widthM: number;
+        weightT: number;
+        lengthM?: number;
+        axleCount?: number;
+        hazmat?: boolean;
+      };
     }
   | { type: 'routed'; mode: GpsVehicleMode; distanceKm?: number; durationMin?: number; label?: string }
   | { type: 'navigating'; mode: GpsVehicleMode; to: { lat: number; lon: number } }
@@ -386,19 +393,39 @@ export function GpsFullMap() {
   );
 
   const applyModeInMap = useCallback(
-    (mode: GpsVehicleMode, prefs: GpsNavPrefs) => {
+    (mode: GpsVehicleMode, prefs: GpsNavPrefs, opts?: { skipRoute?: boolean }) => {
+      const truck = {
+        heightM: prefs.truckHeightM,
+        widthM: prefs.truckWidthM,
+        weightT: prefs.truckPtacT,
+        lengthM: prefs.truckLengthM,
+        axleCount: prefs.axleCount,
+        hazmat: prefs.hazmat,
+      };
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, { cmd: 'applyMode', mode, truck, opts });
+        return;
+      }
+      injectJs(
+        `window.__gpsApplyMode && window.__gpsApplyMode(${JSON.stringify(mode)}, ${JSON.stringify(truck)}, ${JSON.stringify(opts ?? {})})`,
+      );
+    },
+    [injectJs],
+  );
+
+  /** Sync Leaflet BOOT gabarit without requestRoute (safe during an in-flight route). */
+  const syncTruckDimsInMap = useCallback(
+    (prefs: GpsNavPrefs) => {
       const truck = {
         heightM: prefs.truckHeightM,
         widthM: prefs.truckWidthM,
         weightT: prefs.truckPtacT,
       };
       if (Platform.OS === 'web') {
-        postGpsCmd(iframeWinRef.current, { cmd: 'applyMode', mode, truck });
+        postGpsCmd(iframeWinRef.current, { cmd: 'setTruckDims', truck });
         return;
       }
-      injectJs(
-        `window.__gpsApplyMode && window.__gpsApplyMode(${JSON.stringify(mode)}, ${JSON.stringify(truck)})`,
-      );
+      injectJs(`window.__gpsSetTruckDims && window.__gpsSetTruckDims(${JSON.stringify(truck)})`);
     },
     [injectJs],
   );
@@ -468,8 +495,17 @@ export function GpsFullMap() {
     // Overpass around a real device fix only — never France overview centroid.
     const origin = lastWatchRef.current ?? (gpsOk ? liveOriginRef.current : null);
     if (!origin || !bootHtml || !gpsOk) return;
-    const prefs = prefsRef.current ?? (await loadGpsNavPrefs());
-    const truck = { heightM: prefs.truckHeightM, weightT: prefs.truckPtacT };
+    // Reload storage so bridge PASS/NO-PASS matches profil-camion after a save.
+    const prefs = await loadGpsNavPrefs();
+    prefsRef.current = prefs;
+    const truck = {
+      heightM: prefs.truckHeightM,
+      weightT: prefs.truckPtacT,
+      widthM: prefs.truckWidthM,
+      lengthM: prefs.truckLengthM,
+      axleCount: prefs.axleCount,
+      hazmat: prefs.hazmat,
+    };
     const [bridges, weigh, localReports, cloudHazards] = await Promise.all([
       fetchNearbyBridgeClearances(origin.lat, origin.lon, 18000, truck),
       fetchNearbyWeighStations(origin.lat, origin.lon, 60000),
@@ -613,12 +649,21 @@ export function GpsFullMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Continuous LIVE GPS while Carte / GPS screen is focused — inject ticks, no remount. */
+  /** Continuous LIVE GPS while Carte / GPS screen is focused — inject ticks, no remount.
+   * Also reload gabarit from AsyncStorage (profil-camion may have updated while away). */
   useFocusEffect(
     useCallback(() => {
       let sub: { remove: () => void } | null = null;
       let cancelled = false;
       void (async () => {
+        const stored = await loadGpsNavPrefs();
+        if (cancelled) return;
+        prefsRef.current = stored;
+        setModeLabel(stored.mode);
+        if (bootedRef.current && bootHtml) {
+          applyModeInMap(stored.mode, stored);
+        }
+
         const next = await watchDevicePosition(
           (pos) => {
             if (cancelled) return;
@@ -756,7 +801,7 @@ export function GpsFullMap() {
         cancelled = true;
         sub?.remove();
       };
-    }, [injectLivePosition, setMapOrigin, injectHighlightWeigh, enqueueAlerts]),
+    }, [injectLivePosition, setMapOrigin, injectHighlightWeigh, enqueueAlerts, applyModeInMap, bootHtml]),
   );
 
   useEffect(() => {
@@ -885,14 +930,14 @@ export function GpsFullMap() {
         });
         const reqId = ++routeReqId.current;
         void (async () => {
-          await saveGpsNavPrefs({
-            mode: msg.mode,
-            truckHeightM: msg.truck.heightM,
-            truckWidthM: msg.truck.widthM,
-            truckPtacT: msg.truck.weightT,
-          }).then((p) => {
-            prefsRef.current = p;
-          });
+          // Persist mode only — saveGpsNavPrefs reloads storage then merges the
+          // patch, so a concurrent saveTruckerProfile cannot be clobbered by a
+          // stale {...stored} snapshot. Never write map BOOT height/width/weight
+          // back. Sync BOOT via setTruckDims (no requestRoute) — never applyModeInMap
+          // here or __gpsApplyMode re-posts route and loops Valhalla/Overpass.
+          const livePrefs = await saveGpsNavPrefs({ mode: msg.mode });
+          prefsRef.current = livePrefs;
+          syncTruckDimsInMap(livePrefs);
           if (reqId !== routeReqId.current) return;
 
           const from = liveOriginRef.current ?? msg.from;
@@ -910,9 +955,12 @@ export function GpsFullMap() {
             .map((r) => ({ lat: r.lat, lon: r.lon }));
 
           const route = await fetchVehicleRoute(from, msg.to, msg.mode, {
-            heightM: msg.truck.heightM,
-            widthM: msg.truck.widthM,
-            weightT: msg.truck.weightT,
+            heightM: livePrefs.truckHeightM,
+            widthM: livePrefs.truckWidthM,
+            weightT: livePrefs.truckPtacT,
+            lengthM: livePrefs.truckLengthM,
+            axleCount: livePrefs.axleCount,
+            hazmat: livePrefs.hazmat,
           }, { excludeLocations: excludes });
           if (reqId !== routeReqId.current) return;
           // Bridge/weight/weather fire IMMEDIATE overlays via trucker brief (not passive HUD).
@@ -1030,6 +1078,7 @@ export function GpsFullMap() {
       destSelection?.label,
       injectHighlightWeigh,
       refreshAqi,
+      syncTruckDimsInMap,
     ],
   );
 
