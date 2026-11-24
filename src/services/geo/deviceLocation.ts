@@ -96,9 +96,10 @@ export async function watchDevicePosition(
     }
     const sub = await Location.watchPositionAsync(
       {
-        accuracy: Location.Accuracy.High,
-        timeInterval: 1000,
-        distanceInterval: 3,
+        // BestForNavigation + tighter intervals → smoother follow along route (less lag).
+        accuracy: Location.Accuracy.BestForNavigation,
+        timeInterval: 500,
+        distanceInterval: 1,
         mayShowUserSettingsDialog: true,
       },
       (pos) => {

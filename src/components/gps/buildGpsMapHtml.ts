@@ -351,6 +351,10 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   .report-cancel:active{color:var(--ink)}
   @keyframes weighBlink{from{opacity:.55;box-shadow:0 0 0 0 rgba(231,76,60,.2)}to{opacity:1;box-shadow:0 0 0 10px rgba(231,76,60,.05)}}
   .route-line{transition:opacity .35s ease}
+  /* Smooth live GPS marker — CSS lerp between setLatLng ticks (no snap jitter). */
+  .leaflet-marker-pane .leaflet-marker-icon{
+    transition:transform .22s linear;will-change:transform;
+  }
   #mb3d{
     position:absolute;inset:0;z-index:450;pointer-events:none;opacity:0;
     transition:opacity .35s ease;
@@ -441,6 +445,15 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   var followLive = false;
   /** True only after startNavigation — not mere recenter / followLive. */
   var navTripActive = false;
+  /** User dragged/pinched — pause camera follow; marker + route + ETA keep updating. */
+  var userExploring = false;
+  var exploreResumeTimer = null;
+  var EXPLORE_RESUME_MS = 3500;
+  /** Ignore drag/zoom events caused by our own panTo/setView (not user explore). */
+  var programmaticCamera = false;
+  var programmaticCameraTimer = null;
+  /** Display fix (optionally snapped to route) used for marker + follow camera. */
+  var displayOrigin = { lat: origin.lat, lon: origin.lon };
   var arrivedPosted = false;
   var layerGroup = null;
   var aqiGroup = null;
@@ -470,6 +483,105 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     var h = Math.sin(dLat/2)*Math.sin(dLat/2) +
       Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)*Math.sin(dLon/2);
     return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
+  /** Local equirectangular projection onto a segment — for route snap. */
+  function projectOnSegment(p, a, b){
+    var x = p.lon, y = p.lat;
+    var x1 = a.lon, y1 = a.lat;
+    var x2 = b.lon, y2 = b.lat;
+    var dx = x2 - x1, dy = y2 - y1;
+    if (dx === 0 && dy === 0) return { lat: y1, lon: x1 };
+    var t = ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy);
+    if (t < 0) t = 0; else if (t > 1) t = 1;
+    return { lat: y1 + t * dy, lon: x1 + t * dx };
+  }
+
+  /**
+   * Snap raw GPS onto the active route polyline when close enough (GPS noise).
+   * Keeps the chevron on-route without inventing a fake path far off-road.
+   */
+  function snapToRoute(lat, lon, maxM){
+    if (!routeCoords || routeCoords.length < 2) {
+      return { lat: lat, lon: lon, snapped: false };
+    }
+    var lim = typeof maxM === 'number' ? maxM : 40;
+    var p = { lat: lat, lon: lon };
+    var best = null;
+    var bestD = Infinity;
+    for (var i = 0; i < routeCoords.length - 1; i++) {
+      var a = { lat: routeCoords[i][0], lon: routeCoords[i][1] };
+      var b = { lat: routeCoords[i + 1][0], lon: routeCoords[i + 1][1] };
+      var proj = projectOnSegment(p, a, b);
+      var d = haversineM(p, proj);
+      if (d < bestD) {
+        bestD = d;
+        best = proj;
+      }
+    }
+    if (best && bestD <= lim) {
+      return { lat: best.lat, lon: best.lon, snapped: true, distM: bestD };
+    }
+    return { lat: lat, lon: lon, snapped: false, distM: bestD };
+  }
+
+  function clearExploreResumeTimer(){
+    if (exploreResumeTimer) {
+      clearTimeout(exploreResumeTimer);
+      exploreResumeTimer = null;
+    }
+  }
+
+  function markProgrammaticCamera(ms){
+    programmaticCamera = true;
+    if (programmaticCameraTimer) clearTimeout(programmaticCameraTimer);
+    programmaticCameraTimer = setTimeout(function(){
+      programmaticCameraTimer = null;
+      programmaticCamera = false;
+    }, typeof ms === 'number' ? ms : 360);
+  }
+
+  /** User pan/zoom — free explore; camera stops auto-follow until resume. */
+  function beginExplore(){
+    if (programmaticCamera) return;
+    if (!followLive && !navTripActive) return;
+    userExploring = true;
+    clearExploreResumeTimer();
+    exploreResumeTimer = setTimeout(function(){
+      exploreResumeTimer = null;
+      resumeFollowAfterExplore();
+    }, EXPLORE_RESUME_MS);
+  }
+
+  function resumeFollowAfterExplore(){
+    userExploring = false;
+    clearExploreResumeTimer();
+    if (!navTripActive && !followLive) return;
+    followLive = true;
+    ensureVehicleMarker();
+    lastPanAt = Date.now();
+    markProgrammaticCamera(400);
+    map.panTo([displayOrigin.lat, displayOrigin.lon], {
+      animate: true,
+      duration: 0.32,
+      easeLinearity: 0.22,
+    });
+    if (navTripActive) {
+      setStatus('Navigation — suivi GPS live (glissez pour explorer)');
+    }
+  }
+
+  function endExploreNow(){
+    userExploring = false;
+    clearExploreResumeTimer();
+  }
+
+  /** Smooth camera follow — every GPS tick while not exploring (no 700ms lag throttle). */
+  function panFollowCamera(lat, lon){
+    if (!followLive || userExploring) return;
+    lastPanAt = Date.now();
+    markProgrammaticCamera(320);
+    map.panTo([lat, lon], { animate: true, duration: 0.28, easeLinearity: 0.2 });
   }
 
   function applyChrome(p){
@@ -814,15 +926,24 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       if (vehicleMarker) { map.removeLayer(vehicleMarker); vehicleMarker = null; }
       return;
     }
+    var lat = displayOrigin.lat;
+    var lon = displayOrigin.lon;
     if (!vehicleMarker) {
-      vehicleMarker = L.marker([origin.lat, origin.lon], {
+      vehicleMarker = L.marker([lat, lon], {
         icon: vehicleDivIcon(),
         zIndexOffset: 900,
         interactive: false,
       }).addTo(map);
+      vehicleMarker._gpsHeading = headingDeg;
+      vehicleMarker._gpsMode = mode;
     } else {
-      vehicleMarker.setLatLng([origin.lat, origin.lon]);
-      vehicleMarker.setIcon(vehicleDivIcon());
+      vehicleMarker.setLatLng([lat, lon]);
+      // Rebuild icon only when heading/mode changes — keeps CSS lat/lng lerp smooth.
+      if (vehicleMarker._gpsHeading !== headingDeg || vehicleMarker._gpsMode !== mode) {
+        vehicleMarker._gpsHeading = headingDeg;
+        vehicleMarker._gpsMode = mode;
+        vehicleMarker.setIcon(vehicleDivIcon());
+      }
     }
   }
   ensureVehicleMarker();
@@ -886,6 +1007,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     setEtaBar(null, null);
     followLive = false;
     navTripActive = false;
+    endExploreNow();
   }
 
   function applyMode(next, opts){
@@ -973,6 +1095,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     arrivedPosted = false;
     navTripActive = false;
     followLive = false;
+    endExploreNow();
     if (destMarker) map.removeLayer(destMarker);
     destMarker = L.marker([dest.lat, dest.lon], { icon: destDivIcon(), zIndexOffset: 700 }).addTo(map);
     setStatus(
@@ -1026,6 +1149,9 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
           weight: 4,
           opacity: 0.45,
           dashArray: '8 10',
+          lineCap: 'round',
+          lineJoin: 'round',
+          smoothFactor: 1.15,
           className: 'route-line',
         }).addTo(map));
       }
@@ -1033,6 +1159,9 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
         color: primaryColor,
         weight: 5,
         opacity: 0.92,
+        lineCap: 'round',
+        lineJoin: 'round',
+        smoothFactor: 1.15,
         className: 'route-line',
       }).addTo(map);
       var stops = payload.waypoints || [];
@@ -1049,6 +1178,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
           zIndexOffset: 650,
         }).addTo(map));
       }
+      markProgrammaticCamera(500);
       map.fitBounds(routeLine.getBounds(), { padding: [52, 52], animate: true, duration: 0.45 });
       ensureVehicleMarker();
       document.getElementById('btnGo').disabled = false;
@@ -1080,12 +1210,14 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     }
     origin = { lat: lat, lon: lon };
     if (typeof heading === 'number' && isFinite(heading) && heading >= 0) headingDeg = heading;
+    // During nav: snap onto route for clean alignment; keep raw origin for arrival.
+    var snapped = (navTripActive || followLive) && routeCoords.length >= 2
+      ? snapToRoute(lat, lon, 40)
+      : { lat: lat, lon: lon, snapped: false };
+    displayOrigin = { lat: snapped.lat, lon: snapped.lon };
     ensureVehicleMarker();
-    var now = Date.now();
-    if (followLive && now - lastPanAt > 700) {
-      lastPanAt = now;
-      map.panTo([lat, lon], { animate: true, duration: 0.55, easeLinearity: 0.3 });
-    }
+    // Default auto-follow — free pan while exploring (no snap-back until resume).
+    panFollowCamera(displayOrigin.lat, displayOrigin.lon);
     // Post-trip voice logbook + trip history: only after an explicit startNavigation trip.
     if (navTripActive && dest && !arrivedPosted) {
       var distM = haversineM(origin, dest);
@@ -1093,6 +1225,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
         arrivedPosted = true;
         navTripActive = false;
         followLive = false;
+        endExploreNow();
         setStatus('Arrivée — note vocale trajet dispo');
         post({ type: 'arrived', mode: mode, to: { lat: dest.lat, lon: dest.lon } });
       }
@@ -1103,7 +1236,10 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   window.__gpsSetOrigin = function(lat, lon, ok){
     window.__gpsUpdatePosition(lat, lon, ok, headingDeg, null);
     if (ok !== false) {
-      map.setView([lat, lon], Math.max(map.getZoom(), 14), { animate: true });
+      endExploreNow();
+      followLive = true;
+      markProgrammaticCamera(500);
+      map.setView([displayOrigin.lat, displayOrigin.lon], Math.max(map.getZoom(), 14), { animate: true });
       setStatus(mode === 'camion'
         ? 'GPS appareil OK — mode camion, touchez une destination'
         : 'GPS appareil OK — touchez une destination');
@@ -1483,20 +1619,34 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
 
   function startNavigation(){
     if (!routeCoords.length || !gpsOk || !dest) return false;
+    endExploreNow();
     followLive = true;
     navTripActive = true;
     arrivedPosted = false;
-    setStatus('Navigation — marqueur = position appareil (pas de démo polyline)');
+    var snap = snapToRoute(origin.lat, origin.lon, 40);
+    displayOrigin = { lat: snap.lat, lon: snap.lon };
+    ensureVehicleMarker();
+    setStatus('Navigation — suivi GPS live (glissez pour explorer)');
     post({ type: 'navigating', mode: mode, to: dest });
-    map.panTo([origin.lat, origin.lon], { animate: true, duration: 0.4 });
+    lastPanAt = Date.now();
+    markProgrammaticCamera(400);
+    map.panTo([displayOrigin.lat, displayOrigin.lon], { animate: true, duration: 0.35 });
     return true;
   }
   window.__gpsStartNavigation = startNavigation;
+
+  /* Free pan/zoom during nav: pause forced follow; resume after idle. Route + ETA stay. */
+  map.on('dragstart', function(){ beginExplore(); });
+  map.on('zoomstart', function(){
+    /* User pinch/wheel only — programmatic setView/panTo guarded via programmaticCamera. */
+    beginExplore();
+  });
 
   document.getElementById('btnCar').onclick = function(){ applyMode('voiture'); };
   document.getElementById('btnTruck').onclick = function(){ applyMode('camion'); };
   document.getElementById('btnGo').onclick = function(){ startNavigation(); };
   document.getElementById('btnRecenter').onclick = function(){
+    endExploreNow();
     followLive = true;
     post({ type: 'recenter' });
   };
