@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
+import { StatusBar } from 'expo-status-bar';
 import { normalizeVin } from '../services/vin/vinNormalize';
 import { colors } from '../theme/colors';
 
@@ -41,6 +42,8 @@ export function VinCameraScanner({ visible, onClose, onVin }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      {/* Asphalt full-window modal — light icons over dark chrome. */}
+      {visible ? <StatusBar style="light" /> : null}
       <View style={styles.root}>
         <Text style={styles.title}>Scan VIN caméra</Text>
         {!permission?.granted ? (

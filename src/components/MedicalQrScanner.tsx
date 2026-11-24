@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
+import { StatusBar } from 'expo-status-bar';
 import { parseScannedQrValue } from '../services/urgence/offlineQr';
 import { colors } from '../theme/colors';
 
@@ -49,6 +50,8 @@ export function MedicalQrScanner({ visible, onClose, onScan }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      {/* Asphalt full-window modal — light icons over dark chrome. */}
+      {visible ? <StatusBar style="light" /> : null}
       <View style={styles.root}>
         <Text style={styles.title}>Scan QR médical</Text>
         {!permission?.granted ? (
