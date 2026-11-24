@@ -28,6 +28,7 @@ import {
   fetchPlaceDetailsWithReviews,
   type PlaceDetailsData,
 } from '../../services/geo/googlePlacesDetails';
+import { resolveNavigableDestination } from '../../services/geo/navigableDestination';
 import { geocodePlace } from '../../services/geo/openMeteoGeocode';
 import { PlaceReviewsPanel } from './PlaceReviewsPanel';
 import {
@@ -770,7 +771,11 @@ export function GpsFullMap() {
       }
       bootedRef.current = true;
       const mapboxToken = (process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '').trim();
-      const tomtomApiKey = (process.env.EXPO_PUBLIC_TOMTOM_API_KEY ?? '').trim();
+      const tomtomApiKey = (
+        process.env.EXPO_PUBLIC_TOMTOM_API_KEY ??
+        process.env.TOMTOM_API_KEY ??
+        ''
+      ).trim();
       setBootHtml(
         buildGpsMapHtml({
           lat: origin.lat,
@@ -1381,17 +1386,26 @@ export function GpsFullMap() {
   /** Confirm a resolved place: fill search, open dest menu, center map. */
   const commitDestination = useCallback(
     (lat: number, lon: number, label: string, noteSuffix?: string) => {
-      applyDestinationLabel(label);
-      setDestSelection({ lat, lon, label });
+      // Province/state/country centroids → navigable city (BC wilderness, FL, NSW…).
+      const nav = resolveNavigableDestination(lat, lon, label);
+      const destLat = nav.lat;
+      const destLon = nav.lon;
+      const destLabel = nav.label;
+      const remapNote = nav.remapped ? `ville navigable · ${nav.adminKey}` : undefined;
+      const note = [noteSuffix, remapNote].filter(Boolean).join(' · ') || undefined;
+      applyDestinationLabel(destLabel);
+      setDestSelection({ lat: destLat, lon: destLon, label: destLabel });
       setLastRoute(null);
-      proposeDestination(lat, lon, label);
+      proposeDestination(destLat, destLon, destLabel);
       setDestMenuOpen(true);
-      setHudNote(noteSuffix ? `Destination · ${label} · ${noteSuffix}` : `Destination · ${label}`);
+      setHudNote(note ? `Destination · ${destLabel} · ${note}` : `Destination · ${destLabel}`);
       void (async () => {
-        const saved = await findSavedPlace(lat, lon);
+        const saved = await findSavedPlace(destLat, destLon);
         if (!saved?.tag) return;
         setDestSelection((prev) =>
-          prev && prev.lat === lat && prev.lon === lon ? { ...prev, tag: saved.tag } : prev,
+          prev && prev.lat === destLat && prev.lon === destLon
+            ? { ...prev, tag: saved.tag }
+            : prev,
         );
       })();
     },

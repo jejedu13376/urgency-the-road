@@ -1,8 +1,11 @@
 /**
  * Itinerary planner — TomTom first (alts / avoid / eco / fuel / tolls),
- * Valhalla FOSSGIS fallback with avoid costing + soft alternatives.
+ * Valhalla FOSSGIS next, then OSRM for long-haul when Valhalla hits its
+ * ~1500 km max-distance cap (AU / CA / US / EU cross-region).
+ * Never invent a straight-line haversine "success" route.
  */
 import type { GpsVehicleMode } from '../prefs/gpsNavPrefs';
+import { fetchOsrmAlternatives } from './osrmRoute';
 import { estimateFuelCost, estimateTollCost } from './routeCostEstimate';
 import {
   DEFAULT_ROUTE_AVOID,
@@ -14,6 +17,7 @@ import {
 } from './tomtomRoute';
 import {
   fetchVehicleRoute,
+  isValhallaMaxDistanceError,
   type RoutePoint,
   type TruckDims,
   type VehicleRouteResult,
@@ -30,6 +34,12 @@ function vehicleToOption(
   if (!route.ok || route.coords.length < 2) return null;
   const fuel = estimateFuelCost(route.distanceKm, route.mode);
   const toll = estimateTollCost(route.mode, { tollSectionKm: 0 });
+  const source: ItineraryRouteOption['source'] =
+    route.source === 'osrm'
+      ? 'osrm'
+      : route.source === 'valhalla-truck'
+        ? 'valhalla-truck'
+        : 'valhalla-auto';
   return {
     id,
     title,
@@ -43,7 +53,7 @@ function vehicleToOption(
     fuelLiters: fuel.liters,
     fuelCostCad: fuel.costCad,
     fuelLabel: `Essence estimée · ${fuel.liters} L · ~${fuel.costCad.toFixed(2)} $`,
-    source: route.source === 'valhalla-truck' ? 'valhalla-truck' : 'valhalla-auto',
+    source,
     label: `${title} · ${route.label}`,
   };
 }
@@ -138,6 +148,43 @@ async function fetchValhallaPlan(
   };
 }
 
+async function fetchOsrmPlan(
+  from: RoutePoint,
+  to: RoutePoint,
+  mode: GpsVehicleMode,
+  waypoints?: RoutePoint[],
+): Promise<ItineraryPlanResult> {
+  const routes = await fetchOsrmAlternatives(from, to, mode, { waypoints });
+  const options: ItineraryRouteOption[] = [];
+  const titles = ['Rapide', 'Autre', 'Option 3'];
+  routes.forEach((r, i) => {
+    const opt = vehicleToOption(r, titles[i] ?? `Option ${i + 1}`, `osrm-${i}`);
+    if (opt && options.every((o) => distinctEnough(o, opt))) options.push(opt);
+  });
+
+  if (!options.length) {
+    const err = routes[0]?.error ?? routes[0]?.label ?? 'OSRM KO';
+    return {
+      ok: false,
+      mode,
+      options: [],
+      selectedIndex: 0,
+      engine: 'osrm',
+      error: err,
+      label: routes[0]?.label || 'OSRM KO',
+    };
+  }
+
+  return {
+    ok: true,
+    mode,
+    options,
+    selectedIndex: 0,
+    engine: 'osrm',
+    label: options[0].label,
+  };
+}
+
 export type PlanItineraryInput = {
   from: RoutePoint;
   to: RoutePoint;
@@ -149,8 +196,9 @@ export type PlanItineraryInput = {
 };
 
 /**
- * Prefer TomTom when key present; Valhalla otherwise (or TomTom fail).
- * Returns 1–3 route options.
+ * Prefer TomTom when key present; Valhalla otherwise; OSRM for long-haul
+ * when Valhalla refuses (max distance) or fails.
+ * Returns 1–3 route options with real road polylines — never haversine fakes.
  */
 export async function planItinerary(
   input: PlanItineraryInput,
@@ -167,7 +215,7 @@ export async function planItinerary(
       maxAlternatives: 2,
     });
     if (tt.ok && tt.options.length) return tt;
-    // Fall through — honest Valhalla backup.
+    // Fall through — honest Valhalla / OSRM backup.
   }
 
   const result = await fetchValhallaPlan(
@@ -180,13 +228,33 @@ export async function planItinerary(
     waypoints,
   );
 
-  if (!result.ok && isTomTomRoutingConfigured()) {
+  if (result.ok && result.options.length) return result;
+
+  // Long-haul / Valhalla cap / network — OSRM public driving graph (worldwide OSM).
+  const osrm = await fetchOsrmPlan(input.from, input.to, input.mode, waypoints);
+  if (osrm.ok && osrm.options.length) {
+    const reason = isValhallaMaxDistanceError(result.error)
+      ? 'Valhalla max distance'
+      : result.label || 'Valhalla KO';
     return {
-      ...result,
-      label: `TomTom + Valhalla KO — ${result.label}`,
+      ...osrm,
+      label: `${osrm.label} · secours (${reason})`,
     };
   }
-  return result;
+
+  if (isTomTomRoutingConfigured()) {
+    return {
+      ...osrm,
+      ok: false,
+      label: `TomTom + Valhalla + OSRM KO — ${osrm.label}`,
+    };
+  }
+
+  return {
+    ...osrm,
+    ok: false,
+    label: `Valhalla + OSRM KO — ${osrm.label}`,
+  };
 }
 
 /** Map a selected itinerary option onto the legacy VehicleRouteResult shape for inject/nav. */
@@ -194,18 +262,21 @@ export function itineraryOptionToVehicleRoute(
   opt: ItineraryRouteOption,
   mode: GpsVehicleMode,
 ): VehicleRouteResult {
+  const source: VehicleRouteResult['source'] =
+    opt.source === 'tomtom'
+      ? mode === 'camion'
+        ? 'valhalla-truck'
+        : 'valhalla-auto'
+      : opt.source === 'osrm'
+        ? 'osrm'
+        : opt.source;
   return {
     ok: true,
     mode,
     coords: opt.coords,
     distanceKm: opt.distanceKm,
     durationMin: opt.durationMin,
-    source:
-      opt.source === 'tomtom'
-        ? mode === 'camion'
-          ? 'valhalla-truck'
-          : 'valhalla-auto'
-        : opt.source,
+    source,
     label: opt.label,
   };
 }
