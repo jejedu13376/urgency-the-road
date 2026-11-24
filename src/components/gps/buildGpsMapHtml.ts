@@ -155,11 +155,6 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   .chip small{display:block;font-weight:550;opacity:.72;margin-top:2px;font-size:10px;letter-spacing:.01em}
   .chip .chip-ico{display:inline-flex;vertical-align:-1px;margin-right:5px;opacity:.9}
   .chip .chip-ico svg{display:block}
-  .status{
-    align-self:flex-start;max-width:94%;
-    background:rgba(27,36,48,.9);color:#fff;border-radius:9px;padding:7px 10px;
-    font:550 11px/1.35 system-ui,sans-serif;letter-spacing:.01em;
-  }
   .bottom{
     position:absolute;z-index:1000;
     left:calc(10px + var(--pad-left));right:auto;
@@ -369,7 +364,6 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     <button type="button" class="chip" id="btnCar"><span>Voiture</span><small>Profil auto</small></button>
     <button type="button" class="chip" id="btnTruck"><span class="chip-ico" aria-hidden="true"><svg viewBox="0 0 96 48" width="22" height="11"><rect x="1" y="9" width="56" height="23" rx="2" fill="currentColor" opacity=".92"/><path d="M71 12.5 H83.5 L91 26.5 H71 Z" fill="currentColor"/><rect x="58" y="11" width="13" height="16.5" rx="2" fill="currentColor"/><rect x="71" y="12.5" width="13" height="14.5" rx="1.4" fill="currentColor"/><rect x="58" y="26.5" width="35" height="5.5" rx="1.2" fill="currentColor" opacity=".75"/><circle cx="11" cy="38.5" r="5.2" fill="currentColor"/><circle cx="21" cy="38.5" r="5.2" fill="currentColor"/><circle cx="65" cy="38.5" r="5.2" fill="currentColor"/><circle cx="75" cy="38.5" r="5.2" fill="currentColor"/><circle cx="88" cy="38.5" r="4.8" fill="currentColor"/></svg></span><span>Camion</span><small>Semi / fret</small></button>
   </div>
-  <div class="status" id="status">Choisissez Voiture ou Camion en haut, puis touchez / cherchez une destination</div>
 </div>
 <div class="bottom">
   <div class="bottom-actions">
@@ -603,7 +597,8 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     } catch (e) {}
   }
 
-  function setStatus(t){ document.getElementById('status').textContent = t; }
+  /* Status HUD removed (no black “suivi GPS live” / live-track banner). Keep no-op for call sites. */
+  function setStatus(_t){ /* intentionally empty */ }
 
   function syncChips(){
     var car = document.getElementById('btnCar');
