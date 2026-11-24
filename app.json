@@ -22,6 +22,7 @@
     "android": {
       "package": "com.axarel.urgencyroadone",
       "versionCode": 1,
+      "allowBackup": false,
       "permissions": [
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",

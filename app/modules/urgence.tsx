@@ -6,6 +6,8 @@ import { Card } from '../../src/components/Card';
 import { DrowsinessMonitorCard } from '../../src/components/DrowsinessMonitorCard';
 import { EmergencyDialList } from '../../src/components/EmergencyDialList';
 import { HosLivePanel } from '../../src/components/HosLivePanel';
+import { MedicalQrCode } from '../../src/components/MedicalQrCode';
+import { MedicalQrScanner } from '../../src/components/MedicalQrScanner';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
@@ -33,6 +35,10 @@ import {
   emergencyOptionById,
   suggestEmergencyNumberId,
 } from '../../src/services/urgence/emergencyNumbers';
+import {
+  encodePrintableQrValue,
+  extractScanCode,
+} from '../../src/services/urgence/offlineQr';
 import {
   formatSosAlertMessage,
   isValidSosEmail,
@@ -78,7 +84,8 @@ export default function UrgenceScreen() {
   const [medications, setMedications] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
-  const [scanCode, setScanCode] = useState('');
+  /** Lookup field for scan UI only — never fed into personal QR mint/save. */
+  const [lookupCode, setLookupCode] = useState('');
   const [badgeId, setBadgeId] = useState(profile?.rescuerBadgeId ?? '');
   const [publicView, setPublicView] = useState<MedicalPublicPreview | null>(null);
   const [emergencyView, setEmergencyView] = useState<MedicalEmergencyView | null>(null);
@@ -90,6 +97,16 @@ export default function UrgenceScreen() {
   const [gpsErr, setGpsErr] = useState<string | null>(null);
   const [label, setLabel] = useState<string | undefined>();
   const [coords, setCoords] = useState<DeviceCoords | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+
+  // Align with firestore.rules ownerIsActiveSubscriber — flag only, never plan name / !profile.
+  const subscriberActive = profile?.subscriptionActive === true;
+
+  const qrPrintValue = useMemo(() => {
+    if (!card?.scanCode || !subscriberActive) return '';
+    // Opaque id only — medical payload stays on-device / cloud, never in the printed QR.
+    return encodePrintableQrValue(card.scanCode);
+  }, [card, subscriberActive]);
 
   const suggestedEmergencyId = useMemo(
     () =>
@@ -100,9 +117,6 @@ export default function UrgenceScreen() {
     [coords?.lat, coords?.lon],
   );
   const suggestedEmergency = emergencyOptionById(suggestedEmergencyId);
-
-  // Align with firestore.rules ownerIsActiveSubscriber — flag only, never plan name / !profile.
-  const subscriberActive = profile?.subscriptionActive === true;
 
   useEffect(() => {
     // M13: never seed SOS UI with Lille fallback — device GPS only.
@@ -187,7 +201,6 @@ export default function UrgenceScreen() {
         }
         if (qr.data.card?.scanCode) {
           setCard(qr.data.card);
-          setScanCode(qr.data.scanCode);
           hydrateForm(qr.data.card);
         } else {
           const res = await getOwnMedicalCard(uid);
@@ -198,7 +211,6 @@ export default function UrgenceScreen() {
           setCard(res.data);
           setLabel(res.stubLabel ?? qr.stubLabel);
           if (res.data) {
-            setScanCode(res.data.scanCode);
             hydrateForm(res.data);
           }
         }
@@ -214,8 +226,9 @@ export default function UrgenceScreen() {
       return;
     }
     const uid = profile.uid;
-    // Never derive from uid — empty → upsertMedicalCard mints opaque UM-QR-* (mintScanCode).
-    const code = (card?.scanCode || scanCode || '').trim().toUpperCase();
+    // Personal QR only — never the scan/lookup field (may be a third-party code).
+    // Empty → upsertMedicalCard mints opaque UM-QR-* (mintScanCode).
+    const code = (card?.scanCode || '').trim().toUpperCase();
     const payload: MedicalCardDoc = {
       id: `med-${uid}`,
       ownerUid: uid,
@@ -244,14 +257,13 @@ export default function UrgenceScreen() {
     };
     const res = await upsertMedicalCard(payload);
     setCard(res.data);
-    setScanCode(res.data.scanCode);
     setSaveMsg(res.stubLabel ?? 'Fiche + QR personnel enregistrés');
     setLabel(res.stubLabel);
   };
 
   const onPublicScan = async () => {
     setEmergencyView(null);
-    const res = await scanMedicalPublic(scanCode);
+    const res = await scanMedicalPublic(lookupCode);
     setPublicView(res.data);
     setScanMsg(res.stubLabel ?? (res.data ? 'Vue publique limitée' : 'QR inconnu'));
   };
@@ -272,7 +284,7 @@ export default function UrgenceScreen() {
       profile?.role === 'rescuer'
         ? { ...profile, rescuerBadgeId: badgeId || profile.rescuerBadgeId }
         : profile;
-    const res = await scanMedicalEmergency(scanCode, rescuer ?? null);
+    const res = await scanMedicalEmergency(lookupCode, rescuer ?? null);
     // ok:false demo can still carry flagged PHI for UX — never present as live.
     setEmergencyView(res.data);
     const demoFlag =
@@ -286,6 +298,12 @@ export default function UrgenceScreen() {
           ? `Urgence : ${res.data.fullName} · ${res.data.address}`
           : 'Accès refusé ou QR inconnu'),
     );
+  };
+
+  const onCameraScan = (raw: string) => {
+    // Lookup only — never becomes the owner's personal QR on save.
+    setLookupCode(extractScanCode(raw));
+    setScanMsg('QR lu — choisissez vue publique ou vue urgence (hors ligne OK).');
   };
 
   const driveSec = Math.floor(breakState.drivingSec);
@@ -371,11 +389,15 @@ export default function UrgenceScreen() {
 
         <Card title="QR personnel (compte abonné)">
           <Text style={styles.meta}>
-            Un QR unique par compte abonné, imprimé en autocollant / carte / porte-clés — scannable
-            avec n’importe quel appareil photo. Distinct de la valise OBD (M5) et de la fiche
-            diagnostique véhicule.
+            QR généré localement (id opaque UM-QR-* uniquement, pas de PHI dans le code) · fiche
+            stockée sur l’appareil · scan hors ligne via store local. Autocollant / carte /
+            porte-clés — distinct de la valise OBD (M5) et de la fiche diagnostique véhicule.
           </Text>
-          <Text style={styles.qrCode}>{(card?.scanCode ?? scanCode) || '— (abonné requis)'}</Text>
+          <MedicalQrCode
+            value={qrPrintValue}
+            size={196}
+            label={card?.scanCode || '— (abonné requis)'}
+          />
           <Text style={styles.meta}>
             Statut abonnement : {subscriberActive ? 'actif → QR disponible' : 'inactif → pas de QR'}
           </Text>
@@ -407,12 +429,16 @@ export default function UrgenceScreen() {
         <Card title="Scan — accès contrôlé">
           <Text style={styles.meta}>
             (1) Public limité : SOS sans données médicales. (2) Urgence complète : nom, adresse,
-            contact d’urgence, fiche médicale — secours autorisés uniquement.
+            contact d’urgence, fiche médicale — secours autorisés. Hors ligne : fiche propriétaire
+            sur cet appareil ; secours : cloud quand disponible.
           </Text>
+          <Pressable style={styles.gpsBtn} onPress={() => setScannerOpen(true)}>
+            <Text style={styles.sosTxt}>Scanner QR caméra (hors ligne)</Text>
+          </Pressable>
           <Text style={styles.label}>Code QR scanné</Text>
           <TextInput
-            value={scanCode}
-            onChangeText={setScanCode}
+            value={lookupCode}
+            onChangeText={setLookupCode}
             style={styles.input}
             placeholder="UM-QR-…"
             placeholderTextColor={colors.muted}
@@ -547,6 +573,11 @@ export default function UrgenceScreen() {
           </View>
         </Card>
       </Screen>
+      <MedicalQrScanner
+        visible={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScan={onCameraScan}
+      />
     </>
   );
 }
@@ -554,13 +585,6 @@ export default function UrgenceScreen() {
 const styles = StyleSheet.create({
   meta: { color: colors.muted, fontSize: 12, lineHeight: 17 },
   coords: { fontWeight: '700', color: colors.ink },
-  qrCode: {
-    fontWeight: '900',
-    fontSize: 18,
-    color: colors.signal,
-    letterSpacing: 0.5,
-    marginVertical: 6,
-  },
   label: { color: colors.slate, fontWeight: '700', fontSize: 12, marginTop: 6 },
   row: { flexDirection: 'row', gap: 8, marginTop: 8 },
   sos: { flex: 1, backgroundColor: colors.danger, borderRadius: 10, padding: 12, alignItems: 'center' },

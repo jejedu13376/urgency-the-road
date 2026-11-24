@@ -13,6 +13,14 @@ import type {
   UserDoc,
 } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
+import {
+  isIsoNewer,
+  loadMedicalCardByOwnerUid,
+  loadMedicalCardByScanCode,
+  removeMedicalCardByScanCode,
+  saveMedicalCardLocal,
+} from '../urgence/medicalLocalStore';
+import { parseScannedQrValue } from '../urgence/offlineQr';
 import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { failResult, flaggedDemoResult, liveResult, mockResult, ServiceResult } from './result';
 
@@ -230,9 +238,37 @@ export async function ensurePersonalQr(
   }
   if (existing.data?.scanCode) {
     if (existing.source === 'mock') {
-      return flaggedDemoResult(
+      const label = existing.stubLabel ?? '';
+      // ok:false DEMO already returned above — remaining mock is real on-device LOCAL.
+      if (/DEMO/i.test(label)) {
+        return flaggedDemoResult(
+          { scanCode: existing.data.scanCode, card: existing.data },
+          label || 'DEMO QR personnel existant (ok:false, pas live)',
+        );
+      }
+      // Push unsynced local fiche to cloud when possible so rescuers can resolve the QR.
+      if (getFirebase() && getSignedInUid()) {
+        const synced = await upsertMedicalCard({
+          ...existing.data,
+          subscriberActive: true,
+        });
+        if (synced.source === 'firebase' && synced.ok !== false) {
+          return liveResult(
+            { scanCode: synced.data.scanCode, card: synced.data },
+            'QR local synchronisé cloud',
+          );
+        }
+        // Keep local hydrate if sync failed (network); permission deny is ok:false from upsert.
+        if (synced.ok === false && /permission|refus/i.test(synced.stubLabel ?? '')) {
+          return failResult(
+            { scanCode: existing.data.scanCode, card: existing.data },
+            synced.stubLabel ?? 'Sync cloud refusé',
+          );
+        }
+      }
+      return mockResult(
         { scanCode: existing.data.scanCode, card: existing.data },
-        existing.stubLabel ?? 'DEMO QR personnel existant (ok:false, pas live)',
+        label || 'LOCAL QR personnel (appareil)',
       );
     }
     // Refresh index (subscriberActive + PHI) without reminting — keeps legacy QR rescuer-readable
@@ -311,7 +347,9 @@ export async function upsertMedicalCard(
   };
 
   if (!fb || !uid || uid !== card.ownerUid) {
-    return mockResult(payload, 'MOCK medical — QR/fiche locale (ou non connecté)');
+    // Offline-first: persist fiche + QR payload on device even without Firebase.
+    const local = await saveMedicalCardLocal(payload);
+    return mockResult(local, 'LOCAL medical — fiche + QR stockés sur l’appareil (hors ligne)');
   }
 
   let claimedNewIndex: string | null = null;
@@ -410,6 +448,8 @@ export async function upsertMedicalCard(
       }
     }
 
+    // Mirror live write to device so scan works offline later.
+    await saveMedicalCardLocal(payload);
     const stub = payload.subscriberActive
       ? undefined
       : 'Fiche enregistrée — index réservé sans PHI (abonné inactif)';
@@ -425,9 +465,19 @@ export async function upsertMedicalCard(
         /* best-effort orphan cleanup */
       }
     }
-    return failResult(
+    // Rules deny: never persist or mock PHI. Network errors: keep device copy.
+    if (isPermissionDenied(e)) {
+      return failResult(
+        payload,
+        'SOFT medical — écriture refusée (pas de PHI local forcé)',
+      );
+    }
+    await saveMedicalCardLocal(payload);
+    return mockResult(
       payload,
-      e instanceof Error ? e.message : 'Échec écriture fiche médicale',
+      e instanceof Error
+        ? `LOCAL — cloud échoué (${e.message}), fiche + QR sur l’appareil`
+        : 'LOCAL — cloud échoué, fiche + QR sur l’appareil',
     );
   }
 }
@@ -436,6 +486,10 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
   const fb = getFirebase();
   const uid = getSignedInUid();
   if (!fb || !uid) {
+    const local = await loadMedicalCardByOwnerUid(ownerUid);
+    if (local) {
+      return mockResult(local, 'LOCAL medical — fiche lue hors ligne (appareil)');
+    }
     // Flagged demo PHI — ok:false so UI never treats it as live Firestore.
     return flaggedDemoResult(
       { ...MOCK_CARD, ownerUid, id: medicalCardDocId(ownerUid), scanCode: MOCK_CARD.scanCode },
@@ -450,26 +504,48 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
       if (snap.exists()) {
         const raw = snap.data() as Omit<MedicalCardDoc, 'id'>;
         // Normalize arrays — incomplete Firestore docs must not crash hydrateForm .join().
-        return liveResult({
+        const card: MedicalCardDoc = {
           id: snap.id,
           ...raw,
           allergies: raw.allergies ?? [],
           conditions: raw.conditions ?? [],
           medications: raw.medications ?? [],
           emergencyContacts: raw.emergencyContacts ?? [],
-        });
+        };
+        const local = await loadMedicalCardByOwnerUid(uid);
+        // Do not clobber newer offline edits that never reached the cloud.
+        if (local && isIsoNewer(local.updatedAt, card.updatedAt)) {
+          return mockResult(
+            local,
+            'LOCAL medical — fiche appareil plus récente que le cloud',
+          );
+        }
+        await saveMedicalCardLocal(card);
+        return liveResult(card);
       }
+    }
+    const local = await loadMedicalCardByOwnerUid(uid);
+    if (local) {
+      return mockResult(local, 'LOCAL medical — cloud vide, fiche appareil');
     }
     return liveResult(null);
   } catch (e) {
-    // Soft-fail: ok:false + null — NEVER mockResult(ok:true) with PHI.
-    if (isPermissionDenied(e) || isDevSoftAuth()) {
+    // Rules deny first — never mockResult PHI on permission-denied.
+    if (isPermissionDenied(e)) {
       return failResult(
         null,
-        isPermissionDenied(e)
-          ? 'SOFT medical — permission refusée (pas de PHI mock, UI charge)'
-          : 'SOFT medical — DEV (pas de fiche, pas de PHI inventé)',
+        'SOFT medical — permission refusée (pas de PHI mock, UI charge)',
       );
+    }
+    const local = await loadMedicalCardByOwnerUid(uid);
+    if (local) {
+      return mockResult(
+        local,
+        'LOCAL medical — cloud indisponible, fiche appareil hors ligne',
+      );
+    }
+    if (isDevSoftAuth()) {
+      return failResult(null, 'SOFT medical — DEV (pas de fiche, pas de PHI inventé)');
     }
     return failResult(null, e instanceof Error ? e.message : 'Lecture fiche médicale refusée');
   }
@@ -477,23 +553,31 @@ export async function getOwnMedicalCard(ownerUid: string): Promise<ServiceResult
 
 /**
  * Anonymous / public camera scan → limited preview only (no PHI).
- * Does not list or read medicalCards — static SOS payload for any UM-QR-* code.
+ * Accepts opaque UM-QR-* (or legacy UMQR1: → scanCode only) — never surfaces PHI.
+ * Works fully offline (static SOS payload).
  */
 export async function scanMedicalPublic(
-  scanCode: string,
+  scanInput: string,
 ): Promise<ServiceResult<MedicalPublicPreview | null>> {
-  const code = scanCode.trim().toUpperCase();
-  if (!code) return mockResult(null, 'Code QR vide');
-  if (!code.startsWith('UM-QR-')) return mockResult(null, 'QR inconnu');
-  return liveResult(toPublicPreview(code), 'Vue publique limitée — pas de PHI');
+  const parsed = parseScannedQrValue(scanInput);
+  if (parsed.kind === 'unknown') {
+    const raw = scanInput.trim();
+    if (!raw) return mockResult(null, 'Code QR vide');
+    return mockResult(null, 'QR inconnu');
+  }
+  return liveResult(
+    toPublicPreview(parsed.scanCode),
+    'Vue publique limitée — hors ligne OK, pas de PHI',
+  );
 }
 
 /**
- * Authorized emergency scan → get(medicalScanIndex/{scanCode}) only.
- * Rules deny list on that collection — rescuer cannot dump all cards.
+ * Authorized emergency scan.
+ * Offline: AsyncStorage by opaque scanCode only — never trusts PHI embedded in a QR.
+ * Online: Firestore medicalScanIndex/{scanCode} (no collection list).
  */
 export async function scanMedicalEmergency(
-  scanCode: string,
+  scanInput: string,
   rescuerProfile: UserDoc | null,
 ): Promise<ServiceResult<MedicalEmergencyView | null>> {
   const softDev = isDevSoftAuth();
@@ -507,10 +591,23 @@ export async function scanMedicalEmergency(
     );
   }
 
-  const code = scanCode.trim().toUpperCase();
+  const parsed = parseScannedQrValue(scanInput);
+  const code =
+    parsed.kind === 'scanCode'
+      ? parsed.scanCode
+      : scanInput.trim().toUpperCase();
+
+  const local = code.startsWith('UM-QR-') ? await loadMedicalCardByScanCode(code) : null;
+
   const fb = getFirebase();
   if (!fb) {
-    // Only the exact demo scan code returns flagged demo PHI — never any UM-QR-* prefix.
+    // Offline: device store only — never invent PHI for arbitrary codes.
+    if (local) {
+      return mockResult(
+        toEmergencyView(local),
+        'LOCAL vue urgence — fiche appareil hors ligne',
+      );
+    }
     if (code === MOCK_CARD.scanCode.toUpperCase()) {
       return flaggedDemoResult(
         toEmergencyView({ ...MOCK_CARD }),
@@ -518,15 +615,21 @@ export async function scanMedicalEmergency(
       );
     }
     return softDev
-      ? failResult(null, 'SOFT vue urgence — Firebase off / QR non démo (pas de PHI)')
-      : mockResult(null, 'QR inconnu (mock — seul le code démo renvoie une fiche)');
+      ? failResult(null, 'SOFT vue urgence — Firebase off / pas de fiche locale')
+      : mockResult(null, 'QR inconnu hors ligne — aucune fiche locale pour ce code');
   }
 
   try {
-    // Exact document get by scanCode — not a collection list
+    // Online: cloud index wins — do not serve stale cache when the index is absent.
     const snap = await getDoc(doc(fb.db, COLLECTIONS.medicalScanIndex, code));
     if (!snap.exists()) {
-      // Demo code only when Firebase empty — flagged ok:false, never invent for other codes.
+      // Confirmed miss while online:
+      // - Drop third-party rescuer cache so a rotated/deleted QR cannot unlock PHI offline later.
+      // - Keep the signed-in owner's own unsynced fiche (index may never have been uploaded).
+      const uid = getSignedInUid();
+      if (local && local.ownerUid && local.ownerUid !== uid) {
+        await removeMedicalCardByScanCode(code);
+      }
       if (code === MOCK_CARD.scanCode.toUpperCase()) {
         return flaggedDemoResult(
           toEmergencyView({ ...MOCK_CARD }),
@@ -536,31 +639,42 @@ export async function scanMedicalEmergency(
       return liveResult(null);
     }
     const idx = snap.data() as ScanIndexDoc;
-    return liveResult(
-      toEmergencyView({
-        id: idx.cardId,
-        ownerUid: idx.ownerUid,
-        scanCode: idx.scanCode,
-        fullName: idx.fullName,
-        address: idx.address,
-        allergies: idx.allergies ?? [],
-        conditions: idx.conditions ?? [],
-        medications: idx.medications ?? [],
-        emergencyContacts: idx.emergencyContacts ?? [],
-        bloodType: idx.bloodType,
-        notes: idx.notes,
-        updatedAt: idx.updatedAt,
-      }),
-    );
+    const view = toEmergencyView({
+      id: idx.cardId,
+      ownerUid: idx.ownerUid,
+      scanCode: idx.scanCode,
+      fullName: idx.fullName,
+      address: idx.address,
+      allergies: idx.allergies ?? [],
+      conditions: idx.conditions ?? [],
+      medications: idx.medications ?? [],
+      emergencyContacts: idx.emergencyContacts ?? [],
+      bloodType: idx.bloodType,
+      notes: idx.notes,
+      updatedAt: idx.updatedAt,
+    });
+    // Do not cache third-party PHI for rescuer offline — owner fiche only in AsyncStorage.
+    return liveResult(view);
   } catch (e) {
-    // Soft-fail: ok:false + null — NEVER surface MOCK_CARD as live PHI.
-    if (isPermissionDenied(e) || softDev) {
+    // Auth/rules deny: never mockResult PHI — drop revoked cache, soft-fail empty.
+    if (isPermissionDenied(e)) {
+      if (local) {
+        await removeMedicalCardByScanCode(code);
+      }
       return failResult(
         null,
-        isPermissionDenied(e)
-          ? 'SOFT vue urgence — permission refusée (pas de PHI mock, UI charge)'
-          : 'SOFT vue urgence — DEV (pas de PHI inventé)',
+        'SOFT vue urgence — permission refusée (pas de PHI mock, UI charge)',
       );
+    }
+    // True network / soft DEV errors — fall back to on-device fiche if present.
+    if (local) {
+      return mockResult(
+        toEmergencyView(local),
+        'LOCAL vue urgence — cloud indisponible, fiche appareil',
+      );
+    }
+    if (softDev) {
+      return failResult(null, 'SOFT vue urgence — DEV (pas de PHI inventé)');
     }
     return failResult(null, e instanceof Error ? e.message : 'Scan urgence refusé');
   }
