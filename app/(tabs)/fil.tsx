@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Card } from '../../src/components/Card';
+import { FilAiAgentCard } from '../../src/components/FilAiAgentCard';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
@@ -158,6 +159,8 @@ export default function FilMecaniqueScreen() {
     >
       <StubBanner text={t('fil.stub')} />
       {feedLabel ? <Text style={styles.meta}>{feedLabel}</Text> : null}
+
+      <FilAiAgentCard />
 
       <Pressable style={styles.refreshBar} onPress={onRefresh}>
         <Text style={styles.refreshTxt}>
