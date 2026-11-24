@@ -123,6 +123,25 @@ describe('formatFilAiReply', () => {
     assert.match(reply, /attention|Gravité/i);
   });
 
+  it('prefers engine summaries over French consensus tally', () => {
+    const reply = formatFilAiReply(
+      {
+        ok: true,
+        consensus: 'Consensus sur « bruit » — 6 moteur(s), dont 2 live.',
+        likelyParts: ['Plaquettes'],
+        severity: 'warn',
+        engineSummaries: [
+          'Brake pads look worn; check discs next.',
+          'Also inspect hub bearing if noise continues.',
+        ],
+      },
+      'parts',
+      'en',
+    );
+    assert.match(reply, /Brake pads look worn/);
+    assert.doesNotMatch(reply, /Consensus sur/);
+  });
+
   it('handles empty failure', () => {
     const reply = formatFilAiReply(
       {

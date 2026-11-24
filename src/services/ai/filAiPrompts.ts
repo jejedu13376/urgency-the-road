@@ -11,6 +11,8 @@ export type FilAiConsensusInput = {
   consensus: string;
   likelyParts: string[];
   severity: 'info' | 'warn' | 'critique';
+  /** Prefer live/heuristic engine summaries over the French vote-tally consensus. */
+  engineSummaries?: string[];
 };
 
 export type FilAiSubject = 'car' | 'truck' | 'parts' | 'diagnostic' | 'truckers';
@@ -151,14 +153,30 @@ function subjectLabel(s: FilAiSubject, lang: FilAiLang): string {
   return labels[lang][s];
 }
 
-/** Turn Multi-IA consensus into a short chat reply. */
+/**
+ * Build the chat answer body: prefer engine model summaries (live answers),
+ * fall back to consensus only when no usable summaries exist.
+ */
+export function pickFilAiAnswerBody(result: FilAiConsensusInput): string {
+  const summaries = (result.engineSummaries ?? [])
+    .map((s) => s.replace(/\s+/g, ' ').trim())
+    .filter((s) => s.length > 0);
+  if (summaries.length > 0) {
+    // Cap to keep dyslexia-friendly length; live answers first.
+    return summaries.slice(0, 3).join('\n\n').slice(0, 900);
+  }
+  return result.consensus.replace(/\s+/g, ' ').trim().slice(0, 700);
+}
+
+/** Turn Multi-IA result into a short chat reply. */
 export function formatFilAiReply(
   result: FilAiConsensusInput,
   subject: FilAiSubject,
   locale?: string,
 ): string {
   const lang = pickFilAiLang(locale);
-  if (!result.ok || !result.consensus.trim()) {
+  const core = pickFilAiAnswerBody(result);
+  if (!result.ok || !core) {
     if (lang === 'en') {
       return 'I could not answer yet. Try again with more detail about the vehicle or the symptom.';
     }
@@ -198,11 +216,6 @@ export function formatFilAiReply(
       : lang === 'es'
         ? `Tema: ${subjectLabel(subject, lang)}.`
         : `Sujet : ${subjectLabel(subject, lang)}.`;
-
-  const core = result.consensus
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 700);
 
   return [subjectHint, core, parts, severityLine].filter(Boolean).join('\n\n');
 }

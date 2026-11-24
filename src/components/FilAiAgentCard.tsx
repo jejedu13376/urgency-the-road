@@ -53,6 +53,8 @@ export function FilAiAgentCard({ variant = 'card' }: Props) {
   const [status, setStatus] = useState<string | null>(null);
   const [needVerify, setNeedVerify] = useState(false);
   const chatScrollRef = useRef<ScrollHandle | null>(null);
+  /** Bumps on clear / new send so stale in-flight replies are ignored. */
+  const requestGenRef = useRef(0);
 
   const scrollChatToEnd = useCallback(() => {
     requestAnimationFrame(() => {
@@ -65,9 +67,15 @@ export function FilAiAgentCard({ variant = 'card' }: Props) {
     scrollChatToEnd();
   }, [bubbles.length, scrollChatToEnd]);
 
+  const stopVoice = useCallback(() => {
+    void speechStop();
+    setSpeaking(false);
+  }, []);
+
   const send = useCallback(async () => {
     const text = draft.trim();
     if (!text || busy) return;
+    const gen = ++requestGenRef.current;
     setBusy(true);
     setDraft('');
     const now = new Date().toISOString();
@@ -91,6 +99,7 @@ export function FilAiAgentCard({ variant = 'card' }: Props) {
         history,
         locale,
       });
+      if (gen !== requestGenRef.current) return;
       setNeedVerify(Boolean(res.emailVerificationRequired));
       setStatus(res.label);
       const assistant: Bubble = {
@@ -101,6 +110,7 @@ export function FilAiAgentCard({ variant = 'card' }: Props) {
       };
       setBubbles((prev) => [...prev, assistant]);
     } catch (e) {
+      if (gen !== requestGenRef.current) return;
       const msg = e instanceof Error ? e.message : t('fil.aiError');
       setBubbles((prev) => [
         ...prev,
@@ -112,25 +122,25 @@ export function FilAiAgentCard({ variant = 'card' }: Props) {
         },
       ]);
     } finally {
-      setBusy(false);
+      if (gen === requestGenRef.current) setBusy(false);
     }
   }, [active, bubbles, busy, draft, locale, subject, t]);
 
   const speakLast = async () => {
     const last = [...bubbles].reverse().find((b) => b.role === 'assistant');
     if (!last) return;
+    await speechStop();
     setSpeaking(true);
     const lang = locale === 'en' ? 'en-US' : locale === 'es' ? 'es-ES' : 'fr-FR';
     await speakViaExpo(lang, last.text.slice(0, 400), { rate: 0.88 });
     setSpeaking(false);
   };
 
-  const stopVoice = () => {
+  const clearChat = () => {
+    requestGenRef.current += 1;
     void speechStop();
     setSpeaking(false);
-  };
-
-  const clearChat = () => {
+    setBusy(false);
     setBubbles([]);
     setStatus(null);
     setNeedVerify(false);
@@ -252,7 +262,7 @@ export function FilAiAgentCard({ variant = 'card' }: Props) {
         </Pressable>
       </View>
 
-      {bubbles.length > 0 ? (
+      {bubbles.length > 0 || busy ? (
         <Pressable
           style={styles.clear}
           onPress={clearChat}

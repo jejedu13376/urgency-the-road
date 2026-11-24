@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FilAiAgentCard } from './FilAiAgentCard';
 import { useI18n } from '../context/I18nContext';
+import { speechStop } from '../services/urgence/speechBridge';
 import { colors } from '../theme/colors';
 
 /**
@@ -29,8 +30,13 @@ export function GlobalAiBubble() {
   const { height: winH } = useWindowDimensions();
   const [open, setOpen] = useState(false);
   const bottom = Math.max(insets.bottom, 8) + TAB_BAR_CONTENT + FAB_GAP;
-  // Bound sheet height so flex children (chat + composer) can shrink without clipping.
-  const sheetHeight = Math.min(winH * 0.92, winH - Math.max(insets.top, 8));
+  // maxHeight (not fixed height) so KeyboardAvoidingView can shrink the sheet.
+  const sheetMaxHeight = Math.min(winH * 0.92, winH - Math.max(insets.top, 8));
+
+  const closeSheet = useCallback(() => {
+    void speechStop();
+    setOpen(false);
+  }, []);
 
   return (
     <>
@@ -40,7 +46,13 @@ export function GlobalAiBubble() {
           accessibilityLabel={open ? t('fil.aiFabClose') : t('fil.aiFabOpen')}
           accessibilityState={{ expanded: open }}
           style={({ pressed }) => [styles.fab, pressed && { opacity: 0.85 }]}
-          onPress={() => setOpen((v) => !v)}
+          onPress={() => {
+            if (open) {
+              closeSheet();
+              return;
+            }
+            setOpen(true);
+          }}
           testID="global-ai-bubble"
         >
           <Text style={styles.fabTxt} allowFontScaling={false}>
@@ -53,16 +65,17 @@ export function GlobalAiBubble() {
         visible={open}
         animationType="slide"
         transparent
-        onRequestClose={() => setOpen(false)}
+        onRequestClose={closeSheet}
         statusBarTranslucent
       >
         <KeyboardAvoidingView
           style={styles.modalRoot}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
         >
           <Pressable
             style={styles.backdrop}
-            onPress={() => setOpen(false)}
+            onPress={closeSheet}
             accessibilityRole="button"
             accessibilityLabel={t('fil.aiFabClose')}
           />
@@ -70,7 +83,8 @@ export function GlobalAiBubble() {
             style={[
               styles.sheet,
               {
-                height: sheetHeight,
+                maxHeight: sheetMaxHeight,
+                flex: 1,
                 paddingTop: Math.max(insets.top, 12),
                 paddingBottom: Math.max(insets.bottom, 12),
               },
@@ -80,7 +94,7 @@ export function GlobalAiBubble() {
               <Text style={styles.sheetTitle}>{t('fil.aiTitle')}</Text>
               <Pressable
                 style={styles.closeBtn}
-                onPress={() => setOpen(false)}
+                onPress={closeSheet}
                 accessibilityRole="button"
                 accessibilityLabel={t('fil.aiFabClose')}
               >

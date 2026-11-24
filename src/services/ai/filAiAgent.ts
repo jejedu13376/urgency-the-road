@@ -84,9 +84,28 @@ export async function askFilAiAgent(opts: FilAiAskOpts): Promise<FilAiReply> {
     enabled: opts.enabled,
   });
 
+  const engineSummaries = raw.engines
+    .filter((e) => e.ok && e.summary.trim())
+    // Prefer live model text, then heuristics — never drop usable answers.
+    .sort((a, b) => {
+      const rank = (s: string) => (s === 'live' ? 0 : s === 'heuristic' ? 1 : 2);
+      return rank(a.source) - rank(b.source);
+    })
+    .map((e) => e.summary);
+
   return {
     ok: raw.ok,
-    reply: formatFilAiReply(raw, subject, opts.locale),
+    reply: formatFilAiReply(
+      {
+        ok: raw.ok,
+        consensus: raw.consensus,
+        likelyParts: raw.likelyParts,
+        severity: raw.severity,
+        engineSummaries,
+      },
+      subject,
+      opts.locale,
+    ),
     subject,
     label: raw.label,
     severity: raw.severity,
