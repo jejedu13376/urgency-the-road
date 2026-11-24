@@ -190,14 +190,20 @@ export async function fetchNearbyWeighStations(
   radiusM = 80000,
 ): Promise<NearbyWeighResult> {
   const r = Math.min(Math.max(radiusM, 5000), 150000);
+  // OSM weigh tags cover CA/US/EU — highway=weigh_station common in NA; amenity/man_made elsewhere.
+  // No free global DOT live ON/OFF feed; opening_hours = advisory only.
   const ql = `[out:json][timeout:28];
 (
   node["amenity"="weighbridge"](around:${r},${lat},${lon});
   way["amenity"="weighbridge"](around:${r},${lat},${lon});
   node["highway"="weigh_station"](around:${r},${lat},${lon});
+  way["highway"="weigh_station"](around:${r},${lat},${lon});
   node["man_made"="weighbridge"](around:${r},${lat},${lon});
+  way["man_made"="weighbridge"](around:${r},${lat},${lon});
+  node["barrier"="weight_station"](around:${r},${lat},${lon});
+  node["supervision"="weighbridge"](around:${r},${lat},${lon});
 );
-out center tags 30;`;
+out center tags 40;`;
 
   try {
     const els = await overpassQuery(ql);

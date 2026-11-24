@@ -1,8 +1,8 @@
 /**
  * Self-contained Leaflet map HTML for WebView.
- * Base layers: Esri World Imagery ↔ multi-color roads (Carto Voyager if key, else OSM).
- * Vehicle DivIcon = LIVE GPS (parent injects ticks) — not a canned polyline demo.
- * Voiture/camion = top chips only (once). Tap / search = destination only → Valhalla.
+ * Map-type menu (+): Default roads · Satellite · Terrain · Transit · Traffic · 3D · AQI.
+ * Extends Esri/#47 basemap work (Esri imagery + Carto/OSM roads) with Terrain + overlays.
+ * Vehicle DivIcon = LIVE GPS — not a canned polyline demo.
  */
 
 /** Carto raster basemaps need a free key since 2026-09-25 — carto.com/basemaps/apikey */
@@ -21,6 +21,49 @@ function roadsTileUrl(): { url: string; kind: 'carto' | 'osm' } {
   };
 }
 
+function mapboxToken(): string {
+  return (process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '').trim();
+}
+
+function tomtomKey(): string {
+  return (process.env.EXPO_PUBLIC_TOMTOM_API_KEY ?? '').trim().replace(/[^a-zA-Z0-9_-]/g, '');
+}
+
+/**
+ * Live traffic tile overlay — no free global no-key feed.
+ * Prefer TomTom flow (traffic-only), else Mapbox traffic-day style raster.
+ */
+export function trafficTileConfig(
+  mapbox?: string,
+  tomtom?: string,
+): {
+  url: string;
+  kind: 'tomtom' | 'mapbox' | 'none';
+  opacity: number;
+  tileSize?: number;
+  zoomOffset?: number;
+} | null {
+  const tt = (tomtom ?? tomtomKey()).replace(/[^a-zA-Z0-9_-]/g, '');
+  if (tt) {
+    return {
+      kind: 'tomtom',
+      // relative0 = green/yellow/red flow vs free-flow — traffic-only overlay.
+      url: `https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=${tt}&tileSize=256`,
+      opacity: 0.72,
+    };
+  }
+  const mb = (mapbox ?? mapboxToken()).replace(/[^a-zA-Z0-9._-]/g, '');
+  if (mb) {
+    return {
+      kind: 'mapbox',
+      url: `https://api.mapbox.com/styles/v1/mapbox/traffic-day-v2/tiles/256/{z}/{x}/{y}?access_token=${mb}`,
+      opacity: 0.55,
+      tileSize: 256,
+    };
+  }
+  return null;
+}
+
 export type GpsMapBoot = {
   lat: number;
   lon: number;
@@ -34,20 +77,54 @@ export type GpsMapBoot = {
   padRight: number;
   padBottom: number;
   padLeft: number;
+  /** Optional Mapbox token for 3D buildings + traffic fallback. */
+  mapboxToken?: string;
+  /** Optional TomTom key for traffic-only flow overlay (preferred for traffic). */
+  tomtomApiKey?: string;
 };
 
 export function buildGpsMapHtml(boot: GpsMapBoot): string {
-  const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
+  const token = (boot.mapboxToken ?? mapboxToken()).replace(/[^a-zA-Z0-9._-]/g, '');
+  const tomtom = (boot.tomtomApiKey ?? tomtomKey()).replace(/[^a-zA-Z0-9_-]/g, '');
+  const traffic = trafficTileConfig(token, tomtom);
+  const bootPayload = {
+    ...boot,
+    mapboxToken: token || undefined,
+    tomtomApiKey: tomtom || undefined,
+  };
+  const bootJson = JSON.stringify(bootPayload).replace(/</g, '\\u003c');
   const roads = roadsTileUrl();
   const roadsUrlJson = JSON.stringify(roads.url);
+  const mapboxTokenJson = JSON.stringify(token);
+  const trafficJson = JSON.stringify(traffic);
+  const hasMapbox = token.length > 0;
+
+  // CSP: allow Esri, Carto, OSM, OpenTopoMap, ÖPNVKarte transit, TomTom/Mapbox traffic, OSM Buildings.
+  const csp = [
+    "default-src 'none'",
+    "script-src https://unpkg.com/leaflet@1.9.4/ https://cdn.osmbuildings.org https://api.mapbox.com 'unsafe-inline'",
+    "style-src https://unpkg.com/leaflet@1.9.4/ https://api.mapbox.com https://cdn.osmbuildings.org 'unsafe-inline'",
+    "img-src https://server.arcgisonline.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://tile.opentopomap.org https://*.tile.opentopomap.org https://tile.memomaps.de https://*.tile.memomaps.de https://a.tiles.mapbox.com https://b.tiles.mapbox.com https://c.tiles.mapbox.com https://d.tiles.mapbox.com https://api.mapbox.com https://api.tomtom.com data: blob:",
+    "connect-src https://unpkg.com https://cdn.osmbuildings.org https://data.osmbuildings.org https://api.mapbox.com https://events.mapbox.com https://api.tomtom.com",
+    "worker-src blob: 'self'",
+    "child-src blob:",
+    "font-src data: https://api.mapbox.com",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://unpkg.com/leaflet@1.9.4/ 'unsafe-inline'; style-src https://unpkg.com/leaflet@1.9.4/ 'unsafe-inline'; img-src https://server.arcgisonline.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org data: blob:; connect-src https://unpkg.com; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"/>
+<meta http-equiv="Content-Security-Policy" content="${csp}"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet"/><script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>' : ''}
+<script src="https://cdn.osmbuildings.org/4.1.1/OSMBuildings-Leaflet.js"></script>
 <style>
   :root{
     --pad-top:0px;--pad-right:0px;--pad-bottom:0px;--pad-left:0px;
@@ -61,7 +138,6 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     top:calc(8px + var(--pad-top));
     display:flex;flex-direction:column;gap:6px;pointer-events:none;
   }
-  /* Only chips capture taps — status text must not steal map clicks. */
   .chip-row{display:flex;gap:6px;pointer-events:auto}
   .chip{
     flex:1;border:0;border-radius:11px;padding:9px 10px;font:650 12px/1.15 system-ui,sans-serif;
@@ -83,7 +159,6 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     display:flex;flex-direction:row;align-items:center;gap:8px;pointer-events:none;
   }
   .bottom > *{pointer-events:auto}
-  /* Compact bottom-left CTA — replaces full-width « Suivre GPS ». */
   .go{
     border:0;border-radius:13px;padding:12px 16px;font:750 13px system-ui,sans-serif;
     background:var(--signal);color:#fff;box-shadow:0 3px 12px rgba(196,92,38,.38);
@@ -95,21 +170,36 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     border:0;border-radius:13px;padding:12px 11px;font:650 11px system-ui,sans-serif;
     background:rgba(255,255,255,.94);color:var(--ink);
   }
-  /* Small basemap toggle — bottom-right (replaces old Leaflet zoom/attribution chrome). */
-  .layer-toggle{
-    position:absolute;z-index:1000;
+  /* Google Maps-style small + map-type control (extends Esri Sat/Routes). */
+  .maptype-wrap{
+    position:absolute;z-index:1100;
     right:calc(10px + var(--pad-right));
     bottom:calc(14px + var(--pad-bottom));
-    border:0;border-radius:13px;padding:11px 12px;min-width:52px;
-    font:700 11px/1.1 system-ui,sans-serif;letter-spacing:.02em;
-    background:rgba(255,255,255,.94);color:var(--ink);
+    display:flex;flex-direction:column;align-items:flex-end;gap:6px;
+    pointer-events:none;
+  }
+  .maptype-wrap > *{pointer-events:auto}
+  .maptype-plus{
+    width:44px;height:44px;border:0;border-radius:13px;
+    font:800 22px/1 system-ui,sans-serif;background:rgba(255,255,255,.96);color:var(--ink);
     box-shadow:0 2px 10px rgba(0,0,0,.22);
   }
-  .layer-toggle small{display:block;font-weight:550;opacity:.7;margin-top:3px;font-size:9px}
+  .maptype-menu{
+    display:none;flex-direction:column;gap:2px;min-width:168px;
+    background:rgba(255,255,255,.97);border-radius:12px;padding:6px;
+    box-shadow:0 4px 18px rgba(0,0,0,.28);
+  }
+  .maptype-menu.open{display:flex}
+  .maptype-menu button{
+    border:0;background:transparent;text-align:left;padding:9px 10px;border-radius:8px;
+    font:650 12px/1.2 system-ui,sans-serif;color:var(--ink);
+  }
+  .maptype-menu button.on{background:rgba(196,92,38,.14);color:var(--signal);font-weight:800}
+  .maptype-menu button:disabled{opacity:.45}
+  .maptype-menu .sep{height:1px;background:rgba(0,0,0,.08);margin:4px 2px}
   .vehicle-wrap{
     width:42px;height:42px;display:flex;align-items:center;justify-content:center;
-    transition:transform .18s linear;
-    will-change:transform;
+    transition:transform .18s linear;will-change:transform;
   }
   .vehicle-icon{
     width:36px;height:36px;border-radius:18px;background:#fff;border:2.5px solid var(--signal);
@@ -134,12 +224,24 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   .layer-pin.bridge-unk{background:var(--slate)}
   .layer-pin.weigh-on{background:#B08900;border:2px solid #fff}
   .layer-pin.weigh-off{background:var(--muted)}
+  .layer-pin.weigh-alert{
+    background:#E74C3C;border:2px solid #fff;
+    animation:weighBlink .55s ease-in-out infinite alternate;
+    transform:scale(1.25);
+  }
   .layer-pin.report{background:#3B5BDB}
+  @keyframes weighBlink{from{opacity:.55;box-shadow:0 0 0 0 rgba(231,76,60,.2)}to{opacity:1;box-shadow:0 0 0 10px rgba(231,76,60,.05)}}
   .route-line{transition:opacity .35s ease}
+  #mb3d{
+    position:absolute;inset:0;z-index:450;pointer-events:none;opacity:0;
+    transition:opacity .35s ease;
+  }
+  #mb3d.on{opacity:.5}
 </style>
 </head>
 <body>
 <div id="map"></div>
+<div id="mb3d" aria-hidden="true"></div>
 <div class="hud">
   <div class="chip-row">
     <button type="button" class="chip" id="btnCar"><span>Voiture</span><small>Profil auto</small></button>
@@ -151,11 +253,27 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   <button type="button" class="go" id="btnGo" disabled>itinéraire</button>
   <button type="button" class="ghost" id="btnRecenter">GPS</button>
 </div>
-<button type="button" class="layer-toggle" id="btnLayer" aria-label="Changer fond de carte"><span id="layerLabel">Sat</span><small id="layerHint">→ Routes</small></button>
+<div class="maptype-wrap">
+  <div class="maptype-menu" id="mapTypeMenu" role="menu">
+    <button type="button" data-base="roads" class="on">Default · routes</button>
+    <button type="button" data-base="satellite">Satellite</button>
+    <button type="button" data-base="terrain">Terrain</button>
+    <div class="sep"></div>
+    <button type="button" data-tog="transit">Transport en commun</button>
+    <button type="button" data-tog="traffic" id="btnTraffic">Trafic temps réel</button>
+    <button type="button" data-tog="buildings3d">Bâtiments 3D</button>
+    <button type="button" data-tog="aqi">Qualité de l’air</button>
+    <div class="sep"></div>
+    <button type="button" data-act="streetview">Street View (pin)</button>
+  </div>
+  <button type="button" class="maptype-plus" id="btnMapType" aria-label="Types de carte" aria-expanded="false">+</button>
+</div>
 <script>
 (function(){
   var BOOT = ${bootJson};
   var ROADS_URL = ${roadsUrlJson};
+  var MAPBOX_TOKEN = ${mapboxTokenJson};
+  var TRAFFIC_CFG = ${trafficJson};
   var mode = BOOT.mode === 'camion' ? 'camion' : 'voiture';
   var gpsOk = !!BOOT.gpsOk;
   var origin = { lat: BOOT.lat, lon: BOOT.lon };
@@ -170,10 +288,22 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   var navTripActive = false;
   var arrivedPosted = false;
   var layerGroup = null;
+  var aqiGroup = null;
   var lastPanAt = 0;
-  var baseKind = 'esri';
-  var esriLayer = null;
+  var baseKind = 'roads';
   var roadsLayer = null;
+  var satLayer = null;
+  var terrainLayer = null;
+  var transitLayer = null;
+  var trafficLayer = null;
+  var transitOn = false;
+  var trafficOn = false;
+  var buildingsOn = false;
+  var aqiOn = false;
+  var osmBuildings = null;
+  var mbMap = null;
+  var weighMarkers = {};
+  var alertWeighId = null;
 
   function haversineM(a, b){
     var R = 6371000;
@@ -257,48 +387,252 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     }
   }, true);
 
-  /* No Leaflet chrome: zoom +/- and attribution banner hidden.
-     Pinch/scroll zoom still works. Tile credit lives in GpsDestinationMenu sources.
-     Base layers: Esri World Imagery ↔ Carto Voyager (or OSM if no Carto key). */
+  /* No Leaflet chrome (Esri/#47). Pinch/scroll zoom still works.
+     Default base = colored roads; Satellite = Esri; Terrain = OpenTopoMap. */
   var map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true })
     .setView([origin.lat, origin.lon], gpsOk ? 14 : 5);
-  esriLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 19,
-    attribution: ''
+  roadsLayer = L.tileLayer(ROADS_URL, { maxZoom: 19, attribution: '' });
+  satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19, attribution: ''
   });
-  roadsLayer = L.tileLayer(ROADS_URL, {
-    maxZoom: 19,
-    attribution: ''
+  terrainLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    maxZoom: 17, attribution: '', subdomains: 'abc'
   });
-  esriLayer.addTo(map);
+  /* ÖPNVKarte / memomaps — free OSM-based public transit lines (no key). */
+  transitLayer = L.tileLayer('https://tile.memomaps.de/tilegen/{z}/{x}/{y}.png', {
+    maxZoom: 18, opacity: 0.85, attribution: ''
+  });
+  /* Live traffic — TomTom flow (preferred) or Mapbox traffic-day; no free no-key feed. */
+  if (TRAFFIC_CFG && TRAFFIC_CFG.url) {
+    trafficLayer = L.tileLayer(TRAFFIC_CFG.url, {
+      maxZoom: 19,
+      opacity: TRAFFIC_CFG.opacity != null ? TRAFFIC_CFG.opacity : 0.65,
+      attribution: '',
+      tileSize: TRAFFIC_CFG.tileSize || 256,
+      zoomOffset: TRAFFIC_CFG.zoomOffset || 0,
+    });
+  }
+  roadsLayer.addTo(map);
   layerGroup = L.layerGroup().addTo(map);
-
-  function syncLayerBtn(){
-    var label = document.getElementById('layerLabel');
-    var hint = document.getElementById('layerHint');
-    if (baseKind === 'esri') {
-      label.textContent = 'Sat';
-      hint.textContent = '→ Routes';
-    } else {
-      label.textContent = 'Routes';
-      hint.textContent = '→ Sat';
+  aqiGroup = L.layerGroup().addTo(map);
+  (function initTrafficBtn(){
+    var btn = document.getElementById('btnTraffic');
+    if (!btn) return;
+    if (!trafficLayer) {
+      btn.disabled = true;
+      btn.title = 'Clé requise: EXPO_PUBLIC_TOMTOM_API_KEY (préf.) ou EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN';
+      btn.textContent = 'Trafic (clé requise)';
     }
+  })();
+
+  function currentBaseLayer(){
+    if (baseKind === 'satellite') return satLayer;
+    if (baseKind === 'terrain') return terrainLayer;
+    return roadsLayer;
   }
 
   function setBaseLayer(next){
+    if (next !== 'roads' && next !== 'satellite' && next !== 'terrain') return;
     if (next === baseKind) return;
-    if (next === 'roads') {
-      map.removeLayer(esriLayer);
-      roadsLayer.addTo(map);
-      baseKind = 'roads';
-    } else {
-      map.removeLayer(roadsLayer);
-      esriLayer.addTo(map);
-      baseKind = 'esri';
+    map.removeLayer(currentBaseLayer());
+    baseKind = next;
+    currentBaseLayer().addTo(map);
+    if (transitOn) {
+      map.removeLayer(transitLayer);
+      transitLayer.addTo(map);
     }
-    syncLayerBtn();
+    if (trafficOn && trafficLayer) {
+      map.removeLayer(trafficLayer);
+      trafficLayer.addTo(map);
+    }
+    syncMapTypeMenu();
+    post(maptypePayload());
   }
-  syncLayerBtn();
+
+  function syncMapTypeMenu(){
+    var menu = document.getElementById('mapTypeMenu');
+    if (!menu) return;
+    var buttons = menu.querySelectorAll('button[data-base]');
+    for (var i = 0; i < buttons.length; i++) {
+      var b = buttons[i];
+      b.classList.toggle('on', b.getAttribute('data-base') === baseKind);
+    }
+    var togTransit = menu.querySelector('button[data-tog="transit"]');
+    var togTraffic = menu.querySelector('button[data-tog="traffic"]');
+    var tog3d = menu.querySelector('button[data-tog="buildings3d"]');
+    var togAqi = menu.querySelector('button[data-tog="aqi"]');
+    if (togTransit) togTransit.classList.toggle('on', transitOn);
+    if (togTraffic) togTraffic.classList.toggle('on', trafficOn);
+    if (tog3d) tog3d.classList.toggle('on', buildingsOn);
+    if (togAqi) togAqi.classList.toggle('on', aqiOn);
+  }
+
+  function maptypePayload(){
+    return { type: 'maptype', base: baseKind, transit: transitOn, traffic: trafficOn, buildings3d: buildingsOn, aqi: aqiOn, trafficSource: TRAFFIC_CFG ? TRAFFIC_CFG.kind : 'none' };
+  }
+
+  function setTransit(on){
+    transitOn = !!on;
+    if (transitOn) transitLayer.addTo(map);
+    else map.removeLayer(transitLayer);
+    syncMapTypeMenu();
+    post(maptypePayload());
+  }
+
+  function setTraffic(on){
+    if (!trafficLayer) {
+      setStatus('Trafic live — clé requise: EXPO_PUBLIC_TOMTOM_API_KEY (préf.) ou EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN. Pas de tuiles gratuites sans clé.');
+      trafficOn = false;
+      syncMapTypeMenu();
+      post(maptypePayload());
+      return;
+    }
+    trafficOn = !!on;
+    if (trafficOn) trafficLayer.addTo(map);
+    else map.removeLayer(trafficLayer);
+    syncMapTypeMenu();
+    if (trafficOn) {
+      setStatus(
+        TRAFFIC_CFG.kind === 'tomtom'
+          ? 'Trafic live · TomTom flow (relative)'
+          : 'Trafic live · Mapbox traffic-day (opacité ~0.55)'
+      );
+    }
+    post(maptypePayload());
+  }
+
+  function destroyOsmBuildings(){
+    try {
+      if (osmBuildings) {
+        if (typeof osmBuildings.remove === 'function') osmBuildings.remove();
+        else if (map.removeLayer) map.removeLayer(osmBuildings);
+      }
+    } catch (e) {}
+    osmBuildings = null;
+  }
+
+  function destroyMapbox3d(){
+    try {
+      if (mbMap) { mbMap.remove(); }
+    } catch (e) {}
+    mbMap = null;
+    var el = document.getElementById('mb3d');
+    if (el) { el.classList.remove('on'); el.innerHTML = ''; }
+  }
+
+  function syncMapboxCamera(){
+    if (!mbMap) return;
+    try {
+      var c = map.getCenter();
+      var z = map.getZoom();
+      mbMap.jumpTo({ center: [c.lng, c.lat], zoom: Math.max(0, z - 1), bearing: 0, pitch: 55 });
+    } catch (e) {}
+  }
+
+  function ensureMapbox3d(){
+    if (!MAPBOX_TOKEN || typeof mapboxgl === 'undefined') return false;
+    var el = document.getElementById('mb3d');
+    if (!el) return false;
+    if (mbMap) {
+      el.classList.add('on');
+      syncMapboxCamera();
+      return true;
+    }
+    try {
+      mapboxgl.accessToken = MAPBOX_TOKEN;
+      mbMap = new mapboxgl.Map({
+        container: el,
+        style: 'mapbox://styles/mapbox/streets-v12',
+        center: [origin.lon, origin.lat],
+        zoom: Math.max(0, map.getZoom() - 1),
+        pitch: 55,
+        bearing: 0,
+        interactive: false,
+        attributionControl: false,
+        logoPosition: 'bottom-left',
+      });
+      mbMap.on('load', function(){
+        try {
+          var layers = mbMap.getStyle().layers || [];
+          for (var i = 0; i < layers.length; i++) {
+            var id = layers[i].id;
+            var type = layers[i].type;
+            if (type === 'fill-extrusion') {
+              mbMap.setPaintProperty(id, 'fill-extrusion-opacity', 0.5);
+            } else if (type !== 'background') {
+              // Keep basemap faintly visible under extruded buildings.
+              try { mbMap.setPaintProperty(id, 'opacity' in (layers[i].paint||{}) ? 'opacity' : id, 0.15); } catch (e2) {}
+            }
+          }
+          // Explicit building extrusion opacity ~0.5 so Leaflet map shows through overlay.
+          if (mbMap.getLayer('building')) {
+            mbMap.setPaintProperty('building', 'fill-extrusion-opacity', 0.5);
+          }
+        } catch (e) {}
+      });
+      el.classList.add('on');
+      map.on('move', syncMapboxCamera);
+      map.on('zoom', syncMapboxCamera);
+      syncMapboxCamera();
+      return true;
+    } catch (e) {
+      destroyMapbox3d();
+      return false;
+    }
+  }
+
+  function ensureOsmBuildings(){
+    if (typeof OSMBuildings === 'undefined') return false;
+    destroyOsmBuildings();
+    try {
+      osmBuildings = new OSMBuildings(map).date(new Date()).style({
+        color: 'rgb(220, 210, 200)',
+        wallsColor: 'rgba(180,160,140,0.5)',
+        roofColor: 'rgba(200,180,160,0.5)',
+      });
+      // Semi-transparent so basemap shows through (~0.5).
+      try {
+        var canv = document.querySelector('.osmb-layer, canvas.osmb');
+        if (canv && canv.style) canv.style.opacity = '0.5';
+      } catch (e2) {}
+      return true;
+    } catch (e) {
+      osmBuildings = null;
+      return false;
+    }
+  }
+
+  function setBuildings3d(on){
+    buildingsOn = !!on;
+    if (!buildingsOn) {
+      destroyMapbox3d();
+      destroyOsmBuildings();
+      syncMapTypeMenu();
+      post(maptypePayload());
+      return;
+    }
+    var ok = false;
+    if (MAPBOX_TOKEN) ok = ensureMapbox3d();
+    if (!ok) ok = ensureOsmBuildings();
+    if (!ok) {
+      buildingsOn = false;
+      setStatus('Bâtiments 3D indisponibles — EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ou OSM Buildings CDN');
+    } else if (MAPBOX_TOKEN && mbMap) {
+      setStatus('Bâtiments 3D Mapbox · opacite ~0.5');
+    } else {
+      setStatus('Bâtiments 3D OSM Buildings · opacite ~0.5 (pas de Mapbox token)');
+    }
+    syncMapTypeMenu();
+    post(maptypePayload());
+  }
+
+  function setAqiOverlay(on){
+    aqiOn = !!on;
+    if (!aqiOn) aqiGroup.clearLayers();
+    syncMapTypeMenu();
+    post(maptypePayload());
+    if (aqiOn) post({ type: 'aqi_request', lat: origin.lat, lon: origin.lon });
+  }
 
   function ensureVehicleMarker(){
     if (!gpsOk) {
@@ -319,6 +653,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   ensureVehicleMarker();
 
   syncChips();
+  syncMapTypeMenu();
   if (!gpsOk) {
     setStatus('GPS appareil refusé — activez la localisation (bouton GPS). Pas de départ silencieux.');
   } else {
@@ -346,7 +681,6 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     if (dest && gpsOk) requestRoute();
   }
 
-  /** Destination only — mode comes from top chips, never re-prompted on tap. */
   function setDestination(latlng, label){
     if (!gpsOk) {
       setStatus('GPS appareil requis — pas d’itinéraire sans position réelle');
@@ -410,7 +744,16 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     }
   };
 
-  /** LIVE GPS tick — never remount map; marker = device coords. */
+  function haversineKmHtml(aLat, aLon, bLat, bLon){
+    var R = 6371;
+    var dLat = (bLat - aLat) * Math.PI / 180;
+    var dLon = (bLon - aLon) * Math.PI / 180;
+    var lat1 = aLat * Math.PI / 180;
+    var lat2 = bLat * Math.PI / 180;
+    var h = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)*Math.sin(dLon/2);
+    return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
+  }
+
   window.__gpsUpdatePosition = function(lat, lon, ok, heading, speed){
     gpsOk = ok !== false;
     if (!gpsOk) {
@@ -426,16 +769,18 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
       lastPanAt = now;
       map.panTo([lat, lon], { animate: true, duration: 0.55, easeLinearity: 0.3 });
     }
-    // Post-trip voice logbook: only after an explicit startNavigation trip.
+    // Post-trip voice logbook + trip history: only after an explicit startNavigation trip.
     if (navTripActive && dest && !arrivedPosted) {
       var distM = haversineM(origin, dest);
       if (distM <= 80) {
         arrivedPosted = true;
         navTripActive = false;
+        followLive = false;
         setStatus('Arrivée — note vocale trajet dispo');
         post({ type: 'arrived', mode: mode, to: { lat: dest.lat, lon: dest.lon } });
       }
     }
+    if (buildingsOn && mbMap) syncMapboxCamera();
   };
 
   window.__gpsSetOrigin = function(lat, lon, ok){
@@ -446,7 +791,6 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
         ? 'GPS appareil OK — mode camion, touchez une destination'
         : 'GPS appareil OK — touchez une destination');
     } else {
-      // One-shot GPS fail must NOT wipe live route / destination while watch may recover.
       setStatus('GPS one-shot refusé — itinéraire conservé (réessayez GPS)');
     }
   };
@@ -466,7 +810,6 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     setDestination(L.latLng(lat, lon), label || '');
   };
 
-  /** Escape untrusted OSM/crowd strings before any HTML sink (DivIcon / tooltips). */
   function esc(s){
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;')
@@ -475,7 +818,6 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
-  /** Leaflet tooltip via textContent — never innerHTML with raw notes/names. */
   function tipEl(text){
     var el = document.createElement('span');
     el.textContent = String(text == null ? '' : text);
@@ -488,9 +830,16 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
 
   var pendingLayers = null;
   var layersReady = false;
+  function weighHtml(s, alert){
+    var on = !!s.litUp || s.status === 'open';
+    var cls = alert ? 'weigh-alert' : (on ? 'weigh-on' : 'weigh-off');
+    var txt = alert ? '!' : (on ? 'ON' : '?');
+    return '<div class="layer-pin ' + cls + '" data-weigh="' + esc(String(s.id || '')) + '">' + txt + '</div>';
+  }
   function applyLayersPayload(payload){
     try {
       layerGroup.clearLayers();
+      weighMarkers = {};
       if (!payload) return;
       var bridges = payload.bridges || [];
       var weigh = payload.weigh || [];
@@ -510,13 +859,15 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
       });
       weigh.forEach(function(s){
         if (!finiteLatLon(s.lat, s.lon)) return;
+        var id = String(s.id || (s.lat + ',' + s.lon));
+        var alert = alertWeighId && alertWeighId === id;
         var on = !!s.litUp || s.status === 'open';
-        var html = '<div class="layer-pin ' + (on ? 'weigh-on' : 'weigh-off') + '">' + (on ? 'ON' : '?') + '</div>';
-        L.marker([s.lat, s.lon], {
-          icon: L.divIcon({ className: '', html: html, iconSize: [32, 28], iconAnchor: [16, 14] }),
-          zIndexOffset: 450,
-        }).bindTooltip(tipEl((s.name || 'Pesage') + (on ? ' · scale ON (advisory OSM)' : ' · statut inconnu / fermé')), { direction: 'top' })
+        var m = L.marker([s.lat, s.lon], {
+          icon: L.divIcon({ className: '', html: weighHtml(Object.assign({}, s, { id: id }), alert), iconSize: [36, 28], iconAnchor: [18, 14] }),
+          zIndexOffset: alert ? 650 : 450,
+        }).bindTooltip(tipEl((s.name || 'Balance') + (on ? ' · scale ON (advisory OSM CA/US/EU)' : ' · statut inconnu / fermé')), { direction: 'top' })
           .addTo(layerGroup);
+        weighMarkers[id] = { marker: m, data: Object.assign({}, s, { id: id }) };
       });
       reports.forEach(function(r){
         if (!finiteLatLon(r.lat, r.lon)) return;
@@ -538,6 +889,40 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     applyLayersPayload(pendingLayers);
   };
 
+  window.__gpsHighlightWeigh = function(id){
+    alertWeighId = id ? String(id) : null;
+    if (pendingLayers) applyLayersPayload(pendingLayers);
+  };
+
+  window.__gpsSetAqi = function(payload){
+    try {
+      aqiGroup.clearLayers();
+      if (!aqiOn || !payload || !payload.samples) return;
+      (payload.samples || []).forEach(function(s){
+        if (!finiteLatLon(s.lat, s.lon)) return;
+        var color = s.color || '#7F8C8D';
+        L.circle([s.lat, s.lon], {
+          radius: 2800,
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.28,
+          weight: 1,
+          opacity: 0.5,
+        }).bindTooltip(tipEl('AQI ' + (s.aqi != null ? s.aqi : '?') + ' · ' + (s.label || '')), { direction: 'top' })
+          .addTo(aqiGroup);
+      });
+    } catch (e) {}
+  };
+
+  window.__gpsSetMapType = function(opts){
+    opts = opts || {};
+    if (opts.base) setBaseLayer(opts.base);
+    if (typeof opts.transit === 'boolean') setTransit(opts.transit);
+    if (typeof opts.traffic === 'boolean') setTraffic(opts.traffic);
+    if (typeof opts.buildings3d === 'boolean') setBuildings3d(opts.buildings3d);
+    if (typeof opts.aqi === 'boolean') setAqiOverlay(opts.aqi);
+  };
+
   window.addEventListener('message', function(ev){
     if (ev.source !== window.parent) return;
     var raw = ev.data;
@@ -552,6 +937,9 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     else if (msg.cmd === 'proposeDestination') window.__gpsProposeDestination(msg.lat, msg.lon, msg.label);
     else if (msg.cmd === 'startNavigation') window.__gpsStartNavigation && window.__gpsStartNavigation();
     else if (msg.cmd === 'setLayers') window.__gpsSetLayers(msg.payload);
+    else if (msg.cmd === 'highlightWeigh') window.__gpsHighlightWeigh(msg.id);
+    else if (msg.cmd === 'setAqi') window.__gpsSetAqi(msg.payload);
+    else if (msg.cmd === 'setMapType') window.__gpsSetMapType(msg);
   });
 
   map.on('click', function(e){
@@ -577,9 +965,32 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     followLive = true;
     post({ type: 'recenter' });
   };
-  document.getElementById('btnLayer').onclick = function(ev){
+
+  var menu = document.getElementById('mapTypeMenu');
+  var btnMapType = document.getElementById('btnMapType');
+  btnMapType.onclick = function(ev){
     if (ev && ev.stopPropagation) ev.stopPropagation();
-    setBaseLayer(baseKind === 'esri' ? 'roads' : 'esri');
+    var open = menu.classList.toggle('open');
+    btnMapType.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+  menu.onclick = function(ev){
+    if (ev && ev.stopPropagation) ev.stopPropagation();
+    var t = ev.target;
+    if (!t || t.tagName !== 'BUTTON') return;
+    var base = t.getAttribute('data-base');
+    var tog = t.getAttribute('data-tog');
+    var act = t.getAttribute('data-act');
+    if (base) setBaseLayer(base);
+    else if (tog === 'transit') setTransit(!transitOn);
+    else if (tog === 'traffic') setTraffic(!trafficOn);
+    else if (tog === 'buildings3d') setBuildings3d(!buildingsOn);
+    else if (tog === 'aqi') setAqiOverlay(!aqiOn);
+    else if (act === 'streetview') {
+      var focus = dest || origin;
+      post({ type: 'streetview', lat: focus.lat, lon: focus.lon });
+      menu.classList.remove('open');
+      btnMapType.setAttribute('aria-expanded', 'false');
+    }
   };
 
   layersReady = true;

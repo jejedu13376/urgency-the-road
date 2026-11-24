@@ -43,10 +43,14 @@ type Props = {
   onStartNavigation: () => boolean;
   onLabelUpdated?: (place: GpsPlaceRef) => void;
   onFeedback?: (note: string) => void;
+  /** Open trip timeline (Voir l'historique). */
+  onOpenHistory?: () => void;
+  /** Save live GPS as a place (same savePlace store). */
+  onSaveMyLocation?: () => void;
 };
 
 const DATA_SOURCES_FR =
-  'Sources : Esri World Imagery + Carto Voyager / OSM (fonds), Open-Meteo / Photon (adresses), Valhalla (itinéraires), Overpass / OpenStreetMap (ouvrages / pesage). Pas de Google Maps.';
+  'Sources : Esri / Carto / OSM / OpenTopoMap (fonds), ÖPNVKarte (transit), TomTom flow ou Mapbox traffic-day (trafic — clé), Mapbox/OSM Buildings (3D), OpenWeather AQI, Google Street View Static, Open-Meteo, Valhalla, Overpass (ponts / balances CA-US-EU / fuel / rest). ETA sans congestion Waze/Google.';
 
 export function GpsDestinationMenu({
   visible,
@@ -57,6 +61,8 @@ export function GpsDestinationMenu({
   onStartNavigation,
   onLabelUpdated,
   onFeedback,
+  onOpenHistory,
+  onSaveMyLocation,
 }: Props) {
   const [plusOpen, setPlusOpen] = useState(false);
   const [tagModal, setTagModal] = useState(false);
@@ -228,6 +234,15 @@ export function GpsDestinationMenu({
           />
           <ActionRow label="Partager ma location" disabled={busy} onPress={() => void onShareMyLocation()} />
           <ActionRow label="Enregistrer le lieu" disabled={busy} onPress={() => void onSavePlace()} />
+          {onSaveMyLocation ? (
+            <ActionRow
+              label="Enregistrer ma position GPS"
+              disabled={busy}
+              onPress={() => {
+                onSaveMyLocation();
+              }}
+            />
+          ) : null}
           <ActionRow
             label="Modifier ou ajouter une étiquette"
             disabled={busy}
@@ -256,9 +271,16 @@ export function GpsDestinationMenu({
                 onPress={() => stubAction('Carte hors ligne')}
               />
               <ActionRow
-                label="Voir l'historique des visites"
+                label="Voir l'historique des trajets"
                 muted
-                onPress={() => stubAction('Historique des visites')}
+                onPress={() => {
+                  if (onOpenHistory) {
+                    dismiss();
+                    onOpenHistory();
+                    return;
+                  }
+                  stubAction('Historique des trajets');
+                }}
               />
               <ActionRow
                 label="À propos des sources de données"
