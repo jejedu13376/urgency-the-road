@@ -267,11 +267,15 @@ export default function ProScreen() {
               void exportProAtelierSnapshot().then(async (snap) => {
                 const body = formatProAtelierExport(snap);
                 try {
-                  await Share.share({
+                  const res = await Share.share({
                     message: body,
                     title: 'Export atelier Urgence Mécanique',
                   });
-                  setMsg('Snapshot atelier exporté (JSON local)');
+                  if (res.action === Share.sharedAction) {
+                    setMsg('Snapshot atelier exporté (JSON local)');
+                  } else {
+                    setMsg('Export atelier annulé');
+                  }
                 } catch (e) {
                   setMsg(e instanceof Error ? e.message : 'Échec export atelier');
                 }

@@ -102,12 +102,16 @@ export async function applyOtaUpdateIfAvailable(): Promise<{ ok: boolean; messag
     if (!check?.isAvailable) {
       return { ok: false, message: 'Aucune mise à jour OTA en attente sur ce canal' };
     }
+    // fetch may report isNew:false when Expo already background-downloaded the bundle —
+    // still reload so the pending update actually applies.
     const fetched = await Updates.fetchUpdateAsync?.();
-    if (!fetched?.isNew) {
-      return { ok: false, message: 'Téléchargement OTA sans nouveau bundle' };
-    }
     await Updates.reloadAsync?.();
-    return { ok: true, message: 'Update OTA appliquée — rechargement' };
+    return {
+      ok: true,
+      message: fetched?.isNew
+        ? 'Update OTA téléchargée et appliquée — rechargement'
+        : 'Update OTA déjà en cache — rechargement pour appliquer',
+    };
   } catch (e) {
     return {
       ok: false,
