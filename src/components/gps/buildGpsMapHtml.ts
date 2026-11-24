@@ -136,9 +136,8 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     --pad-top:0px;--pad-right:0px;--pad-bottom:0px;--pad-left:0px;
     --ink:#101820;--slate:#2C3A47;--signal:#C45C26;--garage:#1F6B4A;--paper:#F7F4EF;--muted:#6B7785;
   }
-  html,body{margin:0;padding:0;height:100%;width:100%;background:#1B2430;overflow:hidden}
-  /* Map fills viewport under chrome; keep z-index low so bottom-right rail stays tappable. */
-  #map{position:absolute;inset:0;z-index:0;margin:0;padding:0;height:100%;width:100%;background:#1B2430}
+  /* Do not give #map a z-index — that traps Leaflet panes under sibling #mb3d (Bugbot). */
+  html,body,#map{margin:0;padding:0;height:100%;width:100%;background:#1B2430;overflow:hidden}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   .hud{
     position:absolute;z-index:1000;
