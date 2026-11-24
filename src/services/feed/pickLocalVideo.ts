@@ -41,9 +41,12 @@ export async function pickLocalVideo(): Promise<LocalVideoPick> {
     fileName: asset.fileName ?? undefined,
     label: `Vidéo locale sélectionnée${
       durationSec != null ? ` · ~${durationSec}s` : ''
-    } — fichier on-device uniquement ; upload CDN non branché.`,
+    } — clip prêt ; upload CDN à la publication (Auth + rules).`,
   };
 }
 
+/** @deprecated Prefer VIDEO_CDN_READY — upload path exists; soft-fail without Auth/rules. */
 export const VIDEO_CDN_BLOCKED =
-  'Upload vidéo CDN non branché — sélection locale possible ; aucun fichier hébergé distant.';
+  'Upload CDN Firebase Storage branché — Auth + rules owner-path ; soft-fail si refusé (fichier reste on-device).';
+
+export { VIDEO_CDN_READY } from './uploadFeedVideo';

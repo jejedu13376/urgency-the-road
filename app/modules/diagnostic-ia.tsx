@@ -21,10 +21,12 @@ import {
   MIC_AUDIO_LIVE,
   type AcousticFocus,
 } from '../../src/services/diagnostic/acousticMic';
+import { quoteFromCameraText } from '../../src/services/diagnostic/cameraTextDiag';
 import {
-  VISION_PIXELS_BLOCKED,
-  quoteFromCameraText,
-} from '../../src/services/diagnostic/cameraTextDiag';
+  analyzeVisionCapture,
+  VISION_PIXELS_LIVE,
+  type VisionFocus,
+} from '../../src/services/diagnostic/visionPixelsLite';
 import { stubAcoustic } from '../../src/services/stubs';
 import { searchYoutubeVideos, type YoutubeVideoHit } from '../../src/services/youtube/youtubeSearch';
 import { SpeakButton } from '../../src/components/speech/SpeakButton';
@@ -61,6 +63,15 @@ const HAZARD_KINDS_ACOUSTIC = [
   { id: 'roulement', label: 'Roulement' },
 ] as const;
 
+const VISION_FOCUS_TAGS = [
+  { id: 'fuite_huile', label: 'Fuite huile' },
+  { id: 'voyant', label: 'Voyant' },
+  { id: 'rouille', label: 'Rouille' },
+  { id: 'fumée', label: 'Fumée' },
+  { id: 'pneu', label: 'Pneu' },
+  { id: 'courroie', label: 'Courroie' },
+] as const;
+
 /** Module 4 — diagnostic IA : caméra réelle + Multi-IA texte ; pas de vision fake-success. */
 export default function DiagnosticIaScreen() {
   const { t } = useI18n();
@@ -79,6 +90,8 @@ export default function DiagnosticIaScreen() {
   const [cameraReady, setCameraReady] = useState(false);
   const [acousticPhase, setAcousticPhase] = useState<'idle' | 'listening' | 'done'>('idle');
   const [acousticFocus, setAcousticFocus] = useState<AcousticFocus | null>(null);
+  const [visionFocus, setVisionFocus] = useState<VisionFocus | null>(null);
+  const [visionLabel, setVisionLabel] = useState<string | null>(null);
   const [acousticGuess, setAcousticGuess] = useState<string | null>(null);
   const [acousticLabel, setAcousticLabel] = useState<string | null>(null);
   const [acousticBars, setAcousticBars] = useState(() => [4, 10, 6, 14, 8, 12, 5, 11, 7, 13]);
@@ -140,10 +153,10 @@ export default function DiagnosticIaScreen() {
         visionLive: false,
         photoUri: capturedUri ?? undefined,
         summary: capturedUri
-          ? `${VISION_PIXELS_BLOCKED} Photo capturée — décrivez la panne visible pour lancer le diagnostic Multi-IA texte.`
+          ? `${VISION_PIXELS_LIVE} Photo capturée — choisissez une piste visuelle ou décrivez la panne.`
           : media === 'video'
-            ? 'Flux caméra ouvert — aucune IA vision live. Décrivez ce que vous filmez (pièce, fuite, voyant) pour lancer le diagnostic Multi-IA texte.'
-            : 'Caméra prête — aucune IA vision live. Décrivez la pièce / panne visible pour lancer le diagnostic Multi-IA texte (proxy si configuré).',
+            ? `Flux caméra ouvert · ${VISION_PIXELS_LIVE} Décrivez ce que vous filmez pour Multi-IA texte.`
+            : `Caméra prête · ${VISION_PIXELS_LIVE} Décrivez la pièce / panne visible.`,
       });
       return;
     }
@@ -156,10 +169,22 @@ export default function DiagnosticIaScreen() {
     }
     setMediaBusy(true);
     try {
+      let visionLikely: string[] = [];
+      let visionSummary = '';
+      if (capturedUri) {
+        const vision = await analyzeVisionCapture({
+          uri: capturedUri,
+          focus: visionFocus,
+          description: desc,
+        });
+        visionLikely = vision.likelyParts;
+        visionSummary = `${vision.label}\n${vision.guess}`;
+        setVisionLabel(vision.label);
+      }
       const ctx = active ? `${active.make} ${active.model} ${active.year}` : '';
       const r = await runMultiIaDiagnostic({
-        prompt: `Diagnostic ${media} (description utilisateur, pas de vision pixels)${
-          capturedUri ? ' · photo locale capturée' : ''
+        prompt: `Diagnostic ${media} (vision lite + description)${
+          capturedUri ? ' · photo locale traitée' : ''
         } : ${desc}`,
         context: ctx,
       });
@@ -171,7 +196,7 @@ export default function DiagnosticIaScreen() {
         model: active?.model,
         year: active?.year,
         currency: active?.currency,
-        likelyParts: r.likelyParts,
+        likelyParts: [...visionLikely, ...(r.likelyParts ?? [])],
       });
       setPhotoOutcome({
         kind: 'ok',
@@ -181,12 +206,16 @@ export default function DiagnosticIaScreen() {
         partPrice: quote.partPrice,
         laborPrice: quote.laborPrice,
         currency: quote.currency,
-        causes: ['Hypothèse Multi-IA texte', quote.matchedFromCatalog ? 'Match catalogue local M3' : 'À confirmer OBD / garage'],
+        causes: [
+          visionSummary ? 'Vision lite (resize + focus)' : 'Pas de photo',
+          'Hypothèse Multi-IA texte',
+          quote.matchedFromCatalog ? 'Match catalogue local M3' : 'À confirmer OBD / garage',
+        ],
         tools: ['Cric / chandelles', 'Clé dynamométrique', 'Douilles standard'],
-        visionLive: false,
+        visionLive: Boolean(capturedUri),
         photoUri: capturedUri ?? undefined,
         matchedFromCatalog: quote.matchedFromCatalog,
-        summary: `${r.label}\n${r.consensus}\n${VISION_PIXELS_BLOCKED}`,
+        summary: `${visionSummary ? `${visionSummary}\n\n` : ''}${r.label}\n${r.consensus}`,
       });
       void loadYoutube(`${quote.partName} remplacement`);
     } finally {
@@ -235,8 +264,8 @@ export default function DiagnosticIaScreen() {
       visionLive: false,
       summary:
         media === 'photo'
-          ? `Caméra LIVE. ${VISION_PIXELS_BLOCKED} Capturez une photo puis décrivez → analyse texte.`
-          : `Caméra LIVE (aperçu vidéo). ${VISION_PIXELS_BLOCKED} Décrivez ce que vous voyez puis lancez l’analyse texte.`,
+          ? `Caméra LIVE. ${VISION_PIXELS_LIVE} Capturez une photo, choisissez une piste, décrivez → analyse.`
+          : `Caméra LIVE (aperçu vidéo). ${VISION_PIXELS_LIVE} Décrivez ce que vous voyez puis lancez l’analyse.`,
     });
   };
 
@@ -261,7 +290,26 @@ export default function DiagnosticIaScreen() {
           tools: [],
           visionLive: false,
           photoUri: shot.uri,
-          summary: `Photo capturée (${shot.width ?? '?'}×${shot.height ?? '?'}). ${VISION_PIXELS_BLOCKED} Ajoutez une description puis lancez l’analyse texte.`,
+          summary: `Photo capturée (${shot.width ?? '?'}×${shot.height ?? '?'}). Analyse vision lite en cours…`,
+        }));
+        const vision = await analyzeVisionCapture({
+          uri: shot.uri,
+          focus: visionFocus,
+        });
+        setVisionLabel(vision.label);
+        setPhotoOutcome((prev) => ({
+          kind: 'captured_pending',
+          media: prev?.media ?? 'photo',
+          problem: '',
+          partName: '',
+          partPrice: 0,
+          laborPrice: 0,
+          currency: active?.currency ?? 'EUR',
+          causes: [],
+          tools: [],
+          visionLive: true,
+          photoUri: shot.uri,
+          summary: `${vision.label}\n${vision.guess}\nAjoutez une description puis lancez l’analyse camera-text.`,
         }));
       }
     } catch {
@@ -414,14 +462,27 @@ export default function DiagnosticIaScreen() {
         title={t('moduleTitles.diagnosticIa')}
         subtitle={`Module 4 · ${active?.make ?? '—'} ${active?.model ?? ''}`.trim()}
       >
-        <StubBanner text={`Caméra LIVE + capture photo · ${VISION_PIXELS_BLOCKED}`} />
+        <StubBanner text={`Caméra LIVE + capture photo · ${VISION_PIXELS_LIVE}`} />
         <StubBanner text={MIC_AUDIO_LIVE} />
 
-        <Card title="Photo / vidéo → description → pièce + devis">
+        <Card title="Photo / vidéo → vision lite → pièce + devis">
           <Text style={styles.hint}>
-            Chemin camera-text : ouvrez la caméra, capturez une photo réelle, décrivez la panne, puis lancez le
-            diagnostic Multi-IA texte + match catalogue local. Aucune « identification visuelle réussie » inventée.
+            Chemin vision lite : caméra → resize natif + piste visuelle → description → Multi-IA texte +
+            catalogue local. Pas de modèle CV inventé (option proxy / ML = externe).
           </Text>
+          <Text style={styles.meta}>Piste visuelle (optionnel)</Text>
+          <View style={styles.rowWrap}>
+            {VISION_FOCUS_TAGS.map((k) => (
+              <Pressable
+                key={k.id}
+                style={[styles.tag, visionFocus === k.id && styles.tagOn]}
+                onPress={() => setVisionFocus((prev) => (prev === k.id ? null : k.id))}
+              >
+                <Text style={[styles.tagTxt, visionFocus === k.id && styles.tagTxtOn]}>{k.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {visionLabel ? <Text style={styles.meta}>{visionLabel}</Text> : null}
           <View style={styles.row}>
             <Pressable style={styles.btn} onPress={() => void openCameraPath('photo')}>
               <Text style={styles.btnTxt}>Ouvrir caméra photo</Text>
@@ -461,7 +522,9 @@ export default function DiagnosticIaScreen() {
           {capturedUri ? (
             <View style={styles.thumbWrap}>
               <Image source={{ uri: capturedUri }} style={styles.thumb} accessibilityLabel="Photo capturée" />
-              <Text style={styles.meta}>Photo locale capturée — non analysée en pixels</Text>
+              <Text style={styles.meta}>
+                Photo locale · vision lite {photoOutcome?.visionLive ? 'OK' : 'en attente'}
+              </Text>
             </View>
           ) : null}
           <TextInput
@@ -478,7 +541,7 @@ export default function DiagnosticIaScreen() {
               disabled={mediaBusy}
               onPress={() => void analyzeMediaDescription(photoOutcome?.media ?? 'photo')}
             >
-              <Text style={styles.btnTxt}>{mediaBusy ? 'Analyse…' : 'Analyser (camera-text)'}</Text>
+              <Text style={styles.btnTxt}>{mediaBusy ? 'Analyse…' : 'Analyser (vision + texte)'}</Text>
             </Pressable>
             <Pressable style={styles.btnWarn} onPress={() => politeRefuse('photo')}>
               <Text style={styles.btnTxt}>Filtre politesse</Text>
@@ -791,6 +854,7 @@ const styles = StyleSheet.create({
   waveBar: { width: 8, borderRadius: 3, backgroundColor: colors.mist },
   waveBarLive: { backgroundColor: colors.signal },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tag: {
     paddingHorizontal: 8,
     paddingVertical: 4,

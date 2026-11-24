@@ -235,6 +235,12 @@ export async function signOutUser(): Promise<ServiceResult<null>> {
   const uid = fb?.auth.currentUser?.uid ?? null;
   await clearMedicalLocalStore(uid);
   try {
+    const { clearRescuerEnrollment } = await import('../urgence/rescuerEnrollment');
+    await clearRescuerEnrollment(uid);
+  } catch {
+    /* ignore enrollment clear */
+  }
+  try {
     if (!fb) return mockResult(null, 'MOCK Auth — déconnexion locale');
     await signOut(fb.auth);
     return liveResult(null);

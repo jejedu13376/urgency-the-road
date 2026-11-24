@@ -235,3 +235,20 @@ export async function startSubscriptionCheckout(
 ): Promise<PaymentAttempt> {
   return startCheckout(planId, method, priceOpts);
 }
+
+/** Build checkout URL without opening — journal / previews. */
+export function buildCheckoutUrl(planId: PayPlanId, method: PaymentMethod): string | null {
+  if (method === 'stripe_card' || method === 'apple_pay' || method === 'google_pay') {
+    const base = stripeBase();
+    if (!base) return null;
+    const wallet =
+      method === 'stripe_card' ? 'card' : method === 'apple_pay' ? 'apple_pay' : 'google_pay';
+    return `${base}?plan=${encodeURIComponent(planId)}&method=${wallet}&utm_source=urgence_mecanique`;
+  }
+  if (method === 'paypal') {
+    const base = paypalBase();
+    if (!base) return null;
+    return `${base}?plan=${encodeURIComponent(planId)}&utm_source=urgence_mecanique`;
+  }
+  return null;
+}

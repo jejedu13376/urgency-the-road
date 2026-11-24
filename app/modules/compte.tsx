@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Link, Stack } from 'expo-router';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -24,6 +24,12 @@ import {
   signInEmail,
   signUpEmail,
 } from '../../src/services/firebase';
+import {
+  loadPaymentJournal,
+  PAYMENTS_SOFTWARE_LIVE,
+  recordPaymentAttempt,
+  type PaymentJournalEntry,
+} from '../../src/services/payments/paymentJournal';
 import {
   isMethodConfigured,
   isPaymentsConfigured,
@@ -53,6 +59,7 @@ export default function CompteScreen() {
   const [method, setMethod] = useState<PaymentMethod>('stripe_card');
   const [rewardNote, setRewardNote] = useState<string | null>(null);
   const [claimBusy, setClaimBusy] = useState(false);
+  const [journal, setJournal] = useState<PaymentJournalEntry[]>([]);
 
   const priceQuote = useMemo(
     () =>
@@ -78,6 +85,10 @@ export default function CompteScreen() {
     }
   };
 
+  useEffect(() => {
+    void loadPaymentJournal().then(setJournal);
+  }, []);
+
   const tryBio = async () => {
     const has = await LocalAuthentication.hasHardwareAsync();
     if (!has) {
@@ -98,11 +109,18 @@ export default function CompteScreen() {
 
   const payPlan = async (planId: string) => {
     setPaying(true);
-    const r = await startCheckout(planId, method, {
-      referrerDiscountEndsAt: profile?.referrerDiscountEndsAt ?? null,
-    });
-    setPaying(false);
-    setPay(r.message);
+    try {
+      const r = await startCheckout(planId, method, {
+        referrerDiscountEndsAt: profile?.referrerDiscountEndsAt ?? null,
+      });
+      const next = await recordPaymentAttempt(planId, r);
+      setJournal(next);
+      setPay(r.message);
+    } catch (e) {
+      setPay(e instanceof Error ? e.message : 'Paiement interrompu — réessayez.');
+    } finally {
+      setPaying(false);
+    }
   };
 
   const onSignUp = async () => {
@@ -163,8 +181,12 @@ export default function CompteScreen() {
     <>
       <Stack.Screen options={{ title: t('moduleTitles.compte') }} />
       <Screen
-        variant="stack" title={t('moduleTitles.compte')} subtitle={t('moduleTitles.compteSub')}>
+        variant="stack"
+        title={t('moduleTitles.compte')}
+        subtitle={t('moduleTitles.compteSub')}
+      >
         <BackendStatusBanner />
+        <StubBanner text={PAYMENTS_SOFTWARE_LIVE} />
         <StubBanner text={paymentsStatusLabel()} />
 
         <Card title="Inscription / Auth">
@@ -267,7 +289,8 @@ export default function CompteScreen() {
 
         <Card title="Moyens de paiement">
           <Text style={styles.meta}>
-            Stripe (cartes) · PayPal · Apple Pay · Google Pay — pas de Lydia.
+            Stripe (cartes) · PayPal · Apple Pay · Google Pay — pas de Lydia. Premium ={' '}
+            {t('subscription.priceMonthly')}.
             {!isPaymentsConfigured()
               ? ' Aucun succès simulé tant que les URLs / clés ne sont pas dans .env.'
               : ''}
@@ -341,6 +364,27 @@ export default function CompteScreen() {
           {pay ? (
             <Text style={[styles.msg, isMethodConfigured(method) ? styles.ok : styles.bad]}>{pay}</Text>
           ) : null}
+        </Card>
+
+        <Card title="Journal local des tentatives">
+          <Text style={styles.meta}>
+            Aucun succès payé inventé — ouvertures Checkout / refus config uniquement. Clés Stripe ·
+            PayPal · RevenueCat = ops externes.
+          </Text>
+          {journal.length === 0 ? (
+            <Text style={styles.meta}>Aucune tentative encore.</Text>
+          ) : (
+            journal.slice(0, 8).map((j) => (
+              <View key={j.id} style={styles.plan}>
+                <Text style={styles.planName}>
+                  {j.planId} · {j.method} · {j.ok ? 'ouvert' : 'refusé'}
+                </Text>
+                <Text style={styles.meta}>
+                  {new Date(j.at).toLocaleString('fr-FR')} — {j.message}
+                </Text>
+              </View>
+            ))
+          )}
         </Card>
       </Screen>
     </>

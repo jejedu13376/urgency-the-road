@@ -104,8 +104,8 @@ export function quoteFromCameraText(opts: {
   };
 }
 
-export const VISION_PIXELS_BLOCKED =
-  'Vision pixels non branchée — capture caméra + description texte uniquement (pas d’identification visuelle IA / API vision).';
+/** @deprecated Prefer VISION_PIXELS_LIVE from visionPixelsLite. */
+export { VISION_PIXELS_LIVE as VISION_PIXELS_BLOCKED, VISION_PIXELS_LIVE } from './visionPixelsLite';
 
 /** @deprecated Prefer MIC_AUDIO_LIVE from acousticMic — kept for UI banners during migration. */
 export const MIC_AUDIO_BLOCKED =
