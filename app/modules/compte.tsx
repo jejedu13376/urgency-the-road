@@ -7,7 +7,6 @@ import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
-import { PREMIUM_PRICE_LABEL } from '../../src/constants/subscription';
 import { MOCK_PLANS } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import {
@@ -210,9 +209,6 @@ export default function CompteScreen() {
               <Text style={styles.planName}>
                 {t('subscription.planName')} — {t('subscription.priceMonthly')}
               </Text>
-              <Text style={styles.priceTag}>
-                {PREMIUM_PRICE_LABEL} · {p.priceMonthly} {p.currency}/mo
-              </Text>
               <Pressable
                 style={[styles.pay, paying && styles.payDisabled]}
                 disabled={paying}
@@ -268,7 +264,6 @@ const styles = StyleSheet.create({
   unlock: { color: colors.ink, fontSize: 13, fontWeight: '700', lineHeight: 18, marginBottom: 4 },
   plan: { gap: 6, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.line },
   planName: { fontWeight: '800', color: colors.ink, fontSize: 16 },
-  priceTag: { color: colors.garage, fontWeight: '800', fontSize: 14 },
   pay: { backgroundColor: colors.garage, borderRadius: 8, padding: 10, alignItems: 'center' },
   payDisabled: { opacity: 0.6 },
 });
