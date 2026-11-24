@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Link, Stack } from 'expo-router';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
@@ -26,7 +26,7 @@ import {
   type PaymentMethod,
 } from '../../src/services/payments/paymentsService';
 import { validatePassword } from '../../src/services/prefs/userProfileLocal';
-import { resolveInstallUrl, shareInstallLink } from '../../src/services/share/installUrl';
+import { resolveInstallUrl } from '../../src/services/share/installUrl';
 import { colors } from '../../src/theme/colors';
 import { FadeInBlock, PressScale } from '../../src/theme/motion';
 
@@ -128,8 +128,19 @@ export default function CompteScreen() {
       setReferralMsg(t('referral.needInstallUrl'));
       return;
     }
-    const r = await shareInstallLink(install.url, 'FR');
-    setReferralMsg(r.ok ? t('referral.shared') : r.message);
+    try {
+      const res = await Share.share({
+        message: t('referral.shareMessage', { brand: BRAND_NAME, url: install.url }),
+        title: BRAND_NAME,
+        url: Platform.OS === 'ios' ? install.url : undefined,
+      });
+      if (res.action === Share.sharedAction) {
+        setReferralMsg(t('referral.shared'));
+      }
+      // dismissed / cancel — leave prior status as-is
+    } catch (e) {
+      setReferralMsg(e instanceof Error ? e.message : t('referral.needInstallUrl'));
+    }
   };
 
   return (
