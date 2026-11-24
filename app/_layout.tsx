@@ -55,9 +55,11 @@ function AppShell() {
     );
   }
 
+  // Paper/white chrome under the status inset (no asphalt GlobalTopBar strip) —
+  // dark icons so clock/battery/signal stay readable.
   return (
     <>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <GlobalTopBar />
       <WeatherBanner />
       <ConnexionChip />
