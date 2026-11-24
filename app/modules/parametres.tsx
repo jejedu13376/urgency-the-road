@@ -267,6 +267,15 @@ export default function ParametresHub() {
               <Text style={styles.linkTxt}>{t('settings.openCompte')}</Text>
             </Pressable>
           </Link>
+          <Link href="/modules/parrainage" asChild>
+            <Pressable
+              style={styles.linkRow}
+              accessibilityRole="button"
+              accessibilityLabel={t('referral.openShareA11y')}
+            >
+              <Text style={styles.linkTxt}>{t('referral.openShare')}</Text>
+            </Pressable>
+          </Link>
         </Card>
 
         <Card title={t('settings.personal')}>

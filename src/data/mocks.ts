@@ -314,7 +314,9 @@ export const MOCK_FEED: FeedPost[] = [
   },
 ];
 
-/** Single app plan: Premium = $15/month — unlocks all Urgency road options. */
+/** Single app plan: Premium = $15/month — unlocks all Urgency road options.
+ * Referrers may checkout at $12/mo for 3 months via resolvePremiumPriceQuote (not a separate plan id).
+ */
 export const MOCK_PLANS: SubscriptionPlan[] = [
   {
     id: PREMIUM_PLAN_ID,
@@ -324,7 +326,7 @@ export const MOCK_PLANS: SubscriptionPlan[] = [
     perks: [
       'Unlocks all Urgency road options',
       'Tous les modules & options de l’app',
-      '$15 / month',
+      '$15 / month (referrer: $12 / month × 3 months)',
     ],
   },
 ];

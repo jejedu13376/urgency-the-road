@@ -20,6 +20,22 @@ export interface UserDoc {
   rescuerBadgeId?: string;
   locale: 'fr' | 'en' | 'es';
   currency: 'EUR' | 'USD' | 'CAD' | 'AUD';
+  /** Per-user share code (e.g. URAB12CD). */
+  referralCode?: string;
+  /** Code used at signup (referred user). Does not change their Premium price ($15). */
+  referredByCode?: string;
+  referredByUid?: string;
+  /** In-app credits earned when others sign up with this user's code. */
+  referralRewardCredits?: number;
+  successfulReferralCount?: number;
+  /**
+   * Auth / Compte flag: referrer currently in the $12/mo window.
+   * Enforced with referrerDiscountEndsAt via resolvePremiumPriceQuote().
+   */
+  referrerDiscountActive?: boolean;
+  referrerDiscountStartedAt?: string;
+  /** ISO end of $12/mo window (startedAt + REFERRER_DISCOUNT_MONTHS). */
+  referrerDiscountEndsAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -259,4 +275,8 @@ export const COLLECTIONS = {
   youtubeSuggestions: 'youtubeSuggestions',
   learnedFailures: 'learnedFailures',
   feedPosts: 'feedPosts',
+  /** Doc id = referral code. Maps code → referrer uid. */
+  referralCodes: 'referralCodes',
+  /** Signup attribution events; referrer claims rewards from these. */
+  referralEvents: 'referralEvents',
 } as const;

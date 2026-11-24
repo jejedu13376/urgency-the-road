@@ -1,7 +1,11 @@
 /**
  * Module 15 payments — Stripe (cartes), PayPal, Apple Pay, Google Pay.
  * No Lydia. Never reports success without real config / URL / native wallet path.
- * App catalog price: Premium = $15/month (see src/constants/subscription.ts).
+ *
+ * Catalog:
+ * - Standard Premium = $15/month (referred users + default).
+ * - Referrer discount = $12/month for REFERRER_DISCOUNT_MONTHS after a successful invite.
+ * Prices resolved via src/constants/subscription.ts (resolvePremiumPriceQuote).
  */
 import * as Linking from 'expo-linking';
 import {
@@ -13,15 +17,17 @@ import {
   REVENUECAT_PREMIUM_PRODUCT_ANDROID_PLACEHOLDER,
   REVENUECAT_PREMIUM_PRODUCT_IOS_PLACEHOLDER,
   STRIPE_PREMIUM_PRICE_PLACEHOLDER,
+  resolvePremiumPriceQuote,
+  type PremiumPriceQuote,
 } from '../../constants/subscription';
 
 export type PayPlanId = string;
 export type PlanId = PayPlanId;
 
-/** Default checkout plan — Premium $15/month. */
+/** Default checkout plan — Premium $15/month (or $12 when referrer window active). */
 export const DEFAULT_PLAN_ID: PlanId = PREMIUM_PLAN_ID;
 
-/** Stripe / RevenueCat placeholders (replace with live ids; keep amount at $15). */
+/** Stripe / RevenueCat placeholders (replace with live ids; keep amounts in sync). */
 export const PAYMENT_PRODUCT_PLACEHOLDERS = {
   stripePriceId: STRIPE_PREMIUM_PRICE_PLACEHOLDER,
   revenueCatEntitlement: REVENUECAT_PREMIUM_ENTITLEMENT_PLACEHOLDER,
@@ -48,6 +54,20 @@ export type PaymentAttempt = {
   message: string;
   configured: boolean;
 };
+
+export type CheckoutPriceOpts = {
+  /** From Auth profile — drives $12 vs $15. */
+  referrerDiscountEndsAt?: string | null;
+  /** Explicit override (tests). */
+  quote?: PremiumPriceQuote;
+};
+
+function quoteForCheckout(opts?: CheckoutPriceOpts): PremiumPriceQuote {
+  if (opts?.quote) return opts.quote;
+  return resolvePremiumPriceQuote({
+    referrerDiscountEndsAt: opts?.referrerDiscountEndsAt ?? null,
+  });
+}
 
 function stripeBase(): string {
   return (process.env.EXPO_PUBLIC_STRIPE_CHECKOUT_BASE ?? '').trim().replace(/\/$/, '');
@@ -125,11 +145,23 @@ async function openCheckoutUrl(
 
 /**
  * Start checkout for a plan + method. No fake success without config.
+ *
+ * Billing amount is always the catalog $15 Premium (PREMIUM_PRICE_MONTHLY_USD).
+ * Client-side referrerDiscountEndsAt must NOT drive Stripe/PayPal price params —
+ * a server (Admin SDK / webhook) must apply the $12 window after verifying claims.
+ * `referrer_promo_hint` is informational only for that future verifier.
  */
 export async function startCheckout(
   planId: PayPlanId,
   method: PaymentMethod = 'stripe_card',
+  priceOpts?: CheckoutPriceOpts,
 ): Promise<PaymentAttempt> {
+  const quote = quoteForCheckout(priceOpts);
+  // Always charge standard Premium — never trust client discount fields for live price.
+  const price = PREMIUM_PRICE_MONTHLY_USD;
+  const stripePrice = STRIPE_PREMIUM_PRICE_PLACEHOLDER;
+  const promoHint = quote.referrerDiscountActive ? '1' : '0';
+
   if (method === 'stripe_card') {
     const base = stripeBase();
     if (!base) {
@@ -142,7 +174,7 @@ export async function startCheckout(
           'Stripe cartes : définir EXPO_PUBLIC_STRIPE_CHECKOUT_BASE (Payment Link / Checkout). Aucun succès fictif.',
       };
     }
-    const url = `${base}?plan=${encodeURIComponent(planId)}&price=${PREMIUM_PRICE_MONTHLY_USD}&currency=USD&stripe_price=${encodeURIComponent(STRIPE_PREMIUM_PRICE_PLACEHOLDER)}&method=card&utm_source=urgence_mecanique`;
+    const url = `${base}?plan=${encodeURIComponent(planId)}&price=${price}&currency=USD&stripe_price=${encodeURIComponent(stripePrice)}&method=card&referrer_promo_hint=${promoHint}&utm_source=urgence_mecanique`;
     return openCheckoutUrl(url, 'stripe_card', planId);
   }
 
@@ -158,7 +190,7 @@ export async function startCheckout(
           'PayPal : définir EXPO_PUBLIC_PAYPAL_CHECKOUT_BASE (lien Checkout / Hosted). Aucun succès fictif.',
       };
     }
-    const url = `${base}?plan=${encodeURIComponent(planId)}&price=${PREMIUM_PRICE_MONTHLY_USD}&currency=USD&utm_source=urgence_mecanique`;
+    const url = `${base}?plan=${encodeURIComponent(planId)}&price=${price}&currency=USD&referrer_promo_hint=${promoHint}&utm_source=urgence_mecanique`;
     return openCheckoutUrl(url, 'paypal', planId);
   }
 
@@ -166,7 +198,7 @@ export async function startCheckout(
     const base = stripeBase();
     if (base) {
       const wallet = method === 'apple_pay' ? 'apple_pay' : 'google_pay';
-      const url = `${base}?plan=${encodeURIComponent(planId)}&price=${PREMIUM_PRICE_MONTHLY_USD}&currency=USD&stripe_price=${encodeURIComponent(STRIPE_PREMIUM_PRICE_PLACEHOLDER)}&method=${wallet}&utm_source=urgence_mecanique`;
+      const url = `${base}?plan=${encodeURIComponent(planId)}&price=${price}&currency=USD&stripe_price=${encodeURIComponent(stripePrice)}&method=${wallet}&referrer_promo_hint=${promoHint}&utm_source=urgence_mecanique`;
       return openCheckoutUrl(url, method, planId);
     }
     if (revenueCatKey()) {
@@ -199,6 +231,7 @@ export async function startCheckout(
 export async function startSubscriptionCheckout(
   planId: PlanId,
   method: PaymentMethod = 'stripe_card',
+  priceOpts?: CheckoutPriceOpts,
 ): Promise<PaymentAttempt> {
-  return startCheckout(planId, method);
+  return startCheckout(planId, method, priceOpts);
 }

@@ -1,17 +1,29 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Link, Stack } from 'expo-router';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
-import { BRAND_NAME } from '../../src/brand';
+import {
+  PREMIUM_PRICE_MONTHLY_USD,
+  REFERRER_DISCOUNT_MONTHS,
+  REFERRER_DISCOUNT_PRICE_MONTHLY_USD,
+  formatPremiumPriceMonthly,
+  resolvePremiumPriceQuote,
+} from '../../src/constants/subscription';
 import { useAuth } from '../../src/context/AuthContext';
-import { useI18n } from '../../src/context/I18nContext';
 import { MOCK_PLANS } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
-import { isCurrentEmailVerified, resendEmailVerification, signInEmail, signUpEmail } from '../../src/services/firebase/authService';
+import {
+  claimReferralRewards,
+  isCurrentEmailVerified,
+  resendEmailVerification,
+  savePendingReferralCode,
+  signInEmail,
+  signUpEmail,
+} from '../../src/services/firebase';
 import {
   isMethodConfigured,
   isPaymentsConfigured,
@@ -21,17 +33,17 @@ import {
   type PaymentMethod,
 } from '../../src/services/payments/paymentsService';
 import { validatePassword } from '../../src/services/prefs/userProfileLocal';
-import { resolveInstallUrl } from '../../src/services/share/installUrl';
 import { colors } from '../../src/theme/colors';
-import { FadeInBlock, PressScale } from '../../src/theme/motion';
+import { useI18n } from '../../src/context/I18nContext';
 
 /** Module 15 — Auth, bio, abonnements : Stripe · PayPal · Apple Pay · Google Pay (pas de Lydia). */
 export default function CompteScreen() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   useModuleVisit(15);
   const { refresh, profile } = useAuth();
   const [email, setEmail] = useState('');
   const [pw, setPw] = useState('');
+  const [referralInput, setReferralInput] = useState('');
   const [pwMsg, setPwMsg] = useState<string | null>(null);
   const [pwOk, setPwOk] = useState(false);
   const [bio, setBio] = useState<string | null>(null);
@@ -39,10 +51,32 @@ export default function CompteScreen() {
   const [authMsg, setAuthMsg] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   const [method, setMethod] = useState<PaymentMethod>('stripe_card');
-  const [referralMsg, setReferralMsg] = useState<string | null>(null);
+  const [rewardNote, setRewardNote] = useState<string | null>(null);
+  const [claimBusy, setClaimBusy] = useState(false);
 
-  const install = resolveInstallUrl();
-  const canShareLink = install.configured && install.url.startsWith('http');
+  const priceQuote = useMemo(
+    () =>
+      resolvePremiumPriceQuote({
+        referrerDiscountEndsAt: profile?.referrerDiscountEndsAt ?? null,
+      }),
+    [profile?.referrerDiscountEndsAt],
+  );
+
+  const onClaimReferralRewards = async () => {
+    if (!profile || claimBusy) return;
+    setClaimBusy(true);
+    try {
+      const r = await claimReferralRewards(profile);
+      if (r.data.claimed > 0) {
+        setRewardNote(r.stubLabel ?? null);
+        await refresh();
+      } else {
+        setRewardNote(null);
+      }
+    } finally {
+      setClaimBusy(false);
+    }
+  };
 
   const tryBio = async () => {
     const has = await LocalAuthentication.hasHardwareAsync();
@@ -64,7 +98,9 @@ export default function CompteScreen() {
 
   const payPlan = async (planId: string) => {
     setPaying(true);
-    const r = await startCheckout(planId, method);
+    const r = await startCheckout(planId, method, {
+      referrerDiscountEndsAt: profile?.referrerDiscountEndsAt ?? null,
+    });
     setPaying(false);
     setPay(r.message);
   };
@@ -77,8 +113,11 @@ export default function CompteScreen() {
       setAuthMsg('Inscription bloquée — mot de passe non conforme.');
       return;
     }
+    if (referralInput.trim()) {
+      await savePendingReferralCode(referralInput.trim());
+    }
     try {
-      const r = await signUpEmail(email, pw);
+      const r = await signUpEmail(email, pw, undefined, referralInput.trim() || null);
       if (r.ok === false) {
         setAuthMsg(r.stubLabel ?? 'Inscription échouée');
         return;
@@ -118,91 +157,15 @@ export default function CompteScreen() {
     setAuthMsg(r.stubLabel ?? (r.ok ? 'Email renvoyé' : 'Échec renvoi'));
   };
 
-  const shareReferral = async () => {
-    if (!canShareLink) {
-      setReferralMsg(t('referral.needInstallUrl'));
-      return;
-    }
-    try {
-      const res = await Share.share({
-        message: t('referral.shareMessage', { brand: BRAND_NAME, url: install.url }),
-        title: BRAND_NAME,
-        url: Platform.OS === 'ios' ? install.url : undefined,
-      });
-      if (res.action === Share.sharedAction) {
-        setReferralMsg(t('referral.shared'));
-      }
-      // dismissed / cancel — leave prior status as-is
-    } catch (e) {
-      setReferralMsg(e instanceof Error ? e.message : t('referral.needInstallUrl'));
-    }
-  };
+  const priceLabel = formatPremiumPriceMonthly(locale, priceQuote.amountUsdMonthly);
 
   return (
     <>
       <Stack.Screen options={{ title: t('moduleTitles.compte') }} />
-      <Screen variant="stack" title={t('moduleTitles.compte')} subtitle={t('moduleTitles.compteSub')}>
+      <Screen
+        variant="stack" title={t('moduleTitles.compte')} subtitle={t('moduleTitles.compteSub')}>
         <BackendStatusBanner />
         <StubBanner text={paymentsStatusLabel()} />
-
-        {/* Premium — one composition: brand, price, one CTA */}
-        <FadeInBlock>
-          <View style={styles.premiumHero} accessibilityLabel={t('subscription.sectionTitle')}>
-            <Text style={styles.premiumBrand}>{BRAND_NAME}</Text>
-            <Text style={styles.premiumKicker}>{t('subscription.sectionTitle')}</Text>
-            <Text style={styles.premiumPrice}>{t('subscription.priceMonthly')}</Text>
-            <Text style={styles.premiumLead}>{t('subscription.unlocksAll')}</Text>
-            <Text style={styles.premiumHint}>{t('subscription.perksHint')}</Text>
-            {MOCK_PLANS.map((p) => (
-              <PressScale
-                key={p.id}
-                style={[styles.premiumCta, paying && styles.payDisabled]}
-                disabled={paying}
-                onPress={() => void payPlan(p.id)}
-                accessibilityRole="button"
-                accessibilityLabel={t('subscription.payCta')}
-              >
-                <Text style={styles.premiumCtaTxt}>
-                  {paying
-                    ? t('subscription.paying')
-                    : `${t('subscription.payCta')} · ${PAYMENT_METHODS.find((x) => x.id === method)?.label ?? method}`}
-                </Text>
-              </PressScale>
-            ))}
-            {pay ? (
-              <Text
-                style={[
-                  styles.msg,
-                  isMethodConfigured(method) ? styles.premiumOk : styles.premiumBad,
-                ]}
-              >
-                {pay}
-              </Text>
-            ) : null}
-          </View>
-        </FadeInBlock>
-
-        <FadeInBlock delayMs={80}>
-          <View style={styles.referralBlock}>
-            <Text style={styles.referralKicker}>{t('referral.kicker')}</Text>
-            <Text style={styles.referralTitle}>{t('referral.title')}</Text>
-            <Text style={styles.referralBody}>{t('referral.body')}</Text>
-            <PressScale
-              style={styles.referralCta}
-              onPress={() => void shareReferral()}
-              accessibilityRole="button"
-              accessibilityLabel={t('referral.shareCta')}
-            >
-              <Text style={styles.referralCtaTxt}>{t('referral.shareCta')}</Text>
-            </PressScale>
-            <Link href="/modules/partage" asChild>
-              <Pressable accessibilityRole="link" accessibilityLabel={t('referral.openPartage')}>
-                <Text style={styles.referralLink}>{t('referral.openPartage')}</Text>
-              </Pressable>
-            </Link>
-            {referralMsg ? <Text style={styles.msg}>{referralMsg}</Text> : null}
-          </View>
-        </FadeInBlock>
 
         <Card title="Inscription / Auth">
           <Text style={styles.meta}>Profil : {profile?.email ?? 'non connecté'}</Text>
@@ -231,14 +194,25 @@ export default function CompteScreen() {
             secureTextEntry
             style={styles.input}
           />
+          <TextInput
+            value={referralInput}
+            onChangeText={setReferralInput}
+            placeholder={t('referral.codePlaceholder')}
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            accessibilityLabel={t('referral.codePlaceholder')}
+          />
+          <Text style={styles.meta}>{t('referral.signupHint', { price: PREMIUM_PRICE_MONTHLY_USD })}</Text>
           {pwMsg ? <Text style={[styles.msg, pwOk ? styles.ok : styles.bad]}>{pwMsg}</Text> : null}
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <PressScale style={[styles.btn, { flex: 1 }]} onPress={() => void onSignUp()}>
+            <Pressable style={[styles.btn, { flex: 1 }]} onPress={() => void onSignUp()}>
               <Text style={styles.btnTxt}>S’inscrire</Text>
-            </PressScale>
-            <PressScale style={[styles.btnDark, { flex: 1 }]} onPress={() => void onSignIn()}>
+            </Pressable>
+            <Pressable style={[styles.btnDark, { flex: 1 }]} onPress={() => void onSignIn()}>
               <Text style={styles.btnTxt}>Connexion</Text>
-            </PressScale>
+            </Pressable>
           </View>
           <Pressable style={[styles.btnDark, { marginTop: 8 }]} onPress={() => void onResendVerify()}>
             <Text style={styles.btnTxt}>Renvoyer l’email de vérification</Text>
@@ -246,10 +220,48 @@ export default function CompteScreen() {
           {authMsg ? <Text style={styles.msg}>{authMsg}</Text> : null}
         </Card>
 
+        <Card title={t('referral.compteCardTitle')}>
+          <Text style={styles.unlock}>
+            {profile?.referralCode
+              ? t('referral.compteCode', { code: profile.referralCode })
+              : t('referral.needAccount')}
+          </Text>
+          <Text style={styles.meta}>
+            {t('referral.compteFlag', {
+              active: profile?.referrerDiscountActive ? 'oui' : 'non',
+              price: priceQuote.amountUsdMonthly,
+            })}
+          </Text>
+          {profile?.referredByCode ? (
+            <Text style={styles.meta}>
+              {t('referral.youWereReferred', { code: profile.referredByCode })}
+            </Text>
+          ) : null}
+          <Link href="/modules/parrainage" asChild>
+            <Pressable
+              style={styles.btn}
+              accessibilityRole="button"
+              accessibilityLabel={t('referral.openShareA11y')}
+            >
+              <Text style={styles.btnTxt}>{t('referral.openShare')}</Text>
+            </Pressable>
+          </Link>
+          <Pressable
+            style={[styles.btnDark, { marginTop: 8 }, claimBusy && styles.payDisabled]}
+            disabled={claimBusy}
+            onPress={() => void onClaimReferralRewards()}
+            accessibilityRole="button"
+            accessibilityLabel={t('referral.claimCta')}
+          >
+            <Text style={styles.btnTxt}>{t('referral.claimCta')}</Text>
+          </Pressable>
+          {rewardNote ? <Text style={[styles.msg, styles.ok]}>{rewardNote}</Text> : null}
+        </Card>
+
         <Card title="Authentification biométrique">
-          <PressScale style={styles.btnDark} onPress={() => void tryBio()}>
+          <Pressable style={styles.btnDark} onPress={() => void tryBio()}>
             <Text style={styles.btnTxt}>Empreinte / Face ID</Text>
-          </PressScale>
+          </Pressable>
           {bio ? <Text style={styles.msg}>{bio}</Text> : null}
         </Card>
 
@@ -280,164 +292,96 @@ export default function CompteScreen() {
             })}
           </View>
         </Card>
+
+        <Card title={t('subscription.sectionTitle')}>
+          <Text style={styles.unlock}>{t('subscription.unlocksAll')}</Text>
+          <Text style={styles.meta}>
+            {priceQuote.referrerDiscountActive
+              ? t('subscription.perksHintReferrer', {
+                  discount: REFERRER_DISCOUNT_PRICE_MONTHLY_USD,
+                  months: REFERRER_DISCOUNT_MONTHS,
+                  standard: PREMIUM_PRICE_MONTHLY_USD,
+                })
+              : t('subscription.perksHint')}
+          </Text>
+          {MOCK_PLANS.map((p) => (
+            <View key={p.id} style={styles.plan}>
+              <Text style={styles.planName}>
+                {t('subscription.planName')} — {priceLabel}
+              </Text>
+              {priceQuote.referrerDiscountActive ? (
+                <>
+                  <Text style={styles.ok}>
+                    {t('subscription.referrerFlag', {
+                      discount: REFERRER_DISCOUNT_PRICE_MONTHLY_USD,
+                      months: REFERRER_DISCOUNT_MONTHS,
+                    })}
+                  </Text>
+                  <Text style={styles.meta}>
+                    {t('subscription.checkoutStandardNote', {
+                      standard: PREMIUM_PRICE_MONTHLY_USD,
+                      discount: REFERRER_DISCOUNT_PRICE_MONTHLY_USD,
+                    })}
+                  </Text>
+                </>
+              ) : null}
+              <Pressable
+                style={[styles.pay, paying && styles.payDisabled]}
+                disabled={paying}
+                onPress={() => void payPlan(p.id)}
+              >
+                <Text style={styles.btnTxt}>
+                  {paying
+                    ? t('subscription.paying')
+                    : `${t('subscription.payCtaShort')} · ${priceLabel} · ${PAYMENT_METHODS.find((x) => x.id === method)?.label ?? method}`}
+                </Text>
+              </Pressable>
+            </View>
+          ))}
+          {pay ? (
+            <Text style={[styles.msg, isMethodConfigured(method) ? styles.ok : styles.bad]}>{pay}</Text>
+          ) : null}
+        </Card>
       </Screen>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  premiumHero: {
-    backgroundColor: colors.asphalt,
-    borderRadius: 20,
-    paddingVertical: 22,
-    paddingHorizontal: 18,
-    gap: 8,
-  },
-  premiumBrand: {
-    color: colors.white,
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: 0.2,
-    lineHeight: 34,
-  },
-  premiumKicker: {
-    color: colors.signalSoft,
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginTop: 2,
-  },
-  premiumPrice: {
-    color: colors.signal,
-    fontSize: 34,
-    fontWeight: '900',
-    letterSpacing: 0.3,
-    lineHeight: 40,
-    marginTop: 4,
-  },
-  premiumLead: {
-    color: colors.mist,
-    fontSize: 16,
-    fontWeight: '600',
-    lineHeight: 24,
-    marginTop: 4,
-  },
-  premiumHint: {
-    color: colors.muted,
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 20,
-  },
-  premiumCta: {
-    marginTop: 10,
-    backgroundColor: colors.signal,
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    minHeight: 56,
-    justifyContent: 'center',
-  },
-  premiumCtaTxt: {
-    color: colors.white,
-    fontWeight: '900',
-    fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  referralBlock: {
-    backgroundColor: colors.white,
-    borderRadius: 18,
-    padding: 18,
-    gap: 8,
-    borderWidth: 1.5,
-    borderColor: colors.line,
-  },
-  referralKicker: {
-    color: colors.signal,
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  referralTitle: {
-    color: colors.ink,
-    fontSize: 22,
-    fontWeight: '900',
-    lineHeight: 28,
-  },
-  referralBody: {
-    color: colors.slate,
-    fontSize: 16,
-    fontWeight: '600',
-    lineHeight: 24,
-  },
-  referralCta: {
-    marginTop: 6,
-    backgroundColor: colors.garage,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    minHeight: 52,
-    justifyContent: 'center',
-  },
-  referralCtaTxt: { color: colors.white, fontWeight: '900', fontSize: 16 },
-  referralLink: {
-    color: colors.signal,
-    fontWeight: '800',
-    fontSize: 15,
-    marginTop: 4,
-    paddingVertical: 4,
-  },
   input: {
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: colors.line,
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 10,
+    padding: 12,
     backgroundColor: colors.mist,
     color: colors.ink,
     fontSize: 16,
-    fontWeight: '600',
-    minHeight: 48,
+    marginTop: 6,
   },
-  btn: {
-    backgroundColor: colors.signal,
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
-    minHeight: 48,
-    justifyContent: 'center',
-  },
-  btnDark: {
-    backgroundColor: colors.asphalt,
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
-    minHeight: 48,
-    justifyContent: 'center',
-  },
+  btn: { backgroundColor: colors.signal, borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 8 },
+  btnDark: { backgroundColor: colors.asphalt, borderRadius: 10, padding: 14, alignItems: 'center' },
   btnTxt: { color: colors.white, fontWeight: '800', fontSize: 15 },
-  msg: { fontWeight: '700', fontSize: 14, lineHeight: 20 },
+  msg: { fontWeight: '700', fontSize: 14, lineHeight: 20, marginTop: 6 },
   ok: { color: colors.garage },
   bad: { color: colors.danger },
-  /** High-contrast status on asphalt Premium hero (not garage/danger on dark). */
-  premiumOk: { color: colors.garageSoft },
-  premiumBad: { color: colors.dangerSoft },
-  meta: { color: colors.muted, fontSize: 14, lineHeight: 20, fontWeight: '600' },
+  meta: { color: colors.muted, fontSize: 14, lineHeight: 20 },
   rule: { color: colors.slate, fontSize: 14, fontWeight: '600', lineHeight: 20 },
   methods: { gap: 8, marginTop: 8 },
   method: {
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: colors.line,
-    borderRadius: 12,
+    borderRadius: 10,
     padding: 12,
     backgroundColor: colors.mist,
   },
   methodOn: { backgroundColor: colors.asphalt, borderColor: colors.asphalt },
-  methodTitle: { fontWeight: '800', color: colors.ink, fontSize: 16 },
+  methodTitle: { fontWeight: '800', color: colors.ink, fontSize: 15 },
   methodTitleOn: { color: colors.white },
-  methodHint: { color: colors.muted, fontSize: 13, marginTop: 2, lineHeight: 18 },
+  methodHint: { color: colors.muted, fontSize: 13, marginTop: 2 },
   methodHintOn: { color: '#C5D2DE' },
+  unlock: { color: colors.ink, fontSize: 15, fontWeight: '700', lineHeight: 22, marginBottom: 4 },
+  plan: { gap: 6, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.line },
+  planName: { fontWeight: '800', color: colors.ink, fontSize: 18 },
+  pay: { backgroundColor: colors.garage, borderRadius: 8, padding: 12, alignItems: 'center' },
   payDisabled: { opacity: 0.6 },
 });
