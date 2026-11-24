@@ -1,9 +1,29 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Deny-all until the app has a real Storage SDK path with owner/path binding.
-    // Auth-only allow-all was flagged MEDIUM (any signup could R/W the whole bucket).
-    // NEVER world-open on shared urgency-road.
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+    function isVideo() {
+      return request.resource != null
+        && request.resource.contentType.matches('video/.*')
+        && request.resource.size < 80 * 1024 * 1024;
+    }
+
+    /**
+     * Module 12 — Fil mécanique CDN.
+     * Owner write under feedVideos/{uid}/… ; signed-in read for feed playback.
+     * Deny everything else (no world-open bucket).
+     */
+    match /feedVideos/{userId}/{fileName} {
+      allow read: if signedIn();
+      allow write: if isOwner(userId) && isVideo();
+      allow delete: if isOwner(userId);
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }

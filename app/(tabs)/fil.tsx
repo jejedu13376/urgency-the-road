@@ -14,12 +14,13 @@ import {
   saveLiked,
   type LocalComment,
 } from '../../src/services/feed/feedComments';
-import { pickLocalVideo, VIDEO_CDN_BLOCKED } from '../../src/services/feed/pickLocalVideo';
+import { pickLocalVideo, VIDEO_CDN_READY } from '../../src/services/feed/pickLocalVideo';
+import { uploadFeedVideo } from '../../src/services/feed/uploadFeedVideo';
 import { createTextFeedPost, listFeedPosts } from '../../src/services/firebase/feedService';
 import type { FeedPost } from '../../src/types/modules';
 import { colors } from '../../src/theme/colors';
 
-/** Module 12 — Fil mécanique texte (Firestore + commentaires locaux). Vidéo CDN = stub honnête. */
+/** Module 12 — Fil mécanique texte + upload CDN Storage (soft-fail). */
 export default function FilMecaniqueScreen() {
   const { t } = useI18n();
   useModuleVisit(12);
@@ -35,6 +36,8 @@ export default function FilMecaniqueScreen() {
   const [titleDraft, setTitleDraft] = useState('Conseil mécanique');
   const [feedLabel, setFeedLabel] = useState<string | undefined>();
   const [localVideoUri, setLocalVideoUri] = useState<string | null>(null);
+  const [localVideoName, setLocalVideoName] = useState<string | undefined>();
+  const [uploadingCdn, setUploadingCdn] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -86,9 +89,10 @@ export default function FilMecaniqueScreen() {
     setUploadMsg(pick.label);
     if (pick.ok) {
       setLocalVideoUri(pick.uri);
+      setLocalVideoName(pick.fileName);
       if (!captionDraft.trim()) {
         setCaptionDraft(
-          `[vidéo locale]${pick.durationSec != null ? ` ~${pick.durationSec}s` : ''} — clip on-device, CDN non branché`,
+          `[vidéo]${pick.durationSec != null ? ` ~${pick.durationSec}s` : ''} — clip prêt (CDN si Auth + rules)`,
         );
       }
     }
@@ -96,11 +100,34 @@ export default function FilMecaniqueScreen() {
 
   const publishCaption = async () => {
     if (!captionDraft.trim() && !localVideoUri) return;
+    let remoteMediaUrl: string | undefined;
+    let cdnNote = '';
+    if (localVideoUri) {
+      setUploadingCdn(true);
+      try {
+        const cdn = await uploadFeedVideo({
+          localUri: localVideoUri,
+          fileName: localVideoName,
+        });
+        cdnNote = cdn.stubLabel ?? (cdn.ok ? 'CDN OK' : 'CDN soft-fail');
+        if (cdn.ok && cdn.data?.downloadUrl) {
+          remoteMediaUrl = cdn.data.downloadUrl;
+        }
+      } finally {
+        setUploadingCdn(false);
+      }
+    }
     const caption =
       captionDraft.trim() ||
-      (localVideoUri ? '[vidéo locale] — fichier on-device uniquement' : '');
+      (remoteMediaUrl
+        ? `[vidéo CDN] ${remoteMediaUrl}`
+        : localVideoUri
+          ? '[vidéo locale] — fichier on-device (CDN soft-fail)'
+          : '');
     const res = await createTextFeedPost({
-      title: titleDraft.trim() || (localVideoUri ? 'Clip réparation (local)' : 'Conseil mécanique'),
+      title:
+        titleDraft.trim() ||
+        (remoteMediaUrl ? 'Clip réparation (CDN)' : localVideoUri ? 'Clip réparation (local)' : 'Conseil mécanique'),
       caption,
       // Never publish email — feedPosts is world-readable
       authorName:
@@ -109,18 +136,20 @@ export default function FilMecaniqueScreen() {
     });
     setUploadMsg(
       localVideoUri
-        ? `${res.stubLabel ?? (res.ok ? 'Publié (méta texte)' : 'Échec')} · ${VIDEO_CDN_BLOCKED}`
+        ? `${res.stubLabel ?? (res.ok ? 'Publié' : 'Échec')} · ${cdnNote}`
         : res.stubLabel ?? (res.ok ? 'Publié' : 'Échec publication'),
     );
     if (res.data) {
       const post: FeedPost = {
         ...(res.data as FeedPost),
         localMediaUri: localVideoUri ?? undefined,
-        mediaKind: localVideoUri ? 'video_local' : 'text',
+        remoteMediaUrl,
+        mediaKind: remoteMediaUrl ? 'video_cdn' : localVideoUri ? 'video_local' : 'text',
       };
       setPosts((p) => [post, ...p]);
       setCaptionDraft('');
       setLocalVideoUri(null);
+      setLocalVideoName(undefined);
     }
   };
 
@@ -171,8 +200,8 @@ export default function FilMecaniqueScreen() {
 
       <Card title={t('fil.publish')}>
         <Text style={styles.meta}>
-          Conducteurs et garagistes : partagez pannes et conseils. Vidéo = CDN à brancher ; légende
-          texte sync Firestore quand connecté.
+          Conducteurs et garagistes : partagez pannes et conseils. Vidéo → Firebase Storage CDN si
+          Auth + rules ; sinon soft-fail on-device. {VIDEO_CDN_READY}
         </Text>
         <TextInput
           value={titleDraft}
@@ -190,11 +219,19 @@ export default function FilMecaniqueScreen() {
           multiline
         />
         {localVideoUri ? (
-          <Text style={styles.meta}>Vidéo locale prête (on-device) — ne sera pas uploadée.</Text>
+          <Text style={styles.meta}>Vidéo locale prête — upload CDN tenté à la publication.</Text>
         ) : null}
-        <Pressable style={styles.send} onPress={() => void publishCaption()}>
+        <Pressable
+          style={[styles.send, uploadingCdn && { opacity: 0.6 }]}
+          disabled={uploadingCdn}
+          onPress={() => void publishCaption()}
+        >
           <Text style={styles.uploadTxt}>
-            {localVideoUri ? 'Publier méta + légende (sans CDN)' : 'Publier le texte'}
+            {uploadingCdn
+              ? 'Upload CDN…'
+              : localVideoUri
+                ? 'Publier + tenter CDN'
+                : 'Publier le texte'}
           </Text>
         </Pressable>
         <Pressable style={styles.upload} onPress={() => void tryPickVideo()}>
@@ -213,22 +250,30 @@ export default function FilMecaniqueScreen() {
       ) : null}
 
       {posts.map((p) => {
+        const isCdn = p.mediaKind === 'video_cdn' || Boolean(p.remoteMediaUrl);
         const isLocalVideo =
-          p.mediaKind === 'video_local' ||
-          Boolean(p.localMediaUri) ||
-          p.caption.toLowerCase().includes('[vidéo');
+          !isCdn &&
+          (p.mediaKind === 'video_local' ||
+            Boolean(p.localMediaUri) ||
+            p.caption.toLowerCase().includes('[vidéo'));
         return (
           <Card key={p.id} title={p.title}>
             <Text style={styles.meta}>
               {p.author} · {new Date(p.createdAt).toLocaleString('fr-FR')}
             </Text>
             <Text style={styles.caption}>{p.caption}</Text>
-            {isLocalVideo ? (
+            {isCdn ? (
+              <View style={styles.videoStub}>
+                <Text style={styles.videoStubTxt}>
+                  [vidéo CDN] {p.remoteMediaUrl ?? 'URL Storage'}
+                </Text>
+              </View>
+            ) : isLocalVideo ? (
               <View style={styles.videoStub}>
                 <Text style={styles.videoStubTxt}>
                   {p.localMediaUri
-                    ? '[vidéo locale on-device — pas d’hébergement CDN]'
-                    : '[réf. vidéo — CDN non branché · pas de fichier embarqué]'}
+                    ? '[vidéo locale on-device — CDN soft-fail ou hors ligne]'
+                    : '[réf. vidéo — pas d’URL CDN]'}
                 </Text>
               </View>
             ) : (

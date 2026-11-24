@@ -1,5 +1,9 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { getCurrentUserProfile, watchAuth } from '../services/firebase/authService';
+import {
+  applyRescuerOverlay,
+  loadRescuerEnrollment,
+} from '../services/urgence/rescuerEnrollment';
 import type { UserDoc } from '../types/firestore';
 
 type AuthCtx = {
@@ -17,7 +21,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refresh = async () => {
     try {
       const res = await getCurrentUserProfile();
-      setProfile(res.data);
+      const enrollment = await loadRescuerEnrollment(res.data?.uid ?? null);
+      setProfile(applyRescuerOverlay(res.data, enrollment));
     } catch {
       // Soft-fail: never leave Expo stuck / crash on Auth bootstrap errors.
       setProfile(null);

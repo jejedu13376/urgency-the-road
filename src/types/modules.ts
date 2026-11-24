@@ -83,9 +83,11 @@ export interface FeedPost {
   likes: number;
   comments: number;
   createdAt: string;
-  /** On-device video URI only — never implies CDN hosting. */
+  /** On-device video URI — used before / when CDN upload soft-fails. */
   localMediaUri?: string;
-  mediaKind?: 'text' | 'video_local';
+  /** Firebase Storage download URL when CDN upload succeeds. */
+  remoteMediaUrl?: string;
+  mediaKind?: 'text' | 'video_local' | 'video_cdn';
 }
 
 export interface SubscriptionPlan {

@@ -91,5 +91,5 @@ export function analyzeAcousticCapture(opts: {
 export const MIC_AUDIO_LIVE =
   'Micro LIVE (expo-audio) — capture + metering heuristique ; pas de classification ML spectrale.';
 
-/** Vision pixels remain blocked without a paid / on-device vision model. */
-export { VISION_PIXELS_BLOCKED } from './cameraTextDiag';
+/** Vision lite LIVE — paid CV model remains an external option. */
+export { VISION_PIXELS_LIVE, VISION_PIXELS_BLOCKED } from './visionPixelsLite';

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Link, Stack, useLocalSearchParams } from 'expo-router';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
@@ -19,6 +19,11 @@ import {
   readLiveObdSnapshot,
   scanBleDevices,
 } from '../../src/services/obd/bleScaffold';
+import {
+  DTC_DICT_LIVE,
+  lookupDtcCode,
+  type DtcDictionaryEntry,
+} from '../../src/services/obd/dtcDictionary';
 import { recommendValiseForVehicle } from '../../src/services/obd/recommendValise';
 import { listObdHistory, readObdSnapshot } from '../../src/services/firebase/obdService';
 import type { ObdProtocol, ObdReadingDoc } from '../../src/types/firestore';
@@ -71,6 +76,8 @@ export default function ObdScreen() {
   const [boughtAck, setBoughtAck] = useState(false);
   const [liveBle, setLiveBle] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pasteCode, setPasteCode] = useState('');
+  const [pastedDtc, setPastedDtc] = useState<DtcDictionaryEntry | null>(null);
   const cap = getBleCapability();
 
   const flowStep: FlowStep = reading ? 'results' : connectedId ? 'read' : 'connect';
@@ -380,6 +387,51 @@ export default function ObdScreen() {
           ) : null}
         </Card>
 
+        <StubBanner text={DTC_DICT_LIVE} />
+
+        <Card title="Dictionnaire DTC (sans dongle)">
+          <Text style={styles.meta}>
+            Collez un code lu sur un outil tiers ou une étiquette — lookup local free. Lecture live =
+            Dev Client + valise BLE (externe).
+          </Text>
+          <TextInput
+            value={pasteCode}
+            onChangeText={setPasteCode}
+            placeholder="ex. P0301"
+            placeholderTextColor={colors.muted}
+            autoCapitalize="characters"
+            style={styles.input}
+          />
+          <Pressable
+            style={styles.btn}
+            onPress={() => {
+              const hit = lookupDtcCode(pasteCode);
+              setPastedDtc(hit);
+              setSelectedDtc(hit.code);
+            }}
+          >
+            <Text style={styles.btnTxt}>Décoder DTC local</Text>
+          </Pressable>
+          {pastedDtc ? (
+            <View style={[styles.dtc, { backgroundColor: SEV_STYLE[pastedDtc.severity].bg }]}>
+              <Text style={[styles.code, { color: SEV_STYLE[pastedDtc.severity].fg }]}>
+                {pastedDtc.code}
+              </Text>
+              <Text style={styles.meta}>{pastedDtc.plainLanguage}</Text>
+              {pastedDtc.repairGuide.map((g) => (
+                <Text key={g} style={styles.hint}>
+                  · {g}
+                </Text>
+              ))}
+              <Link href="/modules/pieces" asChild>
+                <Pressable style={styles.connectBtn}>
+                  <Text style={styles.btnTxt}>Pièces liées au DTC (M3) →</Text>
+                </Pressable>
+              </Link>
+            </View>
+          ) : null}
+        </Card>
+
         <Card title="Bluetooth (BLE) — ELM327 / J1939">
           <Text style={styles.meta}>{cap.available ? 'BLE natif prêt' : `Expo Go / web : ${cap.reason}`}</Text>
           <Text style={styles.meta}>{cap.pathToLive}</Text>
@@ -628,6 +680,7 @@ const styles = StyleSheet.create({
   btnTxt: { color: colors.white, fontWeight: '800', fontSize: 13 },
   dtc: { borderRadius: 10, padding: 12, gap: 6 },
   dtcHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+<<<<<<< HEAD
   code: { fontWeight: '900', fontSize: 20, lineHeight: 28 },
   sevBadge: { fontSize: 13, fontWeight: '800', textTransform: 'uppercase' },
   plain: { color: colors.slate, fontSize: 15, lineHeight: 22, fontWeight: '600' },
@@ -635,6 +688,24 @@ const styles = StyleSheet.create({
   hint: { color: colors.muted, fontSize: 14, lineHeight: 22 },
   ok: { color: colors.garage, fontWeight: '700', fontSize: 13, marginTop: 6, lineHeight: 20 },
   section: { fontWeight: '800', color: colors.ink, fontSize: 15, lineHeight: 22 },
+=======
+  code: { fontWeight: '900', fontSize: 15 },
+  sevBadge: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  plain: { color: colors.slate },
+  meta: { color: colors.muted, fontSize: 12, marginTop: 4 },
+  hint: { color: colors.muted, fontSize: 12, lineHeight: 18 },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: colors.mist,
+    color: colors.ink,
+    marginTop: 8,
+  },
+  ok: { color: colors.garage, fontWeight: '700', fontSize: 12, marginTop: 6 },
+  section: { fontWeight: '800', color: colors.ink, fontSize: 13 },
+>>>>>>> ac5efe4 (feat(modules): Batch G — M4 vision, M5 DTC, M12 CDN, M13 secours)
   clear: { backgroundColor: colors.asphalt, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 8 },
   deviceRow: {
     flexDirection: 'row',

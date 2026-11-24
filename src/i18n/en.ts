@@ -468,8 +468,8 @@ export const en: FrDict = {
 
   fil: {
     title: 'Mechanic feed',
-    subtitle: 'Module 12 — LIVE text · CDN video to wire',
-    stub: 'LIVE Firestore text if Auth · local video pick · CDN upload = blocked',
+    subtitle: 'Module 12 — LIVE text · Storage CDN soft-fail',
+    stub: 'LIVE Firestore text if Auth · local video pick · Storage CDN upload (Auth + rules)',
     publish: 'Publish a repair (text)',
     empty: 'Empty feed',
     aiTitle: 'AI agent — live discussion',

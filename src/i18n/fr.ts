@@ -465,8 +465,8 @@ export const fr = {
 
   fil: {
     title: 'Fil mécanique',
-    subtitle: 'Module 12 — texte LIVE · vidéo CDN à brancher',
-    stub: 'Texte Firestore LIVE si Auth · pick vidéo locale · upload CDN = bloqué',
+    subtitle: 'Module 12 — texte LIVE · CDN Storage soft-fail',
+    stub: 'Texte Firestore LIVE si Auth · pick vidéo · upload CDN Storage (Auth + rules)',
     publish: 'Publier une réparation (texte)',
     empty: 'Fil vide',
     aiTitle: 'Agent IA — discussion live',

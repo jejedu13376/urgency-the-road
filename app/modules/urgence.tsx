@@ -39,6 +39,17 @@ import {
   loadSosEmail,
   saveSosEmail,
 } from '../../src/services/urgence/sosEmail';
+import {
+  checklistComplete,
+  defaultEnrollment,
+  loadRescuerEnrollment,
+  RESCUER_CHECKLIST,
+  saveRescuerEnrollment,
+  SECOURS_PRODUCT_LIVE,
+  submitRescuerEnrollment,
+  type RescuerChecklistId,
+  type RescuerEnrollment,
+} from '../../src/services/urgence/rescuerEnrollment';
 import type {
   MedicalCardDoc,
   MedicalEmergencyView,
@@ -54,7 +65,7 @@ import { colors } from '../../src/theme/colors';
 export default function UrgenceScreen() {
   const { t } = useI18n();
   useModuleVisit(13);
-  const { profile } = useAuth();
+  const { profile, refresh } = useAuth();
   const {
     breakState,
     fatigue,
@@ -92,6 +103,8 @@ export default function UrgenceScreen() {
   const [label, setLabel] = useState<string | undefined>();
   const [coords, setCoords] = useState<DeviceCoords | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [enrollment, setEnrollment] = useState<RescuerEnrollment>(() => defaultEnrollment(null));
+  const [enrollMsg, setEnrollMsg] = useState<string | null>(null);
 
   // Align with firestore.rules ownerIsActiveSubscriber — flag only, never plan name / !profile.
   const subscriberActive = profile?.subscriptionActive === true;
@@ -120,6 +133,13 @@ export default function UrgenceScreen() {
     });
     void loadSosEmail().then(setSosEmail);
   }, []);
+
+  useEffect(() => {
+    void loadRescuerEnrollment(profile?.uid ?? null).then((e) => {
+      setEnrollment(e);
+      if (e.badgeId && !badgeId) setBadgeId(e.badgeId);
+    });
+  }, [profile?.uid]);
 
   const onSosEmailChange = (value: string) => {
     setSosEmail(value);
@@ -418,6 +438,80 @@ export default function UrgenceScreen() {
             <Text style={styles.sosTxt}>Enregistrer fiche + QR</Text>
           </Pressable>
           {saveMsg ? <Text style={styles.ok}>{saveMsg}</Text> : null}
+        </Card>
+
+        <StubBanner text={SECOURS_PRODUCT_LIVE} />
+        <Card title="Devenir intervenant secours">
+          <Text style={styles.meta}>
+            Produit KYC local : checklist + badge. Élévation rôle Firestore = admin/backend
+            (self-write interdit). DEV soft-auth active un overlay rescuer pour tester la vue
+            urgence.
+          </Text>
+          <Text style={styles.label}>Organisme</Text>
+          <TextInput
+            value={enrollment.orgName}
+            onChangeText={(v) => setEnrollment((e) => ({ ...e, orgName: v, status: 'draft' }))}
+            style={styles.input}
+            placeholder="Caserne / société / asso"
+            placeholderTextColor={colors.muted}
+          />
+          <Text style={styles.label}>Badge / n° pro</Text>
+          <TextInput
+            value={enrollment.badgeId}
+            onChangeText={(v) => {
+              setEnrollment((e) => ({ ...e, badgeId: v, status: 'draft' }));
+              setBadgeId(v);
+            }}
+            style={styles.input}
+            placeholder="ex. SP-59-4421"
+            placeholderTextColor={colors.muted}
+            autoCapitalize="characters"
+          />
+          {RESCUER_CHECKLIST.map((c) => {
+            const on = enrollment.checklist[c.id];
+            return (
+              <Pressable
+                key={c.id}
+                style={styles.gpsBtn}
+                onPress={() => {
+                  const id = c.id as RescuerChecklistId;
+                  setEnrollment((e) => ({
+                    ...e,
+                    status: 'draft',
+                    checklist: { ...e.checklist, [id]: !e.checklist[id] },
+                  }));
+                }}
+              >
+                <Text style={styles.sosTxt}>
+                  {on ? '☑' : '☐'} {c.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+          <Text style={styles.meta}>
+            Statut : {enrollment.status}
+            {checklistComplete(enrollment) ? ' · checklist OK' : ' · checklist incomplète'}
+            {profile?.role === 'rescuer' ? ' · profil rescuer actif' : ''}
+          </Text>
+          <Pressable
+            style={styles.btn}
+            onPress={() => {
+              void (async () => {
+                const saved = await saveRescuerEnrollment({
+                  ...enrollment,
+                  uid: profile?.uid ?? enrollment.uid,
+                });
+                const res = await submitRescuerEnrollment(saved);
+                setEnrollment(res.enrollment);
+                setEnrollMsg(res.message);
+                if (res.enrollment.badgeId) setBadgeId(res.enrollment.badgeId);
+                await refresh();
+              })();
+            }}
+          >
+            <Text style={styles.sosTxt}>Soumettre demande secours</Text>
+          </Pressable>
+          {enrollMsg ? <Text style={styles.ok}>{enrollMsg}</Text> : null}
         </Card>
 
         <Card title="Scan — accès contrôlé">
