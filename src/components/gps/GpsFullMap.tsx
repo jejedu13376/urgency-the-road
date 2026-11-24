@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -19,6 +20,7 @@ import {
   fetchPlacesAutocomplete,
   isGooglePlacesConfigured,
   newPlacesSessionToken,
+  resolvePlaceCoords,
   type PlacesSuggestion,
 } from '../../services/geo/googlePlacesAutocomplete';
 import {
@@ -32,7 +34,13 @@ import {
   fetchAirQualityNear,
 } from '../../services/geo/openWeatherAirQuality';
 import {
-  fetchVehicleRoute,
+  DEFAULT_ROUTE_AVOID,
+  itineraryOptionToVehicleRoute,
+  planItinerary,
+  type ItineraryPlanResult,
+  type RouteAvoidOptions,
+} from '../../services/geo/planItinerary';
+import {
   type VehicleRouteResult,
 } from '../../services/geo/valhallaRoute';
 import { listRoadHazards, reportHazard } from '../../services/firebase/hazardsService';
@@ -82,6 +90,7 @@ import {
   GpsDestinationMenu,
   type GpsDestinationSelection,
   type GpsRouteStatus,
+  type GpsWaypoint,
 } from './GpsDestinationMenu';
 import { GpsRouteAlertOverlay } from './GpsRouteAlertOverlay';
 import { GpsStreetViewModal } from './GpsStreetViewModal';
@@ -274,6 +283,17 @@ export function GpsFullMap() {
   const [canPublishPolice, setCanPublishPolice] = useState(false);
   const [hudNote, setHudNote] = useState<string | null>(null);
   const [lastRoute, setLastRoute] = useState<VehicleRouteResult | null>(null);
+  const [itineraryPlan, setItineraryPlan] = useState<ItineraryPlanResult | null>(null);
+  const [selectedOptionIndex, setSelectedOptionIndex] = useState(0);
+  const [planBusy, setPlanBusy] = useState(false);
+  const [routeAvoid, setRouteAvoid] = useState<RouteAvoidOptions>({ ...DEFAULT_ROUTE_AVOID });
+  const routeAvoidRef = useRef<RouteAvoidOptions>({ ...DEFAULT_ROUTE_AVOID });
+  const [waypoints, setWaypoints] = useState<GpsWaypoint[]>([]);
+  const waypointsRef = useRef<GpsWaypoint[]>([]);
+  const [stopSearchOpen, setStopSearchOpen] = useState(false);
+  const [stopQ, setStopQ] = useState('');
+  const [stopHits, setStopHits] = useState<PlacesSuggestion[]>([]);
+  const [stopBusy, setStopBusy] = useState(false);
   const [modeLabel, setModeLabel] = useState<GpsVehicleMode>('voiture');
   const [gpsOk, setGpsOk] = useState(false);
   const [searchQ, setSearchQ] = useState('');
@@ -356,14 +376,67 @@ export function GpsFullMap() {
   }, []);
 
   const injectRoute = useCallback(
-    (result: VehicleRouteResult) => {
+    (
+      result: VehicleRouteResult,
+      extras?: {
+        alternatives?: { coords: [number, number][] }[];
+        waypoints?: { lat: number; lon: number; label?: string }[];
+      },
+    ) => {
+      const payload = {
+        ...result,
+        alternatives: extras?.alternatives ?? [],
+        waypoints: extras?.waypoints ?? [],
+      };
       if (Platform.OS === 'web') {
-        postGpsCmd(iframeWinRef.current, { cmd: 'applyRoute', payload: result });
+        postGpsCmd(iframeWinRef.current, { cmd: 'applyRoute', payload });
         return;
       }
-      injectJs(`window.__gpsApplyRoute && window.__gpsApplyRoute(${JSON.stringify(result)})`);
+      injectJs(`window.__gpsApplyRoute && window.__gpsApplyRoute(${JSON.stringify(payload)})`);
     },
     [injectJs],
+  );
+
+  const applyItineraryPlan = useCallback(
+    (plan: ItineraryPlanResult, selectedIdx = 0) => {
+      setItineraryPlan(plan);
+      const idx = Math.max(0, Math.min(selectedIdx, Math.max(0, plan.options.length - 1)));
+      setSelectedOptionIndex(idx);
+      if (!plan.ok || !plan.options.length) {
+        setLastRoute(
+          plan.ok
+            ? null
+            : {
+                ok: false,
+                mode: plan.mode,
+                coords: [],
+                distanceKm: 0,
+                durationMin: 0,
+                source: 'none',
+                label: plan.label,
+                error: plan.error,
+              },
+        );
+        lastRouteRef.current = null;
+        return;
+      }
+      const selected = plan.options[idx] ?? plan.options[0];
+      const vehicle = itineraryOptionToVehicleRoute(selected, plan.mode);
+      setLastRoute(vehicle);
+      lastRouteRef.current = vehicle;
+      const alts = plan.options
+        .filter((_, i) => i !== idx)
+        .map((o) => ({ coords: o.coords }));
+      injectRoute(vehicle, {
+        alternatives: alts,
+        waypoints: waypointsRef.current.map((w) => ({
+          lat: w.lat,
+          lon: w.lon,
+          label: w.label,
+        })),
+      });
+    },
+    [injectRoute],
   );
 
   const injectLivePosition = useCallback(
@@ -967,30 +1040,38 @@ export function GpsFullMap() {
             .slice(0, 8)
             .map((r) => ({ lat: r.lat, lon: r.lon }));
 
-          const route = await fetchVehicleRoute(from, msg.to, msg.mode, {
-            heightM: livePrefs.truckHeightM,
-            widthM: livePrefs.truckWidthM,
-            weightT: livePrefs.truckPtacT,
-            lengthM: livePrefs.truckLengthM,
-            axleCount: livePrefs.axleCount,
-            hazmat: livePrefs.hazmat,
-          }, { excludeLocations: excludes });
-          if (reqId !== routeReqId.current) return;
-          // Bridge/weight/weather fire IMMEDIATE overlays via trucker brief (not passive HUD).
-          // Reset alert dedupe for this new route so later trips still get overlays;
-          // navigating must NOT clear again (avoids double-speak on Démarrer).
-          shownAlertIdsRef.current = new Set();
-          setLastRoute(route);
-          lastRouteRef.current = route;
-          setHudNote(route.label);
-          injectRoute(route);
-          void refreshLayers();
-          const originPt = liveOriginRef.current ?? msg.from;
-          void runTruckerBrief(
-            originPt.lat,
-            originPt.lon,
-            route.ok ? route.coords : undefined,
-          );
+          setPlanBusy(true);
+          try {
+            const plan = await planItinerary({
+              from,
+              to: msg.to,
+              mode: msg.mode,
+              avoid: routeAvoidRef.current,
+              waypoints: waypointsRef.current.map((w) => ({ lat: w.lat, lon: w.lon })),
+              truck: {
+                heightM: livePrefs.truckHeightM,
+                widthM: livePrefs.truckWidthM,
+                weightT: livePrefs.truckPtacT,
+                lengthM: livePrefs.truckLengthM,
+                axleCount: livePrefs.axleCount,
+                hazmat: livePrefs.hazmat,
+              },
+              excludeLocations: excludes,
+            });
+            if (reqId !== routeReqId.current) return;
+            // Bridge/weight/weather fire IMMEDIATE overlays via trucker brief (not passive HUD).
+            // Reset alert dedupe for this new route so later trips still get overlays;
+            // navigating must NOT clear again (avoids double-speak on Démarrer).
+            shownAlertIdsRef.current = new Set();
+            applyItineraryPlan(plan, 0);
+            setHudNote(plan.label);
+            void refreshLayers();
+            const originPt = liveOriginRef.current ?? msg.from;
+            const primaryCoords = plan.ok ? plan.options[0]?.coords : undefined;
+            void runTruckerBrief(originPt.lat, originPt.lon, primaryCoords);
+          } finally {
+            if (reqId === routeReqId.current) setPlanBusy(false);
+          }
         })();
         return;
       }
@@ -1087,7 +1168,7 @@ export function GpsFullMap() {
     },
     [
       gpsOk,
-      injectRoute,
+      applyItineraryPlan,
       setMapOrigin,
       refreshLayers,
       injectLayers,
@@ -1097,6 +1178,62 @@ export function GpsFullMap() {
       refreshAqi,
       syncTruckDimsInMap,
     ],
+  );
+
+  /** Recompute itinerary when sheet options / stops / vehicle change (dest already set). */
+  const replanCurrentDestination = useCallback(
+    async (opts?: {
+      mode?: GpsVehicleMode;
+      avoid?: RouteAvoidOptions;
+      waypoints?: GpsWaypoint[];
+    }) => {
+      const dest = destSelection;
+      const origin = liveOriginRef.current;
+      if (!dest || !origin || !gpsOk) return;
+      const mode = opts?.mode ?? modeLabel;
+      const avoid = opts?.avoid ?? routeAvoidRef.current;
+      const stops = opts?.waypoints ?? waypointsRef.current;
+      const prefs = prefsRef.current;
+      const reqId = ++routeReqId.current;
+      setPlanBusy(true);
+      setHudNote('Recalcul itinéraire…');
+      const excludes = reportsRef.current
+        .filter(
+          (r) =>
+            r.source === 'local' &&
+            (r.kind === 'police' || r.kind === 'accident' || r.kind === 'danger') &&
+            Number.isFinite(r.lat) &&
+            Number.isFinite(r.lon),
+        )
+        .slice(0, 8)
+        .map((r) => ({ lat: r.lat, lon: r.lon }));
+      try {
+        const plan = await planItinerary({
+          from: origin,
+          to: { lat: dest.lat, lon: dest.lon },
+          mode,
+          avoid,
+          waypoints: stops.map((w) => ({ lat: w.lat, lon: w.lon })),
+          truck: prefs
+            ? {
+                heightM: prefs.truckHeightM,
+                widthM: prefs.truckWidthM,
+                weightT: prefs.truckPtacT,
+                lengthM: prefs.truckLengthM,
+                axleCount: prefs.axleCount,
+                hazmat: prefs.hazmat,
+              }
+            : undefined,
+          excludeLocations: excludes,
+        });
+        if (reqId !== routeReqId.current) return;
+        applyItineraryPlan(plan, 0);
+        setHudNote(plan.label);
+      } finally {
+        if (reqId === routeReqId.current) setPlanBusy(false);
+      }
+    },
+    [destSelection, gpsOk, modeLabel, applyItineraryPlan],
   );
 
   useEffect(() => {
@@ -1601,6 +1738,7 @@ export function GpsFullMap() {
               </Text>
             </Pressable>
           </View>
+          {/* ETA = HTML bar under Itinéraire (#62 / UR-105) — no RN duplicate. */}
         </View>
       ) : null}
 
@@ -1671,6 +1809,12 @@ export function GpsFullMap() {
           gpsOk ? (lastWatchRef.current ?? liveOriginRef.current) : null
         }
         routeStatus={destRouteStatus}
+        vehicleMode={modeLabel}
+        avoid={routeAvoid}
+        waypoints={waypoints}
+        plan={itineraryPlan}
+        selectedOptionIndex={selectedOptionIndex}
+        planBusy={planBusy}
         onClose={() => setDestMenuOpen(false)}
         onStartNavigation={() => {
           if (!gpsOk || !lastRoute?.ok) return false;
@@ -1681,6 +1825,36 @@ export function GpsFullMap() {
               : 'Navigation voiture — marqueur = GPS live',
           );
           return true;
+        }}
+        onVehicleModeChange={(mode) => {
+          setModeLabel(mode);
+          void (async () => {
+            const livePrefs = await saveGpsNavPrefs({ mode });
+            prefsRef.current = livePrefs;
+            applyModeInMap(mode, livePrefs, { skipRoute: true });
+            await replanCurrentDestination({ mode });
+          })();
+        }}
+        onAvoidChange={(patch) => {
+          const next = { ...routeAvoidRef.current, ...patch };
+          routeAvoidRef.current = next;
+          setRouteAvoid(next);
+          void replanCurrentDestination({ avoid: next });
+        }}
+        onSelectOption={(index) => {
+          if (!itineraryPlan?.ok) return;
+          applyItineraryPlan(itineraryPlan, index);
+        }}
+        onAddWaypointRequest={() => {
+          setStopQ('');
+          setStopHits([]);
+          setStopSearchOpen(true);
+        }}
+        onRemoveWaypoint={(id) => {
+          const next = waypointsRef.current.filter((w) => w.id !== id);
+          waypointsRef.current = next;
+          setWaypoints(next);
+          void replanCurrentDestination({ waypoints: next });
         }}
         onLabelUpdated={(place) => {
           setDestSelection((prev) =>
@@ -1766,7 +1940,7 @@ export function GpsFullMap() {
         }}
       />
 
-      {/* Above map .bottom CTA (itinéraire / GPS / ETA bar) — leave room for dest menu. */}
+      {/* Above map .bottom CTA (itinéraire / GPS / HTML ETA bar) — leave room for dest menu. */}
       <View
         pointerEvents="box-none"
         style={{
@@ -1787,6 +1961,156 @@ export function GpsFullMap() {
           maxReviews={3}
         />
       </View>
+
+      <Modal
+        visible={stopSearchOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setStopSearchOpen(false)}
+      >
+        <Pressable
+          style={styles.stopBackdrop}
+          onPress={() => setStopSearchOpen(false)}
+          accessibilityLabel="Fermer ajout d’étape"
+        />
+        <View style={styles.stopSheet}>
+          <Text style={styles.stopTitle}>Ajouter une étape</Text>
+          <View style={styles.searchRow}>
+            <TextInput
+              value={stopQ}
+              onChangeText={(t) => {
+                setStopQ(t);
+                if (!placesConfigured || t.trim().length < 2) {
+                  setStopHits([]);
+                  return;
+                }
+                void (async () => {
+                  setStopBusy(true);
+                  const r = await fetchPlacesAutocomplete(t.trim(), placesSessionRef.current, {
+                    limit: 6,
+                  });
+                  setStopBusy(false);
+                  if (r.ok) setStopHits(r.suggestions);
+                })();
+              }}
+              placeholder={
+                placesConfigured ? 'Adresse étape…' : 'Adresse étape… (clé Places?)'
+              }
+              placeholderTextColor={colors.muted}
+              style={styles.searchInput}
+              autoFocus
+              accessibilityLabel="Recherche étape"
+            />
+            <Pressable
+              style={styles.searchBtn}
+              onPress={() => {
+                void (async () => {
+                  const q = stopQ.trim();
+                  if (!q) return;
+                  setStopBusy(true);
+                  if (placesConfigured && stopHits[0]) {
+                    const hit = stopHits[0];
+                    const res = await resolvePlaceCoords(hit.placeId, placesSessionRef.current);
+                    setStopBusy(false);
+                    if (!res.ok || res.lat == null || res.lon == null) {
+                      setHudNote(res.error ?? 'Étape KO');
+                      return;
+                    }
+                    const wp: GpsWaypoint = {
+                      id: `${res.lat.toFixed(5)},${res.lon.toFixed(5)}-${Date.now()}`,
+                      lat: res.lat,
+                      lon: res.lon,
+                      label: res.label || hit.label,
+                    };
+                    const next = [...waypointsRef.current, wp].slice(0, 6);
+                    waypointsRef.current = next;
+                    setWaypoints(next);
+                    setStopSearchOpen(false);
+                    placesSessionRef.current = newPlacesSessionToken();
+                    void replanCurrentDestination({ waypoints: next });
+                    return;
+                  }
+                  const geo = await geocodePlace(q);
+                  setStopBusy(false);
+                  const hit = geo.ok ? geo.hits[0] : null;
+                  if (!hit) {
+                    setHudNote(geo.error ?? 'Étape introuvable');
+                    return;
+                  }
+                  const wp: GpsWaypoint = {
+                    id: `${hit.lat.toFixed(5)},${hit.lon.toFixed(5)}-${Date.now()}`,
+                    lat: hit.lat,
+                    lon: hit.lon,
+                    label: hit.label || q,
+                  };
+                  const next = [...waypointsRef.current, wp].slice(0, 6);
+                  waypointsRef.current = next;
+                  setWaypoints(next);
+                  setStopSearchOpen(false);
+                  void replanCurrentDestination({ waypoints: next });
+                })();
+              }}
+            >
+              {stopBusy ? (
+                <ActivityIndicator color={colors.white} size="small" />
+              ) : (
+                <Text style={styles.searchBtnTxt}>OK</Text>
+              )}
+            </Pressable>
+          </View>
+          {stopHits.length > 0 ? (
+            <FlatList
+              keyboardShouldPersistTaps="handled"
+              data={stopHits}
+              keyExtractor={(item) => item.placeId}
+              style={styles.hits}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={styles.hitRow}
+                  onPress={() => {
+                    void (async () => {
+                      setStopBusy(true);
+                      const res = await resolvePlaceCoords(
+                        item.placeId,
+                        placesSessionRef.current,
+                      );
+                      setStopBusy(false);
+                      if (!res.ok || res.lat == null || res.lon == null) {
+                        setHudNote(res.error ?? 'Étape KO');
+                        return;
+                      }
+                      const wp: GpsWaypoint = {
+                        id: `${res.lat.toFixed(5)},${res.lon.toFixed(5)}-${Date.now()}`,
+                        lat: res.lat,
+                        lon: res.lon,
+                        label: res.label || item.label,
+                      };
+                      const next = [...waypointsRef.current, wp].slice(0, 6);
+                      waypointsRef.current = next;
+                      setWaypoints(next);
+                      setStopSearchOpen(false);
+                      placesSessionRef.current = newPlacesSessionToken();
+                      void replanCurrentDestination({ waypoints: next });
+                    })();
+                  }}
+                >
+                  <Text style={styles.hitTxt} numberOfLines={1}>
+                    {item.mainText || item.label}
+                  </Text>
+                  {item.secondaryText ? (
+                    <Text style={styles.hitSub} numberOfLines={1}>
+                      {item.secondaryText}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              )}
+            />
+          ) : null}
+          <Pressable style={styles.stopCancel} onPress={() => setStopSearchOpen(false)}>
+            <Text style={styles.stopCancelTxt}>Annuler</Text>
+          </Pressable>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1952,4 +2276,33 @@ const styles = StyleSheet.create({
   },
   sideFabTxt: { color: colors.white, fontWeight: '800', fontSize: 12 },
   sideFabTxtDark: { color: colors.ink, fontWeight: '700', fontSize: 12 },
+  stopBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(16,24,32,0.4)',
+  },
+  stopSheet: {
+    backgroundColor: colors.paper,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 16,
+    maxHeight: '70%',
+  },
+  stopTitle: {
+    color: colors.ink,
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 10,
+  },
+  stopCancel: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  stopCancelTxt: {
+    color: colors.muted,
+    fontWeight: '700',
+    fontSize: 15,
+  },
 });

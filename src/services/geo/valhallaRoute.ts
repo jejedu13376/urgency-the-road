@@ -33,6 +33,16 @@ export type VehicleRouteResult = {
   maneuvers?: RouteManeuver[];
 };
 
+/** Avoid / eco flags shared with TomTom itinerary planner. */
+export type ValhallaAvoidOpts = {
+  avoidTolls?: boolean;
+  avoidHighways?: boolean;
+  avoidFerries?: boolean;
+  /** Prefer shorter / less highway-heavy path (soft eco). */
+  eco?: boolean;
+  waypoints?: RoutePoint[];
+};
+
 export type TruckDims = {
   heightM?: number;
   widthM?: number;
@@ -100,19 +110,40 @@ export function relaxedTruckCosting(truck?: TruckDims): Record<string, number | 
   };
 }
 
+function applyAvoidCosting(
+  base: Record<string, number | boolean>,
+  avoid?: ValhallaAvoidOpts,
+): Record<string, number | boolean> {
+  const out: Record<string, number | boolean> = { ...base };
+  if (avoid?.avoidTolls) out.use_tolls = 0;
+  if (avoid?.avoidHighways) out.use_highways = 0;
+  if (avoid?.avoidFerries) out.use_ferry = 0;
+  if (avoid?.eco) {
+    // Soft eco: discourage highways a bit + prefer shorter when possible.
+    if (out.use_highways === undefined) out.use_highways = 0.3;
+    out.shortest = true;
+  }
+  return out;
+}
+
 export function buildValhallaPayload(
   from: RoutePoint,
   to: RoutePoint,
   mode: GpsVehicleMode,
   truck?: TruckDims,
-  opts?: { relaxed?: boolean; excludeLocations?: RoutePoint[] },
+  opts?: {
+    relaxed?: boolean;
+    excludeLocations?: RoutePoint[];
+    avoid?: ValhallaAvoidOpts;
+  },
 ): Record<string, unknown> {
   const costing = mode === 'camion' ? 'truck' : 'auto';
+  const vias = (opts?.avoid?.waypoints ?? [])
+    .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon))
+    .slice(0, 6)
+    .map((p) => ({ lat: p.lat, lon: p.lon, type: 'through' as const }));
   const payload: Record<string, unknown> = {
-    locations: [
-      { lat: from.lat, lon: from.lon },
-      { lat: to.lat, lon: to.lon },
-    ],
+    locations: [{ lat: from.lat, lon: from.lon }, ...vias, { lat: to.lat, lon: to.lon }],
     costing,
     // Valhalla 3.x prefers top-level units/language (directions_options deprecated).
     units: 'kilometers',
@@ -121,7 +152,14 @@ export function buildValhallaPayload(
 
   if (mode === 'camion') {
     payload.costing_options = {
-      truck: opts?.relaxed ? relaxedTruckCosting(truck) : normalizeTruckCosting(truck),
+      truck: applyAvoidCosting(
+        opts?.relaxed ? relaxedTruckCosting(truck) : normalizeTruckCosting(truck),
+        opts?.avoid,
+      ),
+    };
+  } else if (opts?.avoid) {
+    payload.costing_options = {
+      auto: applyAvoidCosting({}, opts.avoid),
     };
   }
 
@@ -242,10 +280,14 @@ export async function fetchVehicleRoute(
   to: RoutePoint,
   mode: GpsVehicleMode,
   truck?: TruckDims,
-  routeOpts?: { excludeLocations?: RoutePoint[] },
+  routeOpts?: {
+    excludeLocations?: RoutePoint[];
+    avoid?: ValhallaAvoidOpts;
+  },
 ): Promise<VehicleRouteResult> {
   const excludeLocations = routeOpts?.excludeLocations;
   const hasExcludes = !!(excludeLocations && excludeLocations.length);
+  const avoid = routeOpts?.avoid;
 
   const labelOk = (
     result: VehicleRouteResult,
@@ -268,7 +310,7 @@ export async function fetchVehicleRoute(
 
   try {
     const primary = await postValhalla(
-      buildValhallaPayload(from, to, mode, truck, { excludeLocations }),
+      buildValhallaPayload(from, to, mode, truck, { excludeLocations, avoid }),
     );
     if (primary.ok && primary.body?.trip?.legs?.[0]?.shape) {
       return labelOk(tripToResult(mode, primary.body), { withExcludes: hasExcludes });
@@ -279,7 +321,10 @@ export async function fetchVehicleRoute(
     // If exclusions caused NoPath, retry same costing without them (honest label — not silent).
     if (hasExcludes) {
       const noEx = await postValhalla(
-        buildValhallaPayload(from, to, mode, truck, { excludeLocations: undefined }),
+        buildValhallaPayload(from, to, mode, truck, {
+          excludeLocations: undefined,
+          avoid,
+        }),
       );
       if (noEx.ok && noEx.body?.trip?.legs?.[0]?.shape) {
         return labelOk(tripToResult(mode, noEx.body), {
@@ -294,6 +339,7 @@ export async function fetchVehicleRoute(
         buildValhallaPayload(from, to, mode, truck, {
           relaxed: true,
           excludeLocations: undefined,
+          avoid,
         }),
       );
       if (retry.ok && retry.body?.trip?.legs?.[0]?.shape) {

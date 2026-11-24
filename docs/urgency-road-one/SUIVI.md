@@ -176,3 +176,5 @@ Deploy CLI : `--config firebase/firebase.json` · project `urgency-road`.
 | ~22:50 | UR-89 GPS — PR `itinéraire` + menu destination (Share / AsyncStorage / stubs) ; helpers `gpsSavedPlaces` partagés vs Places reviews sibling |
 | ~22:55 | UR-90 GPS — Place Details avis (`rating`/`userRatingCount`/`reviews`) · helper `googlePlacesDetails` · panel FR · branch `cursor/gps-place-reviews-5c31` (sur #40) |
 | ~23:25 | UR-95 QR hors ligne — generate local SVG, payload AsyncStorage, scan sans réseau (branche `cursor/qr-offline-local-1b29`) |
+
+| ~01:50 | UR-106 GPS — Itinéraire Maps-style (ETA/Démarrer/étapes/Partager/Enregistrer/éviter+éco/véhicule/péages/essence/alts TomTom→Valhalla) · branche `cursor/gps-itineraire-maps-c91d` |
