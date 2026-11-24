@@ -2,7 +2,8 @@ import type { FrDict } from './fr';
 
 /** English UI strings — same keys as fr. */
 export const en: FrDict = {
-  appName: 'Urgency Road',
+  /** Always English — never localize the product brand. */
+  appName: 'Urgency road',
   loading: 'Loading…',
   close: 'Close',
   open: 'Open',
@@ -55,7 +56,7 @@ export const en: FrDict = {
 
   registerGate: {
     title: 'Create your account',
-    sub: 'First launch — register or sign in to access Urgency Road.',
+    sub: 'First launch — register or sign in to access Urgency road.',
     namePh: 'Full name',
     emailPh: 'email@example.com',
     passwordPh: 'Password',
@@ -75,12 +76,12 @@ export const en: FrDict = {
   support: {
     title: 'Support',
     subtitle: 'Help & company contact',
-    intro: 'Question, Expo bug, subscription? Email the Urgency Road team.',
+    intro: 'Question, Expo bug, subscription? Email the Urgency road team.',
     emailLabel: 'Company support email',
     emailA11y: 'Support email %{email}',
     write: 'Write an email',
     writeA11y: 'Open mail client to support',
-    mailSubject: 'Urgency Road support',
+    mailSubject: 'Urgency road support',
     mailBody: 'Hello %{app},\n\n',
     mailOpened: 'Mail client opened.',
     mailUnavailable: 'Cannot open mail — write to %{email}',
@@ -119,7 +120,7 @@ export const en: FrDict = {
   },
 
   progress: {
-    kicker: 'Urgency Road seller path',
+    kicker: 'Urgency road seller path',
     loadingA11y: 'Loading progress',
     pctOf17: '%{pct}% of 17 modules',
     days: 'days',

@@ -2,7 +2,8 @@ import type { FrDict } from './fr';
 
 /** Español — mismas claves que fr. */
 export const es: FrDict = {
-  appName: 'Urgencia Mecánica',
+  /** Always English — never localize the product brand. */
+  appName: 'Urgency road',
   loading: 'Cargando…',
   close: 'Cerrar',
   open: 'Abrir',
@@ -55,7 +56,7 @@ export const es: FrDict = {
 
   registerGate: {
     title: 'Cree su cuenta',
-    sub: 'Primera apertura — regístrese o inicie sesión para acceder a Urgencia Mecánica.',
+    sub: 'Primera apertura — regístrese o inicie sesión para acceder a Urgency road.',
     namePh: 'Nombre completo',
     emailPh: 'email@ejemplo.com',
     passwordPh: 'Contraseña',
@@ -75,12 +76,12 @@ export const es: FrDict = {
   support: {
     title: 'Soporte',
     subtitle: 'Ayuda y contacto de la empresa',
-    intro: '¿Pregunta, bug Expo, suscripción? Escriba al equipo de Urgencia Mecánica.',
+    intro: '¿Pregunta, bug Expo, suscripción? Escriba al equipo de Urgency road.',
     emailLabel: 'Email de soporte de la empresa',
     emailA11y: 'Email de soporte %{email}',
     write: 'Escribir un email',
     writeA11y: 'Abrir el cliente de correo hacia soporte',
-    mailSubject: 'Soporte Urgencia Mecánica',
+    mailSubject: 'Soporte Urgency road',
     mailBody: 'Hola %{app},\n\n',
     mailOpened: 'Cliente de correo abierto.',
     mailUnavailable: 'No se puede abrir el correo — escriba a %{email}',
@@ -119,7 +120,7 @@ export const es: FrDict = {
   },
 
   progress: {
-    kicker: 'Recorrido vendedor Urgencia Mecánica',
+    kicker: 'Recorrido vendedor Urgency road',
     loadingA11y: 'Cargando progreso',
     pctOf17: '%{pct}% de los 17 módulos',
     days: 'días',
