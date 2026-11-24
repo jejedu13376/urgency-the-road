@@ -641,6 +641,9 @@ export const fr = {
     payCta: 'S’abonner Premium · 15 $ / mois',
     payCtaShort: 'S’abonner Premium',
     referrerFlag: 'Tarif parrain %{discount} $ / mois (fenêtre %{months} mois)',
+    checkoutStandardNote:
+      'Checkout live = %{standard} $ / mois. La promo %{discount} $ sera appliquée côté serveur après vérification.',
+
     paying: 'Ouverture…',
     adminLine: 'Premium — 15 $ / mois · débloque toutes les options Urgency road (Stripe · PayPal · Apple/Google Pay · RevenueCat)',
   },

@@ -644,6 +644,9 @@ export const en: FrDict = {
     payCta: 'Subscribe Premium · $15 / month',
     payCtaShort: 'Subscribe Premium',
     referrerFlag: 'Referrer rate $%{discount} / month (%{months}-month window)',
+    checkoutStandardNote:
+      'Live checkout = $%{standard} / month. The $%{discount} promo is applied server-side after verification.',
+
     paying: 'Opening…',
     adminLine:
       'Premium — $15 / month · unlocks all Urgency road options (Stripe · PayPal · Apple/Google Pay · RevenueCat)',

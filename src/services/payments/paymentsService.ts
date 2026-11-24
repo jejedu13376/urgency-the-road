@@ -145,7 +145,11 @@ async function openCheckoutUrl(
 
 /**
  * Start checkout for a plan + method. No fake success without config.
- * Price comes from subscription constants + optional referrer discount window.
+ *
+ * Billing amount is always the catalog $15 Premium (PREMIUM_PRICE_MONTHLY_USD).
+ * Client-side referrerDiscountEndsAt must NOT drive Stripe/PayPal price params —
+ * a server (Admin SDK / webhook) must apply the $12 window after verifying claims.
+ * `referrer_promo_hint` is informational only for that future verifier.
  */
 export async function startCheckout(
   planId: PayPlanId,
@@ -153,9 +157,10 @@ export async function startCheckout(
   priceOpts?: CheckoutPriceOpts,
 ): Promise<PaymentAttempt> {
   const quote = quoteForCheckout(priceOpts);
-  const price = quote.amountUsdMonthly;
-  const stripePrice = quote.stripePriceId;
-  const refFlag = quote.referrerDiscountActive ? '1' : '0';
+  // Always charge standard Premium — never trust client discount fields for live price.
+  const price = PREMIUM_PRICE_MONTHLY_USD;
+  const stripePrice = STRIPE_PREMIUM_PRICE_PLACEHOLDER;
+  const promoHint = quote.referrerDiscountActive ? '1' : '0';
 
   if (method === 'stripe_card') {
     const base = stripeBase();
@@ -169,7 +174,7 @@ export async function startCheckout(
           'Stripe cartes : définir EXPO_PUBLIC_STRIPE_CHECKOUT_BASE (Payment Link / Checkout). Aucun succès fictif.',
       };
     }
-    const url = `${base}?plan=${encodeURIComponent(planId)}&price=${price}&currency=USD&stripe_price=${encodeURIComponent(stripePrice)}&method=card&referrer_discount=${refFlag}&utm_source=urgence_mecanique`;
+    const url = `${base}?plan=${encodeURIComponent(planId)}&price=${price}&currency=USD&stripe_price=${encodeURIComponent(stripePrice)}&method=card&referrer_promo_hint=${promoHint}&utm_source=urgence_mecanique`;
     return openCheckoutUrl(url, 'stripe_card', planId);
   }
 
@@ -185,7 +190,7 @@ export async function startCheckout(
           'PayPal : définir EXPO_PUBLIC_PAYPAL_CHECKOUT_BASE (lien Checkout / Hosted). Aucun succès fictif.',
       };
     }
-    const url = `${base}?plan=${encodeURIComponent(planId)}&price=${price}&currency=USD&referrer_discount=${refFlag}&utm_source=urgence_mecanique`;
+    const url = `${base}?plan=${encodeURIComponent(planId)}&price=${price}&currency=USD&referrer_promo_hint=${promoHint}&utm_source=urgence_mecanique`;
     return openCheckoutUrl(url, 'paypal', planId);
   }
 
@@ -193,7 +198,7 @@ export async function startCheckout(
     const base = stripeBase();
     if (base) {
       const wallet = method === 'apple_pay' ? 'apple_pay' : 'google_pay';
-      const url = `${base}?plan=${encodeURIComponent(planId)}&price=${price}&currency=USD&stripe_price=${encodeURIComponent(stripePrice)}&method=${wallet}&referrer_discount=${refFlag}&utm_source=urgence_mecanique`;
+      const url = `${base}?plan=${encodeURIComponent(planId)}&price=${price}&currency=USD&stripe_price=${encodeURIComponent(stripePrice)}&method=${wallet}&referrer_promo_hint=${promoHint}&utm_source=urgence_mecanique`;
       return openCheckoutUrl(url, method, planId);
     }
     if (revenueCatKey()) {
@@ -202,7 +207,7 @@ export async function startCheckout(
         provider: method,
         checkoutUrl: null,
         configured: true,
-        message: `${method === 'apple_pay' ? 'Apple Pay' : 'Google Pay'} via RevenueCat (${REVENUECAT_PREMIUM_ENTITLEMENT_PLACEHOLDER} / ${REVENUECAT_PREMIUM_PACKAGE_PLACEHOLDER}, ${quote.priceLabel}) : clé publique OK — nécessite Dev Client + react-native-purchases (pas de succès simulé Expo Go).`,
+        message: `${method === 'apple_pay' ? 'Apple Pay' : 'Google Pay'} via RevenueCat (${REVENUECAT_PREMIUM_ENTITLEMENT_PLACEHOLDER} / ${REVENUECAT_PREMIUM_PACKAGE_PLACEHOLDER}, ${PREMIUM_PRICE_PER_MONTH_LABEL}) : clé publique OK — nécessite Dev Client + react-native-purchases (pas de succès simulé Expo Go).`,
       };
     }
     return {

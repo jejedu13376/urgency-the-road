@@ -54,41 +54,100 @@ service cloud.firestore {
           )
         );
     }
+    /** Entitlement + referrer billing fields — client cannot self-grant $12 window / credits. */
+    function referralBillingKeysFrozen() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'role',
+        'subscription',
+        'subscriptionActive',
+        'rescuerBadgeId',
+        'referrerDiscountActive',
+        'referrerDiscountStartedAt',
+        'referrerDiscountEndsAt',
+        'referralRewardCredits',
+        'successfulReferralCount',
+      ]);
+    }
+    /** referralCode / referredBy* immutable once set (first write OK). */
+    function referralIdentityImmutable() {
+      return (
+        (!('referralCode' in resource.data)
+          || resource.data.referralCode == null
+          || request.resource.data.referralCode == resource.data.referralCode)
+        && (!('referredByUid' in resource.data)
+          || resource.data.referredByUid == null
+          || request.resource.data.referredByUid == resource.data.referredByUid)
+        && (!('referredByCode' in resource.data)
+          || resource.data.referredByCode == null
+          || request.resource.data.referredByCode == resource.data.referredByCode)
+      );
+    }
+
     match /users/{userId} {
       allow read: if signedIn() && (uid() == userId || isAdmin());
       allow create: if signedIn() && uid() == userId
         && request.resource.data.role == 'user'
-        && request.resource.data.subscriptionActive == false;
+        && request.resource.data.subscriptionActive == false
+        && (!('referrerDiscountActive' in request.resource.data)
+          || request.resource.data.referrerDiscountActive == false)
+        && (!('referralRewardCredits' in request.resource.data)
+          || request.resource.data.referralRewardCredits == 0)
+        && (!('successfulReferralCount' in request.resource.data)
+          || request.resource.data.successfulReferralCount == 0);
       allow update: if signedIn() && (
-        (uid() == userId && !request.resource.data.diff(resource.data).affectedKeys()
-          .hasAny(['role', 'subscription', 'subscriptionActive', 'rescuerBadgeId']))
+        (uid() == userId && referralBillingKeysFrozen() && referralIdentityImmutable())
         || isAdmin()
       );
       allow delete: if isAdmin();
     }
 
-    /** Public code → uid index for signup attribution (no PHI). */
+    /**
+     * Code → uid index (no PHI). get-only for signup lookup — never list.
+     * Create only after users/{uid}.referralCode is already set to this code.
+     */
     match /referralCodes/{code} {
-      allow read: if signedIn();
+      allow get: if signedIn();
+      allow list: if false;
       allow create: if signedIn()
         && request.resource.data.uid == uid()
-        && request.resource.data.code == code;
-      allow update: if signedIn() && resource.data.uid == uid();
+        && request.resource.data.code == code
+        && code.matches('^UR[A-Z2-9]{6,10}$')
+        && get(/databases/$(database)/documents/users/$(uid())).data.referralCode == code;
+      allow update: if false;
       allow delete: if isAdmin();
     }
 
-    /** Referred user creates; referrer reads/claims own events. */
-    match /referralEvents/{id} {
-      allow read: if signedIn()
-        && (resource.data.referredUid == uid() || resource.data.referrerUid == uid() || isAdmin());
+    /**
+     * Doc id = referredUid (one attribution event per signup).
+     * Create binds code/referrerUid to referralCodes + users.referredBy*.
+     * Update: claim-only false → true (no un-claim / no field rewrite).
+     */
+    match /referralEvents/{referredUid} {
+      allow get: if signedIn() && (
+        referredUid == uid()
+        || resource.data.referrerUid == uid()
+        || isAdmin()
+      );
+      allow list: if signedIn() && resource.data.referrerUid == uid();
       allow create: if signedIn()
+        && referredUid == uid()
         && request.resource.data.referredUid == uid()
-        && request.resource.data.claimed == false;
+        && request.resource.data.referrerUid is string
+        && request.resource.data.referrerUid != uid()
+        && request.resource.data.claimed == false
+        && request.resource.data.code is string
+        && exists(/databases/$(database)/documents/referralCodes/$(request.resource.data.code))
+        && get(/databases/$(database)/documents/referralCodes/$(request.resource.data.code)).data.uid
+          == request.resource.data.referrerUid
+        && get(/databases/$(database)/documents/users/$(uid())).data.referredByUid
+          == request.resource.data.referrerUid
+        && get(/databases/$(database)/documents/users/$(uid())).data.referredByCode
+          == request.resource.data.code;
       allow update: if signedIn()
         && resource.data.referrerUid == uid()
-        && request.resource.data.referrerUid == resource.data.referrerUid
-        && request.resource.data.referredUid == resource.data.referredUid
-        && request.resource.data.code == resource.data.code;
+        && resource.data.claimed == false
+        && request.resource.data.claimed == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimed']);
       allow delete: if isAdmin();
     }
 

@@ -303,12 +303,20 @@ export default function CompteScreen() {
                 {t('subscription.planName')} — {priceLabel}
               </Text>
               {priceQuote.referrerDiscountActive ? (
-                <Text style={styles.ok}>
-                  {t('subscription.referrerFlag', {
-                    discount: REFERRER_DISCOUNT_PRICE_MONTHLY_USD,
-                    months: REFERRER_DISCOUNT_MONTHS,
-                  })}
-                </Text>
+                <>
+                  <Text style={styles.ok}>
+                    {t('subscription.referrerFlag', {
+                      discount: REFERRER_DISCOUNT_PRICE_MONTHLY_USD,
+                      months: REFERRER_DISCOUNT_MONTHS,
+                    })}
+                  </Text>
+                  <Text style={styles.meta}>
+                    {t('subscription.checkoutStandardNote', {
+                      standard: PREMIUM_PRICE_MONTHLY_USD,
+                      discount: REFERRER_DISCOUNT_PRICE_MONTHLY_USD,
+                    })}
+                  </Text>
+                </>
               ) : null}
               <Pressable
                 style={[styles.pay, paying && styles.payDisabled]}

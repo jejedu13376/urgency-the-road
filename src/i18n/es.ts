@@ -644,6 +644,9 @@ export const es: FrDict = {
     payCta: 'Suscribirse a Premium · 15 $ / mes',
     payCtaShort: 'Suscribirse a Premium',
     referrerFlag: 'Tarifa padrino %{discount} $ / mes (ventana %{months} meses)',
+    checkoutStandardNote:
+      'Checkout en vivo = %{standard} $ / mes. La promo %{discount} $ se aplica en servidor tras verificación.',
+
     paying: 'Abriendo…',
     adminLine:
       'Premium — 15 $ / mes · desbloquea todas las opciones de Urgency road (Stripe · PayPal · Apple/Google Pay · RevenueCat)',

@@ -1,6 +1,7 @@
 /**
  * Pure referral helpers — codes, deep links, normalize.
  * Dyslexia-friendly codes: uppercase alnum, no 0/O/1/I ambiguity.
+ * Codes are random (not derived from uid) so they cannot be predicted / squatted.
  */
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -13,19 +14,15 @@ export function normalizeReferralCode(raw: string): string {
     .slice(0, 12);
 }
 
-/** Stable-ish code from uid + salt so the same user keeps the same code offline. */
-export function generateReferralCode(uid: string): string {
-  const seed = `UM-REF-${uid}`;
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
+/**
+ * Random UR + 6 dyslexia-safe chars. Persist on UserDoc once — do not regenerate.
+ * `_uid` kept for call-site compatibility; unused on purpose (non-deterministic).
+ */
+export function generateReferralCode(_uid?: string): string {
   let out = 'UR';
-  let x = h >>> 0;
   for (let i = 0; i < 6; i++) {
-    out += CODE_ALPHABET[x % CODE_ALPHABET.length];
-    x = Math.imul(x ^ (x >>> 13), 1274126177) >>> 0;
+    const idx = Math.floor(Math.random() * CODE_ALPHABET.length);
+    out += CODE_ALPHABET[idx]!;
   }
   return out;
 }
@@ -71,5 +68,5 @@ export function parseReferralCodeFromUrl(url: string): string | null {
 
 export function isValidReferralCodeShape(code: string): boolean {
   const n = normalizeReferralCode(code);
-  return n.length >= 4 && n.length <= 12;
+  return /^UR[A-Z2-9]{6,10}$/.test(n);
 }

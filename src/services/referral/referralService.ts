@@ -174,8 +174,9 @@ export async function applyReferralOnSignup(
     updatedAt: now,
   };
 
+  // Doc id = referredUid → one attribution event per signup (rules-enforced).
   const event: ReferralEventDoc = {
-    id: `ref-${hit.uid}-${newUser.uid}-${Date.now()}`,
+    id: newUser.uid,
     code: clean,
     referrerUid: hit.uid,
     referredUid: newUser.uid,
@@ -188,6 +189,7 @@ export async function applyReferralOnSignup(
   if (fb && isFirebaseConfigured()) {
     try {
       const userRef = doc(fb.db, COLLECTIONS.users, newUser.uid);
+      // referredBy* first — referralEvents create rules require them on users/{uid}.
       await updateDoc(
         userRef,
         stripUndefined({
@@ -196,11 +198,15 @@ export async function applyReferralOnSignup(
           updatedAt: serverTimestamp(),
         }),
       );
-      const eventRef = doc(fb.db, COLLECTIONS.referralEvents, event.id);
+      const eventRef = doc(fb.db, COLLECTIONS.referralEvents, newUser.uid);
       await setDoc(
         eventRef,
         stripUndefined({
-          ...event,
+          id: newUser.uid,
+          code: clean,
+          referrerUid: hit.uid,
+          referredUid: newUser.uid,
+          claimed: false,
           createdAt: serverTimestamp(),
         }),
       );
@@ -312,20 +318,11 @@ export async function claimReferralRewards(profile: UserDoc): Promise<
 
   if (fb && isFirebaseConfigured()) {
     try {
+      // Claim events only (false → true). Billing fields on users/ are frozen —
+      // Admin SDK / Cloud Function must persist referrerDiscount* server-side.
       for (const e of unclaimed) {
         await updateDoc(doc(fb.db, COLLECTIONS.referralEvents, e.id), { claimed: true });
       }
-      await updateDoc(
-        doc(fb.db, COLLECTIONS.users, profile.uid),
-        stripUndefined({
-          referralRewardCredits: nextReward.referralRewardCredits,
-          successfulReferralCount: nextReward.successfulReferralCount,
-          referrerDiscountActive: true,
-          referrerDiscountStartedAt: nextReward.referrerDiscountStartedAt,
-          referrerDiscountEndsAt: nextReward.referrerDiscountEndsAt,
-          updatedAt: serverTimestamp(),
-        }),
-      );
     } catch (e) {
       if (!(isPermissionDenied(e) || isDevSoftAuth())) {
         // local reward still applied

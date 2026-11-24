@@ -11,20 +11,20 @@ import {
 import {
   buildReferralLink,
   generateReferralCode,
+  isValidReferralCodeShape,
   normalizeReferralCode,
   parseReferralCodeFromUrl,
 } from './referralCode';
 
 describe('referralCode', () => {
-  it('generates stable dyslexia-safe codes', () => {
+  it('generates dyslexia-safe random codes (not uid-predictable)', () => {
     const a = generateReferralCode('user-abc');
     const b = generateReferralCode('user-abc');
-    assert.equal(a, b);
-    assert.match(a, /^UR[A-Z2-9]+$/);
-    assert.equal(a.includes('0'), false);
-    assert.equal(a.includes('O'), false);
-    assert.equal(a.includes('1'), false);
-    assert.equal(a.includes('I'), false);
+    // Random — may collide rarely; shape is what we assert.
+    assert.match(a, /^UR[A-Z2-9]{6}$/);
+    assert.match(b, /^UR[A-Z2-9]{6}$/);
+    assert.equal(isValidReferralCodeShape(a), true);
+    assert.equal(/[01IO]/.test(a), false);
   });
 
   it('parses ref from install URL', () => {
@@ -49,7 +49,7 @@ describe('referrer discount pricing', () => {
     assert.equal(q.referrerDiscountActive, false);
   });
 
-  it('applies $12 only inside the 3-month referrer window', () => {
+  it('applies $12 only inside the 3-month referrer window (display quote)', () => {
     const start = '2026-01-15T12:00:00.000Z';
     const ends = addMonthsIso(start, REFERRER_DISCOUNT_MONTHS);
     const mid = new Date('2026-02-15T12:00:00.000Z');
