@@ -40,6 +40,22 @@ function statusLabel(s: MaintenanceItem['status']): string {
   return 'À faire';
 }
 
+/** Sentinel dueKm used for date-only admin jobs (assurance, etc.). */
+const DATE_ONLY_KM = 900_000;
+
+function maintScheduleLine(m: MaintenanceItem): string {
+  if (m.dueDateIso && m.dueKm >= DATE_ONLY_KM) return m.dueDateIso;
+  const kmBit = `${m.dueKm.toLocaleString('fr-FR')} km`;
+  return m.dueDateIso ? `${kmBit} · ${m.dueDateIso}` : kmBit;
+}
+
+function maintOverdue(m: MaintenanceItem, odometerKm: number, todayIso: string): boolean {
+  if (m.status === 'fait') return false;
+  if (m.dueDateIso && m.dueDateIso <= todayIso) return true;
+  if (m.dueKm < DATE_ONLY_KM && m.dueKm <= odometerKm) return true;
+  return false;
+}
+
 function maintIcon(title: string): 'water-outline' | 'car-sport-outline' | 'document-text-outline' | 'shield-checkmark-outline' | 'construct-outline' {
   const t = title.toLowerCase();
   if (t.includes('vidange') || t.includes('huile') || t.includes('filtre')) return 'water-outline';
@@ -191,6 +207,8 @@ export default function EntretienScreen() {
     maintenanceDone: items.filter((i) => i.status === 'fait').map((i) => i.title),
   });
 
+  const todayIso = new Date().toISOString().slice(0, 10);
+
   return (
     <>
       <Stack.Screen options={{ title: t('moduleTitles.entretien') }} />
@@ -235,10 +253,11 @@ export default function EntretienScreen() {
         ) : (
           <View style={styles.grid}>
             {filteredMaint.map((m) => {
-              const overdue = m.dueKm <= km && m.status !== 'fait';
+              const overdue = maintOverdue(m, km, todayIso);
+              // Always show status so tap-to-cycle has readable feedback; dépassé is additive.
               const keyLine = overdue
-                ? `${m.dueKm.toLocaleString('fr-FR')} km · dépassé`
-                : `${m.dueKm.toLocaleString('fr-FR')} km · ${statusLabel(m.status)}`;
+                ? `${maintScheduleLine(m)} · ${statusLabel(m.status)} · dépassé`
+                : `${maintScheduleLine(m)} · ${statusLabel(m.status)}`;
               return (
                 <CatalogProductCard
                   key={m.id}
