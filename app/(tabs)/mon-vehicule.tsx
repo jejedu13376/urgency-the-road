@@ -315,12 +315,7 @@ export default function MonVehiculeScreen() {
     <Screen title={t('tabs.monVehicule')} subtitle={t('monVehicule.subtitle')}>
       <BackendStatusBanner />
       <ProgressHero />
-      <StubBanner
-        text={
-          sourceLabel ??
-          t('monVehicule.stubHint')
-        }
-      />
+      <StubBanner text={sourceLabel ?? t('monVehicule.stubHint')} />
       <VinCameraScanner
         visible={scannerOpen}
         onClose={() => setScannerOpen(false)}

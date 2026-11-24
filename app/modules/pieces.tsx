@@ -12,6 +12,7 @@ import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { listPartsForVin } from '../../src/services/firebase';
 import type { PartDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
+import { FadeInBlock, PressScale } from '../../src/theme/motion';
 
 const CAT_ICON: Record<PartDoc['category'], keyof typeof Ionicons.glyphMap> = {
   mecanique: 'construct-outline',
@@ -92,33 +93,35 @@ export default function PiecesScreen() {
         <BackendStatusBanner />
         {label ? <StubBanner text={label} /> : null}
 
-        <View style={styles.searchWrap}>
-          <Ionicons name="search" size={22} color={colors.ink} />
-          <TextInput
-            value={query}
-            onChangeText={(text) => {
-              setQuery(text);
-              setSelectedId(null);
-            }}
-            placeholder="Rechercher une pièce…"
-            placeholderTextColor={colors.muted}
-            style={styles.search}
-            autoCorrect={false}
-            autoCapitalize="none"
-            accessibilityLabel="Rechercher une pièce"
-          />
-          {query.length > 0 ? (
-            <Pressable
-              onPress={() => {
-                setQuery('');
+        <FadeInBlock>
+          <View style={styles.searchWrap}>
+            <Ionicons name="search" size={22} color={colors.ink} />
+            <TextInput
+              value={query}
+              onChangeText={(text) => {
+                setQuery(text);
                 setSelectedId(null);
               }}
-              accessibilityLabel="Effacer la recherche"
-            >
-              <Ionicons name="close-circle" size={22} color={colors.slate} />
-            </Pressable>
-          ) : null}
-        </View>
+              placeholder="Rechercher une pièce…"
+              placeholderTextColor={colors.muted}
+              style={styles.search}
+              autoCorrect={false}
+              autoCapitalize="none"
+              accessibilityLabel="Rechercher une pièce"
+            />
+            {query.length > 0 ? (
+              <Pressable
+                onPress={() => {
+                  setQuery('');
+                  setSelectedId(null);
+                }}
+                accessibilityLabel="Effacer la recherche"
+              >
+                <Ionicons name="close-circle" size={22} color={colors.slate} />
+              </Pressable>
+            ) : null}
+          </View>
+        </FadeInBlock>
 
         {!active?.vin ? (
           <Text style={styles.warn}>Activez un véhicule (M1/M2) pour la liste compatible.</Text>
@@ -129,7 +132,7 @@ export default function PiecesScreen() {
             {query.trim() ? `Aucune pièce pour « ${query.trim()} ».` : 'Aucune pièce pour ce VIN.'}
           </Text>
         ) : (
-          <View style={styles.grid}>
+          <FadeInBlock delayMs={60} style={styles.grid}>
             {filtered.map((p) => (
               <CatalogProductCard
                 key={p.id}
@@ -141,11 +144,11 @@ export default function PiecesScreen() {
                 onPress={() => setSelectedId((cur) => (cur === p.id ? null : p.id))}
               />
             ))}
-          </View>
+          </FadeInBlock>
         )}
 
         {selected ? (
-          <View style={styles.detail}>
+          <FadeInBlock from="down" style={styles.detail}>
             <Text style={styles.detailName}>{selected.name}</Text>
             <Text style={styles.detailPrice}>
               {formatPrice(selected.priceAftermarket, selected.currency)}
@@ -156,16 +159,16 @@ export default function PiecesScreen() {
                 ? [{ label: 'Acheter', url: selected.buyUrlStub }]
                 : []
             ).map((b) => (
-              <Pressable
+              <PressScale
                 key={b.label}
                 style={styles.buyBtn}
                 onPress={() => void Linking.openURL(b.url)}
                 accessibilityRole="link"
               >
                 <Text style={styles.buyTxt}>{b.label}</Text>
-              </Pressable>
+              </PressScale>
             ))}
-          </View>
+          </FadeInBlock>
         ) : null}
       </Screen>
     </>
@@ -180,9 +183,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 2,
     borderColor: colors.ink,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 14,
   },
   search: {
     flex: 1,
@@ -196,7 +199,7 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontWeight: '800',
     fontSize: 16,
-    lineHeight: 22,
+    lineHeight: 24,
   },
   empty: {
     color: colors.ink,
@@ -214,26 +217,28 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 2,
     borderColor: colors.ink,
-    borderRadius: 12,
-    padding: 16,
-    gap: 10,
+    borderRadius: 14,
+    padding: 18,
+    gap: 12,
   },
   detailName: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '900',
     color: colors.ink,
-    lineHeight: 28,
+    lineHeight: 30,
   },
   detailPrice: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '900',
     color: colors.signal,
   },
   buyBtn: {
     backgroundColor: colors.signal,
-    borderRadius: 10,
-    paddingVertical: 14,
+    borderRadius: 12,
+    paddingVertical: 16,
     alignItems: 'center',
+    minHeight: 52,
+    justifyContent: 'center',
   },
   buyTxt: {
     color: colors.white,

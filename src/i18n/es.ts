@@ -627,4 +627,15 @@ export const es: FrDict = {
     adminLine:
       'Premium — 15 $ / mes · desbloquea todas las opciones de Urgency road (Stripe · PayPal · Apple/Google Pay · RevenueCat)',
   },
+
+  referral: {
+    kicker: 'Referidos',
+    title: 'Invita a un colega',
+    body: 'Comparte Urgency road — diagnóstico, GPS y urgencia — con tu taller o un amigo camionero.',
+    shareCta: 'Compartir el enlace',
+    openPartage: 'Todos los canales (SMS · WhatsApp · email) →',
+    needInstallUrl: 'Enlace de instalación no configurado — se requiere EXPO_PUBLIC_INSTALL_URL.',
+    shared: 'Invitación compartida',
+    shareMessage: 'Instala %{brand}: %{url}',
+  },
 };

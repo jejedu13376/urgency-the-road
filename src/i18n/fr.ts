@@ -623,6 +623,17 @@ export const fr = {
     paying: 'Ouverture…',
     adminLine: 'Premium — 15 $ / mois · débloque toutes les options Urgency road (Stripe · PayPal · Apple/Google Pay · RevenueCat)',
   },
+
+  referral: {
+    kicker: 'Parrainage',
+    title: 'Invite un collègue',
+    body: 'Partage Urgency road — diagnostic, GPS et urgence — avec ton atelier ou un ami routier.',
+    shareCta: 'Partager le lien',
+    openPartage: 'Tous les canaux (SMS · WhatsApp · e-mail) →',
+    needInstallUrl: 'Lien install non configuré — EXPO_PUBLIC_INSTALL_URL requis.',
+    shared: 'Invitation partagée',
+    shareMessage: 'Installe %{brand} : %{url}',
+  },
 } as const;
 
 /** Deep string shape of fr — allows en/es value overrides. */

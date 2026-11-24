@@ -1,7 +1,8 @@
 import { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors } from '../theme/colors';
+import { PressScale } from '../theme/motion';
 
 type Props = {
   title: string;
@@ -54,22 +55,24 @@ export function CatalogProductCard({
   );
 
   const cardStyle = [styles.card, fullWidth && styles.cardFull, selected && styles.cardOn];
+  const a11y = accessibilityLabel ?? `${title}, ${priceLine}`;
 
   if (onPress) {
     return (
-      <Pressable
+      <PressScale
         style={cardStyle}
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel ?? `${title}, ${priceLine}`}
+        accessibilityLabel={a11y}
+        pressedScale={0.96}
       >
         {body}
-      </Pressable>
+      </PressScale>
     );
   }
 
   return (
-    <View style={cardStyle} accessibilityLabel={accessibilityLabel ?? `${title}, ${priceLine}`}>
+    <View style={cardStyle} accessibilityLabel={a11y}>
       {body}
     </View>
   );
@@ -81,7 +84,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     maxWidth: '48%',
     backgroundColor: colors.white,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 2,
     borderColor: colors.ink,
     overflow: 'hidden',
@@ -103,7 +106,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.ink,
   },
   photoWide: {
-    height: 160,
+    height: 168,
   },
   copy: {
     paddingHorizontal: 12,

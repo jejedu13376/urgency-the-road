@@ -1,7 +1,8 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useI18n } from '../context/I18nContext';
 import { useProgress } from '../context/ProgressContext';
 import { colors } from '../theme/colors';
+import { AnimatedBarFill, FadeInBlock, PressScale } from '../theme/motion';
 
 /** Progression vendeuse : barre 17 modules + streak + XP + badges visibles. */
 export function ProgressHero() {
@@ -34,7 +35,7 @@ export function ProgressHero() {
   }
 
   return (
-    <View style={styles.wrap} accessibilityLabel={`Progression ${completionPct} pour cent`}>
+    <FadeInBlock style={styles.wrap} accessibilityLabel={`Progression ${completionPct} pour cent`}>
       <View style={styles.top}>
         <View style={{ flex: 1 }}>
           <Text style={styles.kicker}>{t('progress.kicker')}</Text>
@@ -48,7 +49,7 @@ export function ProgressHero() {
       </View>
 
       <View style={styles.track}>
-        <View style={[styles.fill, { width: `${Math.max(4, completionPct)}%` }]} />
+        <AnimatedBarFill pct={completionPct} color={colors.signal} style={styles.fill} />
       </View>
 
       <View style={styles.xpRow}>
@@ -72,7 +73,7 @@ export function ProgressHero() {
             ? t('progress.streakMetaClaimed')
             : t('progress.streakMetaNext', { xp: nextBonus })}
         </Text>
-        <Pressable
+        <PressScale
           accessibilityRole="button"
           accessibilityLabel={
             todayBonusClaimed
@@ -88,7 +89,7 @@ export function ProgressHero() {
               ? t('progress.bonusClaimed')
               : t('progress.bonusClaim', { xp: nextBonus })}
           </Text>
-        </Pressable>
+        </PressScale>
       </View>
 
       <Text style={styles.badgesTitle}>{t('progress.badgesTitle')}</Text>
@@ -106,49 +107,50 @@ export function ProgressHero() {
           );
         })}
       </View>
-    </View>
+    </FadeInBlock>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
     backgroundColor: colors.asphalt,
-    borderRadius: 16,
-    padding: 14,
-    gap: 10,
+    borderRadius: 18,
+    padding: 16,
+    gap: 12,
   },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   kicker: {
     color: colors.mist,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.4,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
-  title: { color: colors.white, fontSize: 18, fontWeight: '800', marginTop: 2 },
+  title: { color: colors.white, fontSize: 20, fontWeight: '900', marginTop: 2, lineHeight: 26 },
   streakBox: {
     backgroundColor: colors.signal,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     alignItems: 'center',
-    minWidth: 64,
+    minWidth: 68,
   },
   streakFire: { fontSize: 14 },
-  streakVal: { color: colors.white, fontWeight: '900', fontSize: 18, lineHeight: 20 },
-  streakLbl: { color: colors.signalSoft, fontSize: 10, fontWeight: '700' },
-  track: { height: 8, backgroundColor: colors.slate, borderRadius: 8, overflow: 'hidden' },
-  fill: { height: '100%', backgroundColor: colors.signal, borderRadius: 8 },
+  streakVal: { color: colors.white, fontWeight: '900', fontSize: 20, lineHeight: 22 },
+  streakLbl: { color: colors.signalSoft, fontSize: 11, fontWeight: '700' },
+  track: { height: 10, backgroundColor: colors.slate, borderRadius: 8, overflow: 'hidden' },
+  /** Keep signal fill for loading skeleton View; AnimatedBarFill also tints via prop. */
+  fill: { height: '100%', borderRadius: 8, backgroundColor: colors.signal },
   xpRow: { flexDirection: 'row', gap: 8 },
   xpCard: {
     flex: 1,
     backgroundColor: colors.slate,
-    borderRadius: 10,
-    paddingVertical: 8,
+    borderRadius: 12,
+    paddingVertical: 10,
     alignItems: 'center',
   },
-  xpVal: { color: colors.white, fontWeight: '900', fontSize: 15 },
-  xpLbl: { color: colors.mist, fontSize: 10, fontWeight: '700', marginTop: 2 },
+  xpVal: { color: colors.white, fontWeight: '900', fontSize: 16 },
+  xpLbl: { color: colors.mist, fontSize: 11, fontWeight: '700', marginTop: 2 },
   row: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -156,24 +158,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  meta: { color: colors.mist, fontSize: 12, flexGrow: 1, flexShrink: 1, minWidth: 120 },
-  bonus: { backgroundColor: colors.garage, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8 },
+  meta: {
+    color: colors.mist,
+    fontSize: 13,
+    lineHeight: 18,
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 120,
+    fontWeight: '600',
+  },
+  bonus: {
+    backgroundColor: colors.garage,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    minHeight: 40,
+    justifyContent: 'center',
+  },
   bonusDone: { backgroundColor: colors.slate },
-  bonusTxt: { color: colors.white, fontWeight: '700', fontSize: 11 },
-  badgesTitle: { color: colors.mist, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  badgeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  bonusTxt: { color: colors.white, fontWeight: '800', fontSize: 13 },
+  badgesTitle: {
+    color: colors.mist,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  badgeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   badge: {
     width: '48%',
     flexGrow: 1,
     backgroundColor: colors.slate,
-    borderRadius: 8,
-    padding: 8,
+    borderRadius: 10,
+    padding: 10,
     borderWidth: 1,
     borderColor: colors.asphalt,
   },
   badgeOn: { borderColor: colors.garage, backgroundColor: colors.garage },
-  badgeName: { color: colors.muted, fontWeight: '800', fontSize: 11 },
+  badgeName: { color: colors.muted, fontWeight: '800', fontSize: 12, lineHeight: 16 },
   badgeNameOn: { color: colors.white },
-  badgeHint: { color: colors.muted, fontSize: 10, marginTop: 2 },
+  badgeHint: { color: colors.muted, fontSize: 11, marginTop: 2, lineHeight: 15 },
   badgeHintOn: { color: colors.garageSoft },
 });
