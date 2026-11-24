@@ -94,6 +94,48 @@ PY
   curl -fsS "$API" 2>/dev/null | tr ',' '\n' | sed -n 's/.*"public_url":"\(https:[^"]*\)".*/\1/p' | head -n1
 }
 
+# Parse public URL from ngrok log (fallback while API tunnel list is empty)
+public_https_from_log() {
+  if [[ ! -f "$LOG" ]]; then
+    return 0
+  fi
+  # Common ngrok lines: "url=https://….ngrok…" / "started tunnel … https://…"
+  local from_log
+  from_log="$(
+    grep -Eo 'https://[a-zA-Z0-9._-]+\.(ngrok[^/[:space:]]*|exp\.direct)' "$LOG" 2>/dev/null \
+      | tail -n1 || true
+  )"
+  if [[ -n "${from_log:-}" ]]; then
+    echo "$from_log"
+  fi
+}
+
+# Wait up to ~60s for public_url (poll every 2s via API 4040, then log).
+# Status → stderr/log only; stdout is the URL alone (for capture).
+wait_public_url() {
+  local timeout_s="${NGROK_PUBLIC_URL_TIMEOUT_S:-60}"
+  local interval_s="${NGROK_PUBLIC_URL_POLL_S:-2}"
+  local elapsed=0
+  local url=""
+
+  {
+    echo "[restart-ngrok] waiting for public_url (timeout=${timeout_s}s interval=${interval_s}s)"
+  } | tee -a "$LOG" >&2
+  while (( elapsed < timeout_s )); do
+    url="$(public_https)"
+    if [[ -z "${url:-}" ]]; then
+      url="$(public_https_from_log)"
+    fi
+    if [[ -n "${url:-}" ]]; then
+      echo "$url"
+      return 0
+    fi
+    sleep "$interval_s"
+    elapsed=$((elapsed + interval_s))
+  done
+  return 1
+}
+
 to_exp_url() {
   local https="$1"
   local host
@@ -136,9 +178,8 @@ start_once() {
   fi
 
   local https
-  https="$(public_https)"
-  if [[ -z "$https" ]]; then
-    echo "[restart-ngrok] ERROR: no public_url yet (see $LOG)" | tee -a "$LOG"
+  if ! https="$(wait_public_url)"; then
+    echo "[restart-ngrok] ERROR: no public_url yet after ~60s (see $LOG)" | tee -a "$LOG"
     return 1
   fi
 
