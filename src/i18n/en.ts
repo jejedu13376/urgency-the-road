@@ -460,6 +460,10 @@ export const en: FrDict = {
     aiTitle: 'AI agent — live discussion',
     aiLead:
       'Talk to the agent. It answers for the subject you pick (car, truck, parts, diagnostic, truckers). Large spaced text.',
+    aiFabOpen: 'Open AI agent',
+    aiFabClose: 'Close AI agent',
+    aiGlobalHint:
+      'The AI agent is always available: orange “AI” bubble at bottom-left on every screen.',
     aiSubjectLabel: 'Active subject',
     aiSubjectCar: 'Car',
     aiSubjectTruck: 'Truck',

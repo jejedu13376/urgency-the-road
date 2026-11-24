@@ -30,11 +30,16 @@ const SUBJECT_I18N: Record<FilAiSubject, string> = {
   truckers: 'fil.aiSubjectTruckers',
 };
 
+type Props = {
+  /** `sheet` = global overlay (no outer Card title). `card` = inline Card. */
+  variant?: 'card' | 'sheet';
+};
+
 /**
- * Live AI agent section for the Fil (chatbubbles) tab.
- * Dyslexia-friendly: large type, high line-height, strong contrast, big tap targets.
+ * Live AI agent chat body — used by the global floating bubble overlay
+ * (and optionally inline). Dyslexia-friendly: large type, open spacing.
  */
-export function FilAiAgentCard() {
+export function FilAiAgentCard({ variant = 'card' }: Props) {
   const { t, locale } = useI18n();
   const { active } = useFleet();
   const [subject, setSubject] = useState<FilAiSubject>('diagnostic');
@@ -118,8 +123,8 @@ export function FilAiAgentCard() {
     setNeedVerify(false);
   };
 
-  return (
-    <Card title={t('fil.aiTitle')}>
+  const body = (
+    <View style={variant === 'sheet' ? styles.sheetBody : undefined}>
       <Text style={styles.lead}>{t('fil.aiLead')}</Text>
 
       <Text style={styles.label}>{t('fil.aiSubjectLabel')}</Text>
@@ -158,7 +163,7 @@ export function FilAiAgentCard() {
       ) : null}
 
       <ScrollView
-        style={styles.chatScroll}
+        style={[styles.chatScroll, variant === 'sheet' && styles.chatScrollSheet]}
         contentContainerStyle={styles.chatContent}
         nestedScrollEnabled
         keyboardShouldPersistTaps="handled"
@@ -241,12 +246,20 @@ export function FilAiAgentCard() {
       ) : null}
 
       {status ? <Text style={styles.meta}>{status}</Text> : null}
-    </Card>
+    </View>
   );
+
+  if (variant === 'sheet') {
+    return <ScrollView keyboardShouldPersistTaps="handled">{body}</ScrollView>;
+  }
+
+  return <Card title={t('fil.aiTitle')}>{body}</Card>;
 }
 
 /** Dyslexia-friendly tokens: larger type, open spacing, high contrast. */
 const styles = StyleSheet.create({
+  sheetBody: { paddingBottom: 24 },
+  chatScrollSheet: { maxHeight: 220 },
   lead: {
     color: colors.slate,
     fontSize: 17,

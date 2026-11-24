@@ -457,6 +457,10 @@ export const fr = {
     aiTitle: 'Agent IA — discussion live',
     aiLead:
       'Parlez à l’agent. Il répond selon le sujet choisi (voiture, camion, pièces, diagnostic, routiers). Texte grand et espacé.',
+    aiFabOpen: 'Ouvrir l’agent IA',
+    aiFabClose: 'Fermer l’agent IA',
+    aiGlobalHint:
+      'L’agent IA est toujours disponible : bulle orange « AI » en bas à gauche sur toutes les pages.',
     aiSubjectLabel: 'Sujet actif',
     aiSubjectCar: 'Voiture',
     aiSubjectTruck: 'Camion',

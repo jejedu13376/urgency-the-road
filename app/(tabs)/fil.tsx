@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Card } from '../../src/components/Card';
-import { FilAiAgentCard } from '../../src/components/FilAiAgentCard';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
@@ -160,7 +159,9 @@ export default function FilMecaniqueScreen() {
       <StubBanner text={t('fil.stub')} />
       {feedLabel ? <Text style={styles.meta}>{feedLabel}</Text> : null}
 
-      <FilAiAgentCard />
+      <Card title={t('fil.aiTitle')}>
+        <Text style={styles.aiHint}>{t('fil.aiGlobalHint')}</Text>
+      </Card>
 
       <Pressable style={styles.refreshBar} onPress={onRefresh}>
         <Text style={styles.refreshTxt}>
@@ -289,6 +290,12 @@ const styles = StyleSheet.create({
   },
   refreshTxt: { color: colors.garage, fontWeight: '800' },
   meta: { color: colors.muted, fontSize: 12 },
+  aiHint: {
+    color: colors.slate,
+    fontSize: 16,
+    lineHeight: 26,
+    letterSpacing: 0.3,
+  },
   caption: { color: colors.slate },
   videoStub: {
     backgroundColor: colors.mist,

@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
 import { ConnexionChip } from '../src/components/ConnexionChip';
+import { GlobalAiBubble } from '../src/components/GlobalAiBubble';
 import { GlobalTopBar } from '../src/components/GlobalTopBar';
 import { RegisterGateScreen } from '../src/components/RegisterGateScreen';
 import { SafetyDrivingMonitor } from '../src/components/SafetyDrivingMonitor';
@@ -70,6 +71,7 @@ function AppShell() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="modules" options={{ headerShown: false, presentation: 'card' }} />
         </Stack>
+        <GlobalAiBubble />
         <SosButton />
       </SafetyDrivingProvider>
     </>

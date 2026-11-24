@@ -460,6 +460,10 @@ export const es: FrDict = {
     aiTitle: 'Agente IA — chat en vivo',
     aiLead:
       'Hable con el agente. Responde según el tema (coche, camión, piezas, diagnóstico, camioneros). Texto grande y espaciado.',
+    aiFabOpen: 'Abrir agente IA',
+    aiFabClose: 'Cerrar agente IA',
+    aiGlobalHint:
+      'El agente IA siempre está disponible: burbuja naranja « AI » abajo a la izquierda en todas las pantallas.',
     aiSubjectLabel: 'Tema activo',
     aiSubjectCar: 'Coche',
     aiSubjectTruck: 'Camión',
