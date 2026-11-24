@@ -3,6 +3,14 @@
  * Honest failures when permission denied / unavailable — never invents a "success" fix.
  */
 import * as Location from 'expo-location';
+import { GPS_WATCH_MAP_IDLE, type GpsWatchPreset } from './gpsWatchPresets';
+
+export {
+  GPS_WATCH_MAP_IDLE,
+  GPS_WATCH_NAVIGATING,
+  GPS_WATCH_SAFETY,
+  type GpsWatchPreset,
+} from './gpsWatchPresets';
 
 export type DeviceCoords = {
   lat: number;
@@ -80,6 +88,9 @@ export type LivePosition = {
 
 export type PositionSubscription = { remove: () => void };
 
+/** Tunable watch options — High/1s/3m is only needed while turn-by-turn is active. */
+export type WatchPositionOpts = Partial<GpsWatchPreset>;
+
 /**
  * Continuous foreground GPS for the Carte vehicle marker.
  * Caller must remove() on blur/unmount — never remount the map on each tick.
@@ -87,6 +98,7 @@ export type PositionSubscription = { remove: () => void };
 export async function watchDevicePosition(
   onUpdate: (pos: LivePosition) => void,
   onError?: (message: string) => void,
+  opts?: WatchPositionOpts,
 ): Promise<PositionSubscription | null> {
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -96,10 +108,9 @@ export async function watchDevicePosition(
     }
     const sub = await Location.watchPositionAsync(
       {
-        // BestForNavigation + tighter intervals → smoother follow along route (less lag).
-        accuracy: Location.Accuracy.BestForNavigation,
-        timeInterval: 500,
-        distanceInterval: 1,
+        accuracy: (opts?.accuracy ?? GPS_WATCH_MAP_IDLE.accuracy) as Location.Accuracy,
+        timeInterval: opts?.timeInterval ?? GPS_WATCH_MAP_IDLE.timeInterval,
+        distanceInterval: opts?.distanceInterval ?? GPS_WATCH_MAP_IDLE.distanceInterval,
         mayShowUserSettingsDialog: true,
       },
       (pos) => {

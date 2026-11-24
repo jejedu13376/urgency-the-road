@@ -17,7 +17,13 @@ import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-web
 import { belowGlobalTopBar } from '../../chromeInsets';
 import { useAuth } from '../../context/AuthContext';
 import { useFleet } from '../../context/FleetContext';
-import { getDeviceCoords, haversineKm, watchDevicePosition } from '../../services/geo/deviceLocation';
+import {
+  GPS_WATCH_MAP_IDLE,
+  GPS_WATCH_NAVIGATING,
+  getDeviceCoords,
+  haversineKm,
+  watchDevicePosition,
+} from '../../services/geo/deviceLocation';
 import {
   fetchPlacesAutocomplete,
   isGooglePlacesConfigured,
@@ -352,6 +358,8 @@ export function GpsFullMap() {
   const alertQueueRef = useRef<RouteAlert[]>([]);
   const shownAlertIdsRef = useRef<Set<string>>(new Set());
   const navigatingRef = useRef(false);
+  /** React state mirrors navigatingRef so useFocusEffect can restart the GPS watch. */
+  const [navWatchBoost, setNavWatchBoost] = useState(false);
   const navDestRef = useRef<{ lat: number; lon: number } | null>(null);
   const activeTripIdRef = useRef<string | null>(null);
   const lastRouteRef = useRef<VehicleRouteResult | null>(null);
@@ -365,6 +373,17 @@ export function GpsFullMap() {
   /** Last injectHighlightWeigh id — avoid rebuilding all markers every GPS tick. */
   const highlightedWeighIdRef = useRef<string | null>(null);
   const aqiOnRef = useRef(false);
+  /** Avoid setState on every GPS tick when already live. */
+  const gpsOkRef = useRef(false);
+  /** Coalesce WebView/iframe position injects to one frame. */
+  const pendingLiveRef = useRef<{
+    lat: number;
+    lon: number;
+    ok: boolean;
+    heading: number | null;
+    speed: number | null;
+  } | null>(null);
+  const liveRafRef = useRef<number | null>(null);
 
   const enqueueAlerts = useCallback((alerts: RouteAlert[]) => {
     const interrupt = interruptingAlerts(alerts);
@@ -391,7 +410,7 @@ export function GpsFullMap() {
       padBottom: Math.max(insets.bottom, 8) + SOS_FAB_CLEARANCE,
       padLeft: Math.max(insets.left, 8),
     }),
-    [insets.top, insets.right, insets.bottom, insets.left],
+    [insets],
   );
 
   const injectJs = useCallback((script: string) => {
@@ -463,27 +482,38 @@ export function GpsFullMap() {
     [injectRoute],
   );
 
+  const flushLivePosition = useCallback(() => {
+    liveRafRef.current = null;
+    const pending = pendingLiveRef.current;
+    if (!pending) return;
+    pendingLiveRef.current = null;
+    const { lat, lon, ok, heading, speed } = pending;
+    if (Platform.OS === 'web') {
+      postGpsCmd(iframeWinRef.current, {
+        cmd: 'updatePosition',
+        lat,
+        lon,
+        ok,
+        heading,
+        speed,
+      });
+      return;
+    }
+    injectJs(
+      `window.__gpsUpdatePosition && window.__gpsUpdatePosition(${lat},${lon},${ok ? 'true' : 'false'},${
+        heading == null ? 'null' : heading
+      },${speed == null ? 'null' : speed})`,
+    );
+  }, [injectJs]);
+
   const injectLivePosition = useCallback(
     (lat: number, lon: number, ok: boolean, heading: number | null, speed: number | null) => {
       liveOriginRef.current = { lat, lon };
-      if (Platform.OS === 'web') {
-        postGpsCmd(iframeWinRef.current, {
-          cmd: 'updatePosition',
-          lat,
-          lon,
-          ok,
-          heading,
-          speed,
-        });
-        return;
-      }
-      injectJs(
-        `window.__gpsUpdatePosition && window.__gpsUpdatePosition(${lat},${lon},${ok ? 'true' : 'false'},${
-          heading == null ? 'null' : heading
-        },${speed == null ? 'null' : speed})`,
-      );
+      pendingLiveRef.current = { lat, lon, ok, heading, speed };
+      if (liveRafRef.current != null) return;
+      liveRafRef.current = requestAnimationFrame(flushLivePosition);
     },
-    [injectJs],
+    [flushLivePosition],
   );
 
   const setMapOrigin = useCallback(
@@ -760,6 +790,7 @@ export function GpsFullMap() {
       prefsRef.current = initial;
       liveOriginRef.current = origin;
       setModeLabel(initial.mode);
+      gpsOkRef.current = deviceOk;
       setGpsOk(deviceOk);
       // France / failed boot → first live tick must pan+zoom (setMapOrigin), not marker-only.
       recoveryRecenterRef.current = !deviceOk;
@@ -819,11 +850,15 @@ export function GpsFullMap() {
           (pos) => {
             if (cancelled) return;
             lastWatchRef.current = { lat: pos.lat, lon: pos.lon };
-            setGpsOk(true);
+            if (!gpsOkRef.current) {
+              gpsOkRef.current = true;
+              setGpsOk(true);
+            }
             // Clear boot timeout / permission refusal once live GPS is real.
-            setHudNote((prev) =>
-              prev && /GPS appareil|GPS timeout|localisation/i.test(prev) ? null : prev,
-            );
+            setHudNote((prev) => {
+              if (!prev || !/GPS appareil|GPS timeout|localisation/i.test(prev)) return prev;
+              return null;
+            });
             if (recoveryRecenterRef.current) {
               // Left France overview — pan+zoom once the map document is ready.
               // Clearing the flag before ready drops setMapOrigin (iframe/WebView).
@@ -847,6 +882,7 @@ export function GpsFullMap() {
                 if (toDestKm <= 0.06) {
                   // Sync clear before any async — HTML may also post `arrived`.
                   navigatingRef.current = false;
+                  setNavWatchBoost(false);
                   navDestRef.current = null;
                   shownAlertIdsRef.current = new Set();
                   highlightedWeighIdRef.current = null;
@@ -932,6 +968,7 @@ export function GpsFullMap() {
           },
           (err) => {
             if (cancelled) return;
+            gpsOkRef.current = false;
             setGpsOk(false);
             // Keep map GPS state in sync — do not leave marker/routing as if live.
             // Never invent France centroid: keep last known origin + route graphics.
@@ -941,6 +978,7 @@ export function GpsFullMap() {
             }
             setHudNote(`GPS live — ${err}`);
           },
+          navWatchBoost ? GPS_WATCH_NAVIGATING : GPS_WATCH_MAP_IDLE,
         );
         if (cancelled) {
           next?.remove();
@@ -950,9 +988,21 @@ export function GpsFullMap() {
       })();
       return () => {
         cancelled = true;
+        if (liveRafRef.current != null) {
+          cancelAnimationFrame(liveRafRef.current);
+          liveRafRef.current = null;
+        }
         sub?.remove();
       };
-    }, [injectLivePosition, setMapOrigin, injectHighlightWeigh, enqueueAlerts, applyModeInMap, bootHtml]),
+    }, [
+      injectLivePosition,
+      setMapOrigin,
+      injectHighlightWeigh,
+      enqueueAlerts,
+      applyModeInMap,
+      bootHtml,
+      navWatchBoost,
+    ]),
   );
 
   useEffect(() => {
@@ -1147,6 +1197,7 @@ export function GpsFullMap() {
       if (msg.type === 'navigating' && msg.to) {
         setTripEnded(null);
         navigatingRef.current = true;
+        setNavWatchBoost(true);
         navDestRef.current = { lat: msg.to.lat, lon: msg.to.lon };
         // Reset per-nav speak/announce state — do NOT clear shownAlertIdsRef or
         // re-run trucker brief (route handler already queued overlays once).
@@ -1194,6 +1245,7 @@ export function GpsFullMap() {
         // Idempotent — HTML + RN watch may both detect ~60–80 m arrival.
         if (!navigatingRef.current && !activeTripIdRef.current) return;
         navigatingRef.current = false;
+        setNavWatchBoost(false);
         navDestRef.current = null;
         shownAlertIdsRef.current = new Set();
         highlightedWeighIdRef.current = null;

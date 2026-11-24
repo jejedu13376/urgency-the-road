@@ -13,7 +13,7 @@ import {
   runMultiIaDiagnostic,
   type IaEngineId,
 } from '../../src/services/ai/multiIaRouter';
-import { resendEmailVerification } from '../../src/services/firebase';
+import { resendEmailVerification } from '../../src/services/firebase/authService';
 import { recordLearnedFailure } from '../../src/services/firebase/learnedFailuresService';
 import { fetchRecallsByVehicle, type RecallHit } from '../../src/services/recalls/nhtsaRecalls';
 import { searchYoutubeVideos, type YoutubeVideoHit } from '../../src/services/youtube/youtubeSearch';

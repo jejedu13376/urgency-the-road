@@ -130,7 +130,6 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
 ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet"/><script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>' : ''}
-<script src="https://cdn.osmbuildings.org/4.1.1/OSMBuildings-Leaflet.js"></script>
 <style>
   :root{
     --pad-top:0px;--pad-right:0px;--pad-bottom:0px;--pad-left:0px;
@@ -868,7 +867,32 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     }
   }
 
-  function ensureOsmBuildings(){
+  var osmBuildingsScriptLoading = false;
+  var osmBuildingsScriptWaiters = [];
+
+  function loadOsmBuildingsScript(done){
+    if (typeof OSMBuildings !== 'undefined') { done(true); return; }
+    osmBuildingsScriptWaiters.push(done);
+    if (osmBuildingsScriptLoading) return;
+    osmBuildingsScriptLoading = true;
+    var s = document.createElement('script');
+    s.src = 'https://cdn.osmbuildings.org/4.1.1/OSMBuildings-Leaflet.js';
+    s.async = true;
+    s.onload = function(){
+      osmBuildingsScriptLoading = false;
+      var ok = typeof OSMBuildings !== 'undefined';
+      var q = osmBuildingsScriptWaiters.splice(0, osmBuildingsScriptWaiters.length);
+      for (var i = 0; i < q.length; i++) q[i](ok);
+    };
+    s.onerror = function(){
+      osmBuildingsScriptLoading = false;
+      var q = osmBuildingsScriptWaiters.splice(0, osmBuildingsScriptWaiters.length);
+      for (var j = 0; j < q.length; j++) q[j](false);
+    };
+    document.head.appendChild(s);
+  }
+
+  function mountOsmBuildings(){
     if (typeof OSMBuildings === 'undefined') return false;
     destroyOsmBuildings();
     try {
@@ -889,6 +913,19 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     }
   }
 
+  function ensureOsmBuildings(done){
+    if (typeof OSMBuildings !== 'undefined') {
+      if (!buildingsOn) { done(false); return; }
+      done(mountOsmBuildings());
+      return;
+    }
+    loadOsmBuildingsScript(function(ok){
+      // User may have toggled 3D off while the CDN script was in flight.
+      if (!buildingsOn) { done(false); return; }
+      done(ok ? mountOsmBuildings() : false);
+    });
+  }
+
   function setBuildings3d(on){
     buildingsOn = !!on;
     if (!buildingsOn) {
@@ -898,19 +935,30 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       post(maptypePayload());
       return;
     }
-    var ok = false;
-    if (MAPBOX_TOKEN) ok = ensureMapbox3d();
-    if (!ok) ok = ensureOsmBuildings();
-    if (!ok) {
-      buildingsOn = false;
-      setStatus('Bâtiments 3D indisponibles — EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ou OSM Buildings CDN');
-    } else if (MAPBOX_TOKEN && mbMap) {
-      setStatus('Bâtiments 3D Mapbox · opacite ~0.5');
-    } else {
-      setStatus('Bâtiments 3D OSM Buildings · opacite ~0.5 (pas de Mapbox token)');
+    function finish(ok, viaMapbox){
+      if (!buildingsOn) {
+        destroyMapbox3d();
+        destroyOsmBuildings();
+        syncMapTypeMenu();
+        post(maptypePayload());
+        return;
+      }
+      if (!ok) {
+        buildingsOn = false;
+        setStatus('Bâtiments 3D indisponibles — EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ou OSM Buildings CDN');
+      } else if (viaMapbox) {
+        setStatus('Bâtiments 3D Mapbox · opacite ~0.5');
+      } else {
+        setStatus('Bâtiments 3D OSM Buildings · opacite ~0.5 (pas de Mapbox token)');
+      }
+      syncMapTypeMenu();
+      post(maptypePayload());
     }
-    syncMapTypeMenu();
-    post(maptypePayload());
+    if (MAPBOX_TOKEN && ensureMapbox3d()) {
+      finish(true, true);
+      return;
+    }
+    ensureOsmBuildings(function(ok){ finish(ok, false); });
   }
 
   function setAqiOverlay(on){
@@ -919,6 +967,27 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     syncMapTypeMenu();
     post(maptypePayload());
     if (aqiOn) post({ type: 'aqi_request', lat: origin.lat, lon: origin.lon });
+  }
+
+  var lastVehicleMode = mode;
+
+  function syncVehicleIconDom(){
+    if (!vehicleMarker) return;
+    var el = vehicleMarker.getElement();
+    if (!el) return;
+    var wrap = el.querySelector('.vehicle-wrap');
+    if (!wrap) return;
+    var truck = mode === 'camion';
+    wrap.className = truck ? 'vehicle-wrap camion' : 'vehicle-wrap';
+    var icon = wrap.querySelector('.vehicle-icon');
+    if (icon) icon.className = truck ? 'vehicle-icon camion' : 'vehicle-icon';
+    var rot = (headingDeg != null && isFinite(headingDeg)) ? headingDeg : 0;
+    wrap.style.transform = 'rotate(' + rot + 'deg)';
+    // Rebuild SVG only when vehicle class flips (rare).
+    if (lastVehicleMode !== mode && icon) {
+      icon.innerHTML = truck ? truckSvg() : carSvg();
+      lastVehicleMode = mode;
+    }
   }
 
   function ensureVehicleMarker(){
@@ -934,16 +1003,11 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
         zIndexOffset: 900,
         interactive: false,
       }).addTo(map);
-      vehicleMarker._gpsHeading = headingDeg;
-      vehicleMarker._gpsMode = mode;
+      lastVehicleMode = mode;
     } else {
       vehicleMarker.setLatLng([lat, lon]);
-      // Rebuild icon only when heading/mode changes — keeps CSS lat/lng lerp smooth.
-      if (vehicleMarker._gpsHeading !== headingDeg || vehicleMarker._gpsMode !== mode) {
-        vehicleMarker._gpsHeading = headingDeg;
-        vehicleMarker._gpsMode = mode;
-        vehicleMarker.setIcon(vehicleDivIcon());
-      }
+      // Avoid DivIcon recreate every GPS tick — mutate transform/DOM instead.
+      syncVehicleIconDom();
     }
   }
   ensureVehicleMarker();

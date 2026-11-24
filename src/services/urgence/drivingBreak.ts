@@ -27,7 +27,7 @@ export const BREAK_TTS_ES =
   'Es hora de hacer una pausa. Ve a tomar un café y estira las piernas.';
 
 /** Exact order: FR → EN → ES. */
-export const BREAK_TTS_SEQUENCE: ReadonlyArray<{ language: string; text: string }> = [
+export const BREAK_TTS_SEQUENCE: readonly { language: string; text: string }[] = [
   { language: 'fr-FR', text: BREAK_TTS_FR },
   { language: 'en-US', text: BREAK_TTS_EN },
   { language: 'es-ES', text: BREAK_TTS_ES },

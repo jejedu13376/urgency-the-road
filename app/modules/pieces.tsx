@@ -9,7 +9,7 @@ import { StubBanner } from '../../src/components/StubBanner';
 import { useFleet } from '../../src/context/FleetContext';
 import { useI18n } from '../../src/context/I18nContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
-import { listPartsForVin } from '../../src/services/firebase';
+import { listPartsForVin } from '../../src/services/firebase/partsService';
 import type { PartDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
 import { FadeInBlock, PressScale } from '../../src/theme/motion';

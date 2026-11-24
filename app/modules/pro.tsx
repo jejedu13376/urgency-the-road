@@ -7,13 +7,8 @@ import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
-import {
-  cancelAppointment,
-  createAppointment,
-  listAppointmentsForGarage,
-  submitGarageRating,
-  updateAppointment,
-} from '../../src/services/firebase';
+import { cancelAppointment, createAppointment, listAppointmentsForGarage, updateAppointment } from '../../src/services/firebase/appointmentsService';
+import { submitGarageRating } from '../../src/services/firebase/garagesService';
 import {
   adminKeys,
   exportProAtelierSnapshot,

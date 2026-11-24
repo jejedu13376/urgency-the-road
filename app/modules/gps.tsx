@@ -9,11 +9,11 @@ import {
   View,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { GpsFullMap } from '../../src/components/gps/GpsFullMap';
+import { LazyGpsFullMap } from '../../src/components/gps/LazyGpsFullMap';
 import { useAuth } from '../../src/context/AuthContext';
 import { useI18n } from '../../src/context/I18nContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
-import { listRoadHazards, reportHazard } from '../../src/services/firebase';
+import { listRoadHazards, reportHazard } from '../../src/services/firebase/hazardsService';
 import { getDeviceCoords } from '../../src/services/geo/deviceLocation';
 import type { RoadHazardDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
@@ -71,7 +71,7 @@ export default function GpsScreen() {
     <>
       <Stack.Screen options={{ title: t('gpsScreen.title') }} />
       <View style={styles.fill}>
-        <GpsFullMap />
+        <LazyGpsFullMap />
         <PressScale style={styles.hazBtn} onPress={() => setSheet(true)}>
           <Text style={styles.hazTxt}>{t('gpsScreen.hazards')}</Text>
         </PressScale>

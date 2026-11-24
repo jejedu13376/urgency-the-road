@@ -88,7 +88,7 @@ export const FATIGUE_STOP_TTS_ES =
   'Parada obligatoria. Su puntuación de fatiga es crítica. Deténgase ahora y descanse.';
 
 /** FR → EN → ES hard stop sequence. */
-export const FATIGUE_STOP_TTS_SEQUENCE: ReadonlyArray<{ language: string; text: string }> = [
+export const FATIGUE_STOP_TTS_SEQUENCE: readonly { language: string; text: string }[] = [
   { language: 'fr-FR', text: FATIGUE_STOP_TTS_FR },
   { language: 'en-US', text: FATIGUE_STOP_TTS_EN },
   { language: 'es-ES', text: FATIGUE_STOP_TTS_ES },

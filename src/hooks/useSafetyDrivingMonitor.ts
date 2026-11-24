@@ -6,9 +6,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { useFleet } from '../context/FleetContext';
-import { watchDevicePosition } from '../services/geo/deviceLocation';
+import { GPS_WATCH_SAFETY, watchDevicePosition } from '../services/geo/deviceLocation';
+import { GPS_WATCH_SAFETY_DELTA_CAP_SEC } from '../services/geo/gpsWatchPresets';
 import {
   accumulateDrivingTime,
+  DRIVING_SPEED_MIN_MPS,
   isDrivingBreakDue,
   loadDrivingBreakState,
   markDrivingBreakAlertSpoken,
@@ -74,9 +76,15 @@ export function useSafetyDrivingMonitor() {
   const sinceBreakRef = useRef(sinceBreakSec);
   const speakingRef = useRef(false);
 
-  breakStateRef.current = breakState;
-  breaksTakenRef.current = breaksTaken;
-  sinceBreakRef.current = sinceBreakSec;
+  useEffect(() => {
+    breakStateRef.current = breakState;
+  }, [breakState]);
+  useEffect(() => {
+    breaksTakenRef.current = breaksTaken;
+  }, [breaksTaken]);
+  useEffect(() => {
+    sinceBreakRef.current = sinceBreakSec;
+  }, [sinceBreakSec]);
 
   const hosRegion = useMemo(
     () =>
@@ -170,27 +178,46 @@ export function useSafetyDrivingMonitor() {
     const appSub = AppState.addEventListener('change', onAppState);
 
     void (async () => {
-      sub = await watchDevicePosition(async (pos) => {
+      sub = await watchDevicePosition(
+        async (pos) => {
         if (cancelled || appState !== 'active') return;
         const now = Date.now();
-        setNowTick(now);
-        setCoords({ lat: pos.lat, lon: pos.lon });
+        // Coords for HOS region only — throttle React state (interval already ticks clock).
+        setCoords((prev) => {
+          if (
+            prev &&
+            Math.abs(prev.lat - pos.lat) < 0.0003 &&
+            Math.abs(prev.lon - pos.lon) < 0.0003
+          ) {
+            return prev;
+          }
+          return { lat: pos.lat, lon: pos.lon };
+        });
         const prev = lastTickRef.current;
         lastTickRef.current = now;
-        const deltaSec = prev == null ? 0 : Math.min(5, Math.max(0, (now - prev) / 1000));
+        // Cap must cover slow motion at GPS_WATCH_SAFETY.distanceInterval / min speed.
+        const maxDelta = Math.max(
+          GPS_WATCH_SAFETY_DELTA_CAP_SEC,
+          Math.ceil(GPS_WATCH_SAFETY.distanceInterval / DRIVING_SPEED_MIN_MPS) + 1,
+        );
+        const deltaSec = prev == null ? 0 : Math.min(maxDelta, Math.max(0, (now - prev) / 1000));
 
         const kmh =
           typeof pos.speedMps === 'number' && Number.isFinite(pos.speedMps)
             ? pos.speedMps * 3.6
             : null;
-        setSpeedKmh(kmh);
+        setSpeedKmh((prevKmh) => {
+          if (kmh == null && prevKmh == null) return prevKmh;
+          if (kmh != null && prevKmh != null && Math.abs(kmh - prevKmh) < 0.5) return prevKmh;
+          return kmh;
+        });
 
         const limit = resolveSpeedLimitFromProfile(active);
         const over = isOverSpeedLimit({
           speedMps: pos.speedMps,
           limitKmh: limit.limitKmh,
         });
-        setOverspeed(over);
+        setOverspeed((prevOver) => (prevOver === over ? prevOver : over));
 
         const beforeDrive = breakStateRef.current.drivingSec;
         const { state: next, crossedThreshold } = accumulateDrivingTime(breakStateRef.current, {
@@ -258,7 +285,10 @@ export function useSafetyDrivingMonitor() {
             speakingRef.current = false;
           }
         }
-      });
+      },
+        undefined,
+        GPS_WATCH_SAFETY,
+      );
     })();
 
     return () => {

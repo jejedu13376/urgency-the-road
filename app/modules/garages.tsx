@@ -8,7 +8,7 @@ import { StubBanner } from '../../src/components/StubBanner';
 import { useAuth } from '../../src/context/AuthContext';
 import { useFleet } from '../../src/context/FleetContext';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
-import { listGaragesNearby, submitGarageRating } from '../../src/services/firebase';
+import { listGaragesNearby, submitGarageRating } from '../../src/services/firebase/garagesService';
 import type { NearbyGaragesMeta } from '../../src/services/firebase/garagesService';
 import type { GarageDoc } from '../../src/types/firestore';
 import { colors } from '../../src/theme/colors';
