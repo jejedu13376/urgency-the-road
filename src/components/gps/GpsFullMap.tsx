@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Link, useFocusEffect } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
 import { belowGlobalTopBar } from '../../chromeInsets';
@@ -384,7 +385,7 @@ export function GpsFullMap() {
 
   const chromePads = useMemo<ChromePads>(
     () => ({
-      // Clear persistent GlobalTopBar (brand + FR/EN/ES) on every page including Carte.
+      // Clear persistent GlobalTopBar overlay (brand + FR/EN/ES) on every page including Carte.
       padTop: belowGlobalTopBar(insets) + 4,
       padRight: Math.max(insets.right, 8),
       padBottom: Math.max(insets.bottom, 8) + SOS_FAB_CLEARANCE,
@@ -1676,6 +1677,8 @@ export function GpsFullMap() {
   if (!bootHtml) {
     return (
       <View style={[styles.fill, styles.boot]}>
+        {/* Asphalt load / map under status inset — light icons. */}
+        <StatusBar style="light" />
         <Text style={styles.bootTxt}>Chargement carte GPS…</Text>
       </View>
     );
@@ -1683,6 +1686,8 @@ export function GpsFullMap() {
 
   return (
     <View style={styles.fill} accessibilityLabel={`Carte GPS mode ${modeLabel}`}>
+      {/* Map/satellite under transparent GlobalTopBar — light status icons. */}
+      <StatusBar style="light" />
       {Platform.OS === 'web' ? (
         <WebIframe
           html={bootHtml}
