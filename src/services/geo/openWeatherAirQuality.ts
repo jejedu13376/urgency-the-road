@@ -78,7 +78,8 @@ export async function fetchAirQualityNear(
       ok: false,
       samples: [],
       source: 'none',
-      label: 'AQI — EXPO_PUBLIC_OPENWEATHER_API_KEY manquant',
+      // Keep label free of EXPO_PUBLIC_* — UI must not show a missing-key banner.
+      label: 'AQI indisponible',
       error: 'missing_key',
     };
   }

@@ -753,7 +753,8 @@ export function GpsFullMap() {
       if (!aqiOnRef.current) return;
       const res = await fetchAirQualityNear(lat, lon);
       if (!res.ok) {
-        setHudNote(res.label);
+        // Never paint a map banner for missing EXPO_PUBLIC_* keys (e.g. OpenWeather).
+        if (res.error !== 'missing_key') setHudNote(res.label);
         return;
       }
       injectAqi({
