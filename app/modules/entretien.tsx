@@ -43,6 +43,14 @@ function statusLabel(s: MaintenanceItem['status']): string {
 /** Sentinel dueKm used for date-only admin jobs (assurance, etc.). */
 const DATE_ONLY_KM = 900_000;
 
+/** Local calendar YYYY-MM-DD — avoid UTC `toISOString()` day shifts. */
+function localDateIso(d = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function maintScheduleLine(m: MaintenanceItem): string {
   if (m.dueDateIso && m.dueKm >= DATE_ONLY_KM) return m.dueDateIso;
   const kmBit = `${m.dueKm.toLocaleString('fr-FR')} km`;
@@ -188,7 +196,7 @@ export default function EntretienScreen() {
         id: `c-${Date.now()}`,
         title,
         km,
-        dateIso: new Date().toISOString().slice(0, 10),
+        dateIso: localDateIso(),
         cost: undefined,
         currency: active?.currency ?? 'EUR',
       },
@@ -207,7 +215,7 @@ export default function EntretienScreen() {
     maintenanceDone: items.filter((i) => i.status === 'fait').map((i) => i.title),
   });
 
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = localDateIso();
 
   return (
     <>
