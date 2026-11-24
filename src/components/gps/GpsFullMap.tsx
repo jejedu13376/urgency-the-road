@@ -68,9 +68,11 @@ import {
 } from '../../services/osm/overpassPlaces';
 import {
   addCrowdReport,
+  isCrowdReportKind,
   loadCrowdReports,
   mergeCloudHazards,
   type CrowdReport,
+  type CrowdReportKind,
 } from '../../services/prefs/gpsCrowdReports';
 import {
   loadGpsNavPrefs,
@@ -129,7 +131,18 @@ const ALLOWED_MSG_TYPES = new Set([
   'streetview',
   'aqi_request',
   'maptype',
+  'report',
 ]);
+
+const REPORT_KIND_LABELS: Record<CrowdReportKind, string> = {
+  police: 'Police',
+  accident: 'Accident',
+  ralentissement: 'Ralentissement',
+  danger: 'Danger',
+  obstacle: 'Obstacle',
+  travaux: 'Travaux',
+  autre: 'Autre',
+};
 
 /** Clearance under map HUD for SOS FAB (~bottom 92 + 58) + tab bar. */
 const SOS_FAB_CLEARANCE = 110;
@@ -169,7 +182,8 @@ type MapMsg =
       buildings3d?: boolean;
       aqi?: boolean;
       trafficSource?: string;
-    };
+    }
+  | { type: 'report'; kind: CrowdReportKind; lat: number; lon: number };
 
 /** Parse + schema-check map postMessage payloads (reject forged / garbage). */
 function parseMapMsg(raw: string): MapMsg | null {
@@ -202,6 +216,11 @@ function parseMapMsg(raw: string): MapMsg | null {
   }
   if (msg.type === 'streetview' || msg.type === 'aqi_request') {
     if (!isFiniteCoord(msg.lat) || !isFiniteCoord(msg.lon)) return null;
+  }
+  if (msg.type === 'report') {
+    if (!isCrowdReportKind(msg.kind)) return null;
+    if (!isFiniteCoord(msg.lat) || !isFiniteCoord(msg.lon)) return null;
+    if (msg.lat < -90 || msg.lat > 90 || msg.lon < -180 || msg.lon > 180) return null;
   }
   return msg as MapMsg;
 }
@@ -251,7 +270,8 @@ function postGpsCmd(win: MapWindow | null, cmd: Record<string, unknown>) {
 
 /**
  * Full-bleed GPS map (OSM/Leaflet). Vehicle marker = LIVE device GPS.
- * Voiture/camion = top chips only. Tap / search = destination (no re-picker).
+ * Voiture/camion = top chips only. Map tap/long-press = right report bubble;
+ * search / « Itinéraire » pick = destination.
  * No Maps/Waze branding chips.
  */
 export function GpsFullMap() {
@@ -576,6 +596,43 @@ export function GpsFullMap() {
     },
     [injectJs],
   );
+
+  const notifyReportResult = useCallback(
+    (payload: { ok: boolean; label?: string; error?: string }) => {
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, { cmd: 'reportResult', ...payload });
+        return;
+      }
+      injectJs(
+        `window.__gpsReportResult && window.__gpsReportResult(${JSON.stringify(payload)})`,
+      );
+    },
+    [injectJs],
+  );
+
+  /** Paint crowd report pins even when Overpass refresh is gated on device GPS. */
+  const paintCrowdReports = useCallback(async () => {
+    if (!bootHtml) return;
+    const [localReports, cloudHazards] = await Promise.all([
+      loadCrowdReports(),
+      listRoadHazards(),
+    ]);
+    const reports = mergeCloudHazards(localReports, cloudHazards.data ?? []);
+    reportsRef.current = reports;
+    const prev = lastLayersRef.current ?? { bridges: [], weigh: [], reports: [] };
+    injectLayers({
+      bridges: prev.bridges ?? [],
+      weigh: prev.weigh ?? [],
+      reports: reports.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        lat: r.lat,
+        lon: r.lon,
+        note: r.note ? r.note.replace(/[<>&"'`]/g, '').slice(0, 80) : undefined,
+        source: r.source,
+      })),
+    });
+  }, [bootHtml, injectLayers]);
 
   const refreshLayers = useCallback(async () => {
     // Overpass around a real device fix only — never France overview centroid.
@@ -1035,7 +1092,10 @@ export function GpsFullMap() {
             .filter(
               (r) =>
                 r.source === 'local' &&
-                (r.kind === 'police' || r.kind === 'accident' || r.kind === 'danger') &&
+                (r.kind === 'police' ||
+                  r.kind === 'accident' ||
+                  r.kind === 'danger' ||
+                  r.kind === 'ralentissement') &&
                 Number.isFinite(r.lat) &&
                 Number.isFinite(r.lon),
             )
@@ -1161,6 +1221,34 @@ export function GpsFullMap() {
         return;
       }
 
+      if (msg.type === 'report') {
+        // Map tap/long-press → right bubble pick — local crowd pin only (no form).
+        void (async () => {
+          const label = REPORT_KIND_LABELS[msg.kind] ?? msg.kind;
+          const local = await addCrowdReport({
+            kind: msg.kind,
+            lat: msg.lat,
+            lon: msg.lon,
+            note: `${label} (carte · expire ~45 min)`,
+          });
+          if (!local.ok) {
+            setHudNote(local.error);
+            notifyReportResult({ ok: false, error: local.error });
+            return;
+          }
+          if (msg.kind === 'police') {
+            lastLocalPoliceRef.current = local.report;
+            setCanPublishPolice(true);
+          }
+          setHudNote(`${label} posé sur la carte (~45 min)`);
+          // Always paint the new pin (refreshLayers no-ops without device GPS).
+          await paintCrowdReports();
+          if (gpsOk) void refreshLayers();
+          notifyReportResult({ ok: true, label });
+        })();
+        return;
+      }
+
       if (msg.type === 'maptype') {
         aqiOnRef.current = !!msg.aqi;
         if (msg.aqi && liveOriginRef.current) {
@@ -1173,6 +1261,8 @@ export function GpsFullMap() {
       applyItineraryPlan,
       setMapOrigin,
       refreshLayers,
+      paintCrowdReports,
+      notifyReportResult,
       injectLayers,
       runTruckerBrief,
       destSelection?.label,
@@ -1203,7 +1293,10 @@ export function GpsFullMap() {
         .filter(
           (r) =>
             r.source === 'local' &&
-            (r.kind === 'police' || r.kind === 'accident' || r.kind === 'danger') &&
+            (r.kind === 'police' ||
+              r.kind === 'accident' ||
+              r.kind === 'danger' ||
+              r.kind === 'ralentissement') &&
             Number.isFinite(r.lat) &&
             Number.isFinite(r.lon),
         )

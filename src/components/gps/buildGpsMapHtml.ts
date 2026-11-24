@@ -273,6 +273,76 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     transform:scale(1.25);
   }
   .layer-pin.report{background:#3B5BDB}
+  .layer-pin.report-accident{background:#C0392B}
+  .layer-pin.report-ralentissement{background:#D68910}
+  .layer-pin.report-police{background:#3B5BDB}
+  .layer-pin.report-danger{background:#A61B1B}
+  .layer-pin.report-travaux{background:#7D6608}
+  .layer-pin.report-obstacle{background:#5D6D7E}
+  .layer-pin.report-autre{background:#566573}
+  .draft-pin{
+    width:28px;height:36px;display:flex;align-items:flex-end;justify-content:center;
+    filter:drop-shadow(0 2px 4px rgba(16,24,32,.4));
+  }
+  .draft-pin svg{width:28px;height:36px;display:block}
+  /* Google Maps-style right bubble — quick report picks only (no form). */
+  .report-bubble{
+    display:none;position:absolute;z-index:1200;
+    right:calc(64px + var(--pad-right));
+    top:50%;transform:translateY(-42%);
+    width:min(208px,46vw);
+    pointer-events:auto;
+    background:rgba(255,255,255,.98);
+    border-radius:18px;
+    padding:10px 10px 8px;
+    box-shadow:0 8px 28px rgba(16,24,32,.22),0 2px 8px rgba(16,24,32,.1);
+    border:1px solid rgba(16,24,32,.08);
+  }
+  .report-bubble.on{display:block}
+  .report-bubble-title{
+    font:800 15px/1.25 system-ui,-apple-system,sans-serif;
+    letter-spacing:.04em;color:var(--ink);
+    padding:4px 6px 8px;margin:0;
+  }
+  .report-bubble-hint{
+    font:600 12px/1.35 system-ui,-apple-system,sans-serif;
+    letter-spacing:.03em;color:var(--muted);
+    padding:0 6px 10px;margin:0;
+  }
+  .report-opt{
+    display:flex;align-items:center;gap:10px;width:100%;
+    border:0;border-radius:14px;margin:0 0 6px;padding:12px 12px;
+    min-height:48px;text-align:left;cursor:pointer;
+    background:#F3F0EA;color:var(--ink);
+    font:750 15px/1.2 system-ui,-apple-system,sans-serif;
+    letter-spacing:.03em;
+    transition:background .15s ease,transform .12s ease;
+    -webkit-appearance:none;appearance:none;
+  }
+  .report-opt:last-of-type{margin-bottom:4px}
+  .report-opt:active{transform:scale(.98)}
+  .report-opt .dot{
+    width:12px;height:12px;border-radius:6px;flex-shrink:0;
+  }
+  .report-opt[data-kind="accident"] .dot{background:#C0392B}
+  .report-opt[data-kind="ralentissement"] .dot{background:#D68910}
+  .report-opt[data-kind="police"] .dot{background:#3B5BDB}
+  .report-opt[data-kind="danger"] .dot{background:#A61B1B}
+  .report-opt[data-kind="travaux"] .dot{background:#7D6608}
+  .report-opt[data-kind="obstacle"] .dot{background:#5D6D7E}
+  .report-opt[data-kind="destination"]{
+    background:rgba(196,92,38,.12);color:var(--signal);
+  }
+  .report-opt[data-kind="destination"] .dot{background:var(--signal)}
+  .report-cancel{
+    display:block;width:100%;border:0;border-radius:12px;
+    padding:11px 12px;min-height:44px;margin-top:2px;
+    background:transparent;color:var(--muted);
+    font:700 14px/1.2 system-ui,-apple-system,sans-serif;
+    letter-spacing:.03em;cursor:pointer;
+    -webkit-appearance:none;appearance:none;
+  }
+  .report-cancel:active{color:var(--ink)}
   @keyframes weighBlink{from{opacity:.55;box-shadow:0 0 0 0 rgba(231,76,60,.2)}to{opacity:1;box-shadow:0 0 0 10px rgba(231,76,60,.05)}}
   .route-line{transition:opacity .35s ease}
   #mb3d{
@@ -331,6 +401,18 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     </button>
   </div>
 </div>
+<div class="report-bubble" id="reportBubble" role="dialog" aria-label="Signaler ici" aria-hidden="true" hidden>
+  <p class="report-bubble-title">Signaler ici</p>
+  <p class="report-bubble-hint">Choisissez une option</p>
+  <button type="button" class="report-opt" data-kind="accident"><span class="dot" aria-hidden="true"></span>Accident</button>
+  <button type="button" class="report-opt" data-kind="ralentissement"><span class="dot" aria-hidden="true"></span>Ralentissement</button>
+  <button type="button" class="report-opt" data-kind="police"><span class="dot" aria-hidden="true"></span>Police</button>
+  <button type="button" class="report-opt" data-kind="danger"><span class="dot" aria-hidden="true"></span>Danger</button>
+  <button type="button" class="report-opt" data-kind="travaux"><span class="dot" aria-hidden="true"></span>Travaux</button>
+  <button type="button" class="report-opt" data-kind="obstacle"><span class="dot" aria-hidden="true"></span>Obstacle</button>
+  <button type="button" class="report-opt" data-kind="destination"><span class="dot" aria-hidden="true"></span>Itinéraire</button>
+  <button type="button" class="report-cancel" id="reportCancel">Annuler</button>
+</div>
 <script>
 (function(){
   var BOOT = ${bootJson};
@@ -348,6 +430,8 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   var altRouteLines = [];
   var stopMarkers = [];
   var destMarker = null;
+  var draftMarker = null;
+  var draftLL = null;
   var followLive = false;
   /** True only after startNavigation — not mere recenter / followLive. */
   var navTripActive = false;
@@ -810,11 +894,75 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     if (dest && gpsOk && !(opts && opts.skipRoute)) requestRoute();
   }
 
+  function draftDivIcon(){
+    return L.divIcon({
+      className: '',
+      html: '<div class="draft-pin" aria-hidden="true"><svg viewBox="0 0 28 36"><path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="#3B5BDB"/><circle cx="14" cy="14" r="5.5" fill="#fff"/></svg></div>',
+      iconSize: [28, 36],
+      iconAnchor: [14, 36],
+    });
+  }
+
+  function closeReportBubble(){
+    var bubble = document.getElementById('reportBubble');
+    if (bubble) {
+      bubble.classList.remove('on');
+      bubble.setAttribute('aria-hidden', 'true');
+      bubble.setAttribute('hidden', '');
+    }
+    if (draftMarker) {
+      try { map.removeLayer(draftMarker); } catch (e) {}
+      draftMarker = null;
+    }
+    draftLL = null;
+  }
+
+  function openReportBubble(latlng){
+    if (!latlng || !isFinite(latlng.lat) || !isFinite(latlng.lng)) return;
+    draftLL = { lat: latlng.lat, lon: latlng.lng };
+    if (draftMarker) {
+      try { map.removeLayer(draftMarker); } catch (e) {}
+    }
+    draftMarker = L.marker([draftLL.lat, draftLL.lon], {
+      icon: draftDivIcon(),
+      zIndexOffset: 760,
+    }).addTo(map);
+    var bubble = document.getElementById('reportBubble');
+    if (bubble) {
+      bubble.classList.add('on');
+      bubble.removeAttribute('hidden');
+      bubble.setAttribute('aria-hidden', 'false');
+    }
+    setStatus('Point choisi — choisissez Accident, Ralentissement… ou Itinéraire');
+  }
+
+  function reportKindLabel(kind){
+    if (kind === 'accident') return 'ACC';
+    if (kind === 'ralentissement') return 'RAL';
+    if (kind === 'police') return 'POL';
+    if (kind === 'danger') return 'DAN';
+    if (kind === 'travaux') return 'TRX';
+    if (kind === 'obstacle') return 'OBS';
+    return 'ALR';
+  }
+
+  function reportKindClass(kind){
+    var k = String(kind || '').toLowerCase();
+    if (k === 'accident') return 'report report-accident';
+    if (k === 'ralentissement') return 'report report-ralentissement';
+    if (k === 'police') return 'report report-police';
+    if (k === 'danger') return 'report report-danger';
+    if (k === 'travaux') return 'report report-travaux';
+    if (k === 'obstacle') return 'report report-obstacle';
+    return 'report report-autre';
+  }
+
   function setDestination(latlng, label){
     if (!gpsOk) {
       setStatus('GPS appareil requis — pas d’itinéraire sans position réelle');
       return;
     }
+    closeReportBubble();
     dest = { lat: latlng.lat, lon: latlng.lng };
     arrivedPosted = false;
     navTripActive = false;
@@ -1045,12 +1193,12 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       });
       reports.forEach(function(r){
         if (!finiteLatLon(r.lat, r.lon)) return;
-        var kind = String(r.kind || 'alerte').replace(/[^a-z0-9_-]/gi, '').slice(0, 12) || 'alerte';
-        var label = kind.slice(0, 3).toUpperCase();
-        var html = '<div class="layer-pin report">' + esc(label) + '</div>';
+        var kind = String(r.kind || 'alerte').replace(/[^a-z0-9_-]/gi, '').slice(0, 20) || 'alerte';
+        var label = reportKindLabel(kind);
+        var html = '<div class="layer-pin ' + reportKindClass(kind) + '">' + esc(label) + '</div>';
         var tip = kind + (r.note ? ' — ' + String(r.note).slice(0, 80) : '') + ' · expire crowd';
         L.marker([r.lat, r.lon], {
-          icon: L.divIcon({ className: '', html: html, iconSize: [36, 28], iconAnchor: [18, 14] }),
+          icon: L.divIcon({ className: '', html: html, iconSize: [40, 28], iconAnchor: [20, 14] }),
           zIndexOffset: 500,
         }).bindTooltip(tipEl(tip), { direction: 'top' })
           .addTo(layerGroup);
@@ -1115,10 +1263,11 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     else if (msg.cmd === 'highlightWeigh') window.__gpsHighlightWeigh(msg.id);
     else if (msg.cmd === 'setAqi') window.__gpsSetAqi(msg.payload);
     else if (msg.cmd === 'setMapType') window.__gpsSetMapType(msg);
+    else if (msg.cmd === 'reportResult') window.__gpsReportResult && window.__gpsReportResult(msg);
   });
 
-  /* Mouse: single click places pin (unchanged).
-     Touch: long-press ~2s OR double-tap places pin — pan/zoom must not count as a press. */
+  /* Mouse: single click opens right report bubble (draft pin).
+     Touch: long-press ~2s OR double-tap — same bubble. Destination = « Itinéraire » pick. */
   var LONG_PRESS_MS = 2000;
   var TOUCH_MOVE_PX = 12;
   var DOUBLE_TAP_MS = 350;
@@ -1152,7 +1301,91 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     if (!ll) return;
     /* Block Leaflet/browser ghost clicks after touch pin placement. */
     suppressClickUntil = Date.now() + 500;
-    setDestination(ll);
+    openReportBubble(ll);
+  }
+
+  var reportBusy = false;
+
+  function setReportBubbleBusy(busy){
+    reportBusy = !!busy;
+    var bubble = document.getElementById('reportBubble');
+    if (!bubble) return;
+    var buttons = bubble.querySelectorAll('button');
+    for (var i = 0; i < buttons.length; i++) {
+      var b = buttons[i];
+      if (b.id === 'reportCancel') {
+        b.disabled = !!busy;
+        continue;
+      }
+      b.disabled = !!busy;
+    }
+  }
+
+  window.__gpsReportResult = function(msg){
+    msg = msg || {};
+    setReportBubbleBusy(false);
+    if (msg.ok) {
+      closeReportBubble();
+      setStatus(msg.label
+        ? ('Signalement · ' + msg.label + ' · posé')
+        : 'Signalement posé sur la carte');
+      return;
+    }
+    /* Keep draft pin + bubble so the user can retry without re-tapping. */
+    if (draftLL) {
+      var bubble = document.getElementById('reportBubble');
+      if (bubble) {
+        bubble.classList.add('on');
+        bubble.removeAttribute('hidden');
+        bubble.setAttribute('aria-hidden', 'false');
+      }
+    }
+    setStatus(msg.error
+      ? String(msg.error).slice(0, 120)
+      : 'Signalement refusé — réessayez');
+  };
+
+  var reportBubbleEl = document.getElementById('reportBubble');
+  if (reportBubbleEl) {
+    reportBubbleEl.addEventListener('click', function(ev){
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      var t = ev.target;
+      if (t && t.closest) t = t.closest('button');
+      else {
+        while (t && t.tagName !== 'BUTTON' && t !== reportBubbleEl) t = t.parentNode;
+      }
+      if (!t || t.tagName !== 'BUTTON' || t.disabled) return;
+      if (t.id === 'reportCancel') {
+        if (reportBusy) return;
+        closeReportBubble();
+        setStatus(mode === 'camion'
+          ? 'Mode camion — touchez / cherchez une destination'
+          : 'Mode voiture — touchez / cherchez une destination');
+        return;
+      }
+      var kind = t.getAttribute('data-kind');
+      if (!kind || !draftLL) return;
+      if (kind === 'destination') {
+        setDestination(L.latLng(draftLL.lat, draftLL.lon));
+        return;
+      }
+      var allowed = {
+        accident: 1,
+        ralentissement: 1,
+        police: 1,
+        danger: 1,
+        travaux: 1,
+        obstacle: 1,
+      };
+      if (!allowed[kind]) return;
+      if (reportBusy) return;
+      var lat = draftLL.lat;
+      var lon = draftLL.lon;
+      /* Keep draft until RN ack — rate-limit must not strand status on « envoi… ». */
+      setReportBubbleBusy(true);
+      setStatus('Signalement · ' + kind + ' · envoi…');
+      post({ type: 'report', kind: kind, lat: lat, lon: lon });
+    });
   }
 
   mapEl.addEventListener('touchstart', function(ev){
@@ -1239,7 +1472,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
 
   map.on('click', function(e){
     if (Date.now() < suppressClickUntil) return;
-    setDestination(e.latlng);
+    openReportBubble(e.latlng);
   });
 
   function startNavigation(){
@@ -1280,7 +1513,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     else if (tog === 'buildings3d') setBuildings3d(!buildingsOn);
     else if (tog === 'aqi') setAqiOverlay(!aqiOn);
     else if (act === 'streetview') {
-      var focus = dest || origin;
+      var focus = draftLL || dest || origin;
       post({ type: 'streetview', lat: focus.lat, lon: focus.lon });
     }
   };
