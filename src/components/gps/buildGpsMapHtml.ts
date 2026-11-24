@@ -1,6 +1,9 @@
 /**
  * Self-contained Leaflet map HTML for WebView.
  * Right-side icon rail: Roads · Satellite · Terrain · Traffic · Transit · 3D · AQI · Street View.
+ * Bottom-left character = Street View ON/OFF (UI hidden until toggled).
+ * Person avatar: tap/drag snaps to OSM highway network (Carto tiles).
+ * Street View ON + tap road → snap GPS + open close-up Street View.
  * Extends Esri/#47 basemap work (Esri imagery + Carto/OSM roads) with Terrain + overlays.
  * Vehicle DivIcon = LIVE GPS — not a canned polyline demo.
  */
@@ -111,7 +114,7 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
     "script-src https://unpkg.com/leaflet@1.9.4/ https://cdn.osmbuildings.org https://api.mapbox.com 'unsafe-inline'",
     "style-src https://unpkg.com/leaflet@1.9.4/ https://api.mapbox.com https://cdn.osmbuildings.org 'unsafe-inline'",
     "img-src https://server.arcgisonline.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://tile.opentopomap.org https://*.tile.opentopomap.org https://tile.memomaps.de https://*.tile.memomaps.de https://a.tiles.mapbox.com https://b.tiles.mapbox.com https://c.tiles.mapbox.com https://d.tiles.mapbox.com https://api.mapbox.com https://api.tomtom.com data: blob:",
-    "connect-src https://unpkg.com https://cdn.osmbuildings.org https://data.osmbuildings.org https://api.mapbox.com https://events.mapbox.com https://api.tomtom.com",
+    "connect-src https://unpkg.com https://cdn.osmbuildings.org https://data.osmbuildings.org https://api.mapbox.com https://events.mapbox.com https://api.tomtom.com https://overpass-api.de https://lz4.overpass-api.de https://router.project-osrm.org",
     "worker-src blob: 'self'",
     "child-src blob:",
     "font-src data: https://api.mapbox.com",
@@ -237,7 +240,32 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   }
   .map-fab:disabled{opacity:.38}
   .map-fab.locked{color:var(--muted)}
-  .map-fab[data-act="streetview"]{color:var(--ink)}
+  .map-fab[data-act="streetview"],.map-fab[data-tog="streetview"]{color:var(--ink)}
+  .map-fab[data-tog="streetview"].on{background:rgba(26,115,232,.14);color:#1A73E8}
+  /* Bottom-left person control — Street View ON/OFF (hidden UI until tapped). */
+  .char-fab{
+    width:52px;height:52px;border:0;border-radius:26px;padding:0;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(255,255,255,.97);color:var(--slate);
+    box-shadow:0 2px 12px rgba(16,24,32,.18),0 1px 3px rgba(16,24,32,.08);
+    transition:background .18s ease,color .18s ease,transform .12s ease,box-shadow .18s ease;
+    -webkit-appearance:none;appearance:none;
+  }
+  .char-fab svg{width:28px;height:28px;display:block;pointer-events:none}
+  .char-fab:active{transform:scale(.94)}
+  .char-fab.on{
+    background:#1A73E8;color:#fff;
+    box-shadow:0 4px 16px rgba(26,115,232,.35);
+  }
+  .person-avatar{
+    width:36px;height:36px;border-radius:18px;
+    display:flex;align-items:center;justify-content:center;
+    background:#fff;border:2px solid #1A73E8;
+    box-shadow:0 2px 8px rgba(16,24,32,.28);
+  }
+  .person-avatar svg{width:22px;height:22px;display:block;color:#1A73E8}
+  .person-avatar.on-road{border-color:#1F6B4A}
+  .person-avatar.on-road svg{color:#1F6B4A}
   .map-rail-hint{
     pointer-events:none;
     font:600 9px/1 system-ui,sans-serif;letter-spacing:.04em;text-transform:uppercase;
@@ -373,6 +401,9 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
 </div>
 <div class="bottom">
   <div class="bottom-actions">
+    <button type="button" class="char-fab" id="btnStreetViewChar" title="Street View" aria-label="Street View" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="3"/><path d="M6 20c1.5-4 4-6 6-6s4.5 2 6 6"/><path d="M12 10v3"/></svg>
+    </button>
     <button type="button" class="go" id="btnGo" disabled>itinéraire</button>
     <button type="button" class="ghost" id="btnRecenter">GPS</button>
   </div>
@@ -405,7 +436,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     </button>
   </div>
   <div class="map-rail-card">
-    <button type="button" class="map-fab" data-act="streetview" title="Street View (pin)" aria-label="Street View">
+    <button type="button" class="map-fab" data-tog="streetview" id="btnStreetViewRail" title="Street View" aria-label="Street View" aria-pressed="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="3"/><path d="M6 20c1.5-4 4-6 6-6s4.5 2 6 6"/><path d="M12 10v3"/></svg>
     </button>
   </div>
@@ -471,6 +502,16 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   var mbMap = null;
   var weighMarkers = {};
   var alertWeighId = null;
+  /** Street View OFF until user taps the character / rail control. */
+  var streetViewOn = false;
+  /** OSM highway segments for local road snap (not through buildings). */
+  var roadSegments = [];
+  var roadFetchTimer = null;
+  var roadFetchSeq = 0;
+  var personMarker = null;
+  var personPos = { lat: origin.lat, lon: origin.lon };
+  var personOnRoad = false;
+  var personDragging = false;
 
   function haversineM(a, b){
     var R = 6371000;
@@ -522,6 +563,254 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       return { lat: best.lat, lon: best.lon, snapped: true, distM: bestD };
     }
     return { lat: lat, lon: lon, snapped: false, distM: bestD };
+  }
+
+  /** Snap to cached OSM highway segments (Carto/OSM roads — not buildings). */
+  function snapToOsmRoad(lat, lon, maxM){
+    if (!roadSegments.length) {
+      return { lat: lat, lon: lon, snapped: false };
+    }
+    var lim = typeof maxM === 'number' ? maxM : 45;
+    var p = { lat: lat, lon: lon };
+    var best = null;
+    var bestD = Infinity;
+    for (var i = 0; i < roadSegments.length; i++) {
+      var seg = roadSegments[i];
+      var proj = projectOnSegment(p, seg.a, seg.b);
+      var d = haversineM(p, proj);
+      if (d < bestD) {
+        bestD = d;
+        best = proj;
+      }
+    }
+    if (best && bestD <= lim) {
+      return { lat: best.lat, lon: best.lon, snapped: true, distM: bestD };
+    }
+    return { lat: lat, lon: lon, snapped: false, distM: bestD };
+  }
+
+  function scheduleRoadFetch(){
+    if (roadFetchTimer) clearTimeout(roadFetchTimer);
+    roadFetchTimer = setTimeout(function(){
+      roadFetchTimer = null;
+      fetchOsmRoads();
+    }, 700);
+  }
+
+  function fetchOsmRoads(){
+    if (!map) return;
+    var b = map.getBounds();
+    if (!b) return;
+    var z = map.getZoom();
+    if (z < 13) {
+      roadSegments = [];
+      return;
+    }
+    var pad = 0.002;
+    var south = b.getSouth() - pad;
+    var west = b.getWest() - pad;
+    var north = b.getNorth() + pad;
+    var east = b.getEast() + pad;
+    var seq = ++roadFetchSeq;
+    var ql = '[out:json][timeout:12];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|road|pedestrian|footway|path|cycleway)$"](' +
+      south + ',' + west + ',' + north + ',' + east + ');out geom;';
+    var endpoints = [
+      'https://lz4.overpass-api.de/api/interpreter',
+      'https://overpass-api.de/api/interpreter'
+    ];
+    function tryFetch(i){
+      if (i >= endpoints.length || seq !== roadFetchSeq) return;
+      fetch(endpoints[i], {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', Accept: 'application/json' },
+        body: 'data=' + encodeURIComponent(ql)
+      }).then(function(res){
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      }).then(function(body){
+        if (seq !== roadFetchSeq) return;
+        var next = [];
+        var els = (body && body.elements) || [];
+        for (var ei = 0; ei < els.length; ei++) {
+          var el = els[ei];
+          var geom = el.geometry;
+          if (!geom || geom.length < 2) continue;
+          for (var gi = 0; gi < geom.length - 1; gi++) {
+            var g0 = geom[gi], g1 = geom[gi + 1];
+            if (!g0 || !g1) continue;
+            next.push({
+              a: { lat: g0.lat, lon: g0.lon },
+              b: { lat: g1.lat, lon: g1.lon }
+            });
+          }
+        }
+        roadSegments = next;
+        /* Re-snap person onto fresh roads when possible. */
+        if (personPos) {
+          var s = snapToOsmRoad(personPos.lat, personPos.lon, 50);
+          if (s.snapped) movePersonTo(s.lat, s.lon, false, true);
+        }
+      }).catch(function(){
+        tryFetch(i + 1);
+      });
+    }
+    tryFetch(0);
+  }
+
+  /** OSRM nearest fallback when Overpass cache is cold. */
+  function snapOsrmNearest(lat, lon, cb){
+    var url = 'https://router.project-osrm.org/nearest/v1/driving/' + lon + ',' + lat + '?number=1';
+    fetch(url).then(function(res){ return res.json(); }).then(function(body){
+      if (body && body.code === 'Ok' && body.waypoints && body.waypoints[0] && body.waypoints[0].location) {
+        var loc = body.waypoints[0].location;
+        cb({ lat: loc[1], lon: loc[0], snapped: true });
+        return;
+      }
+      cb({ lat: lat, lon: lon, snapped: false });
+    }).catch(function(){
+      cb({ lat: lat, lon: lon, snapped: false });
+    });
+  }
+
+  function personHtml(){
+    var cls = personOnRoad ? 'person-avatar on-road' : 'person-avatar';
+    return '<div class="' + cls + '" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3"/><path d="M6 20c1.5-4 4-6 6-6s4.5 2 6 6"/><path d="M12 10v3"/></svg></div>';
+  }
+
+  function personDivIcon(){
+    return L.divIcon({
+      className: '',
+      html: personHtml(),
+      iconSize: [36, 36],
+      iconAnchor: [18, 34],
+    });
+  }
+
+  function ensurePersonMarker(){
+    if (!personMarker) {
+      personMarker = L.marker([personPos.lat, personPos.lon], {
+        icon: personDivIcon(),
+        draggable: true,
+        zIndexOffset: 900,
+        keyboard: false,
+      }).addTo(map);
+      personMarker.on('dragstart', function(){
+        personDragging = true;
+        beginExplore();
+      });
+      personMarker.on('drag', function(ev){
+        var ll = ev.latlng;
+        var s = snapToOsmRoad(ll.lat, ll.lng, 40);
+        if (s.snapped) {
+          personMarker.setLatLng([s.lat, s.lon]);
+          personPos = { lat: s.lat, lon: s.lon };
+          personOnRoad = true;
+        } else {
+          personPos = { lat: ll.lat, lon: ll.lng };
+          personOnRoad = false;
+        }
+      });
+      personMarker.on('dragend', function(ev){
+        personDragging = false;
+        var ll = ev.latlng;
+        finishPersonMove(ll.lat, ll.lng);
+      });
+      return;
+    }
+    personMarker.setLatLng([personPos.lat, personPos.lon]);
+    personMarker.setIcon(personDivIcon());
+  }
+
+  function movePersonTo(lat, lon, pan, alreadySnapped){
+    var s = alreadySnapped
+      ? { lat: lat, lon: lon, snapped: true }
+      : snapToOsmRoad(lat, lon, 50);
+    if (!s.snapped && !alreadySnapped) {
+      personPos = { lat: lat, lon: lon };
+      personOnRoad = false;
+      ensurePersonMarker();
+      if (pan) {
+        markProgrammaticCamera(360);
+        map.panTo([lat, lon], { animate: true, duration: 0.25 });
+      }
+      return;
+    }
+    personPos = { lat: s.lat, lon: s.lon };
+    personOnRoad = !!s.snapped;
+    ensurePersonMarker();
+    if (pan) {
+      markProgrammaticCamera(360);
+      map.panTo([personPos.lat, personPos.lon], { animate: true, duration: 0.25 });
+    }
+  }
+
+  function finishPersonMove(lat, lon){
+    var local = snapToOsmRoad(lat, lon, 55);
+    if (local.snapped) {
+      movePersonTo(local.lat, local.lon, false, true);
+      return;
+    }
+    snapOsrmNearest(lat, lon, function(s){
+      if (s.snapped) movePersonTo(s.lat, s.lon, false, true);
+      else movePersonTo(lat, lon, false, false);
+    });
+  }
+
+  function syncStreetViewControls(){
+    var charBtn = document.getElementById('btnStreetViewChar');
+    var railBtn = document.getElementById('btnStreetViewRail');
+    if (charBtn) {
+      charBtn.classList.toggle('on', streetViewOn);
+      charBtn.setAttribute('aria-pressed', streetViewOn ? 'true' : 'false');
+    }
+    if (railBtn) {
+      railBtn.classList.toggle('on', streetViewOn);
+      railBtn.setAttribute('aria-pressed', streetViewOn ? 'true' : 'false');
+    }
+  }
+
+  /** Tap Street View control → ON. Tap again → OFF. No Street View UI until ON + road tap. */
+  function setStreetViewMode(on){
+    streetViewOn = !!on;
+    syncStreetViewControls();
+    if (streetViewOn) {
+      setStatus('Street View ON — tapez une route');
+      scheduleRoadFetch();
+    } else {
+      setStatus('Street View OFF');
+    }
+  }
+
+  /** Snap GPS + avatar onto road, zoom close, open Street View peek. */
+  function applyGpsSnapAndStreetView(lat, lon){
+    origin = { lat: lat, lon: lon };
+    displayOrigin = { lat: lat, lon: lon };
+    personPos = { lat: lat, lon: lon };
+    personOnRoad = true;
+    ensurePersonMarker();
+    ensureVehicleMarker();
+    markProgrammaticCamera(520);
+    map.setView([lat, lon], Math.max(map.getZoom(), 18), { animate: true });
+    setStatus('GPS sur la route — Street View');
+    post({ type: 'streetview', lat: lat, lon: lon, snapGps: true });
+  }
+
+  function handleStreetViewRoadTap(ll){
+    if (!ll) return;
+    var local = snapToOsmRoad(ll.lat, ll.lng, 55);
+    if (local.snapped) {
+      applyGpsSnapAndStreetView(local.lat, local.lon);
+      return;
+    }
+    setStatus('Recherche route…');
+    snapOsrmNearest(ll.lat, ll.lng, function(s){
+      if (!streetViewOn) return;
+      if (s.snapped) {
+        applyGpsSnapAndStreetView(s.lat, s.lon);
+      } else {
+        setStatus('Tapez une route (pas de voie ici)');
+      }
+    });
   }
 
   function clearExploreResumeTimer(){
@@ -696,6 +985,9 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   roadsLayer.addTo(map);
   layerGroup = L.layerGroup().addTo(map);
   aqiGroup = L.layerGroup().addTo(map);
+  ensurePersonMarker();
+  scheduleRoadFetch();
+  map.on('moveend', function(){ scheduleRoadFetch(); });
   (function initTrafficBtn(){
     var btn = document.getElementById('btnTraffic');
     if (!btn) return;
@@ -751,6 +1043,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     syncTog('button[data-tog="traffic"]', trafficOn);
     syncTog('button[data-tog="buildings3d"]', buildingsOn);
     syncTog('button[data-tog="aqi"]', aqiOn);
+    syncTog('button[data-tog="streetview"]', streetViewOn);
   }
 
   function maptypePayload(){
@@ -1678,7 +1971,15 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
 
   map.on('click', function(e){
     if (Date.now() < suppressClickUntil) return;
-    openReportBubble(e.latlng);
+    if (personDragging) return;
+    /* Street View ON → tap road snaps GPS + opens close-up. OFF → move person (report = long-press). */
+    if (streetViewOn) {
+      handleStreetViewRoadTap(e.latlng);
+      return;
+    }
+    if (e && e.latlng) {
+      finishPersonMove(e.latlng.lat, e.latlng.lng);
+    }
   });
 
   function startNavigation(){
@@ -1732,11 +2033,19 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     else if (tog === 'traffic') setTraffic(!trafficOn);
     else if (tog === 'buildings3d') setBuildings3d(!buildingsOn);
     else if (tog === 'aqi') setAqiOverlay(!aqiOn);
-    else if (act === 'streetview') {
-      var focus = draftLL || dest || origin;
-      post({ type: 'streetview', lat: focus.lat, lon: focus.lon });
+    else if (tog === 'streetview' || act === 'streetview') {
+      setStreetViewMode(!streetViewOn);
     }
   };
+
+  var charBtn = document.getElementById('btnStreetViewChar');
+  if (charBtn) {
+    charBtn.onclick = function(ev){
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      setStreetViewMode(!streetViewOn);
+    };
+  }
+  syncStreetViewControls();
 
   layersReady = true;
   if (pendingLayers) applyLayersPayload(pendingLayers);
