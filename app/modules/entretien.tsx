@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack } from 'expo-router';
-import { Card } from '../../src/components/Card';
+import { CatalogProductCard } from '../../src/components/CatalogProductCard';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { useFleet } from '../../src/context/FleetContext';
+import { useI18n } from '../../src/context/I18nContext';
 import { MOCK_MAINTENANCE } from '../../src/data/mocks';
 import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { loadCarnet, saveCarnet } from '../../src/services/carnet/carnetStorage';
@@ -15,15 +16,6 @@ import {
 } from '../../src/services/carnet/exportCarnet';
 import type { MaintenanceItem } from '../../src/types/modules';
 import { colors } from '../../src/theme/colors';
-import { useI18n } from '../../src/context/I18nContext';
-
-type AdminReminder = {
-  id: string;
-  title: string;
-  region: string;
-  dueDateIso: string;
-  status: 'a_faire' | 'planifie' | 'fait';
-};
 
 type CarnetEntry = {
   id: string;
@@ -35,76 +27,6 @@ type CarnetEntry = {
   invoiceRef?: string;
 };
 
-function adminRemindersForCountry(country?: string): AdminReminder[] {
-  const c = (country ?? 'FR').toUpperCase();
-  if (c === 'CA' || c === 'US') {
-    return [
-      {
-        id: 'adm-plaq',
-        title: 'Renouvellement plaques / immatriculation',
-        region: 'CA/US',
-        dueDateIso: '2026-12-01',
-        status: 'a_faire',
-      },
-      {
-        id: 'adm-ass',
-        title: 'Assurance véhicule',
-        region: 'CA/US',
-        dueDateIso: '2026-11-30',
-        status: 'planifie',
-      },
-      {
-        id: 'adm-insp',
-        title: 'Inspection / safety check',
-        region: 'CA/US',
-        dueDateIso: '2027-02-15',
-        status: 'planifie',
-      },
-    ];
-  }
-  if (c === 'AU') {
-    return [
-      {
-        id: 'adm-rego',
-        title: 'Rego (immatriculation AU)',
-        region: 'AU',
-        dueDateIso: '2026-10-01',
-        status: 'a_faire',
-      },
-      {
-        id: 'adm-ctp',
-        title: 'CTP / assurance obligatoire',
-        region: 'AU',
-        dueDateIso: '2026-10-01',
-        status: 'a_faire',
-      },
-    ];
-  }
-  return [
-    {
-      id: 'adm-ct',
-      title: 'Contrôle technique',
-      region: 'EU-FR',
-      dueDateIso: '2027-03-01',
-      status: 'planifie',
-    },
-    {
-      id: 'adm-ass-eu',
-      title: 'Assurance responsabilité civile',
-      region: 'EU',
-      dueDateIso: '2026-12-15',
-      status: 'a_faire',
-    },
-    {
-      id: 'adm-carte',
-      title: 'Carte grise / certificat',
-      region: 'EU',
-      dueDateIso: '2028-01-01',
-      status: 'planifie',
-    },
-  ];
-}
-
 const STATUS_CYCLE: MaintenanceItem['status'][] = ['a_faire', 'planifie', 'fait'];
 
 function nextStatus(s: MaintenanceItem['status']): MaintenanceItem['status'] {
@@ -112,10 +34,43 @@ function nextStatus(s: MaintenanceItem['status']): MaintenanceItem['status'] {
   return STATUS_CYCLE[(i + 1) % STATUS_CYCLE.length];
 }
 
-function statusColor(s: string) {
-  if (s === 'fait') return colors.garage;
-  if (s === 'planifie') return colors.warn;
-  return colors.signal;
+function statusLabel(s: MaintenanceItem['status']): string {
+  if (s === 'fait') return 'Fait';
+  if (s === 'planifie') return 'Planifié';
+  return 'À faire';
+}
+
+/** Sentinel dueKm used for date-only admin jobs (assurance, etc.). */
+const DATE_ONLY_KM = 900_000;
+
+function maintScheduleLine(m: MaintenanceItem): string {
+  if (m.dueDateIso && m.dueKm >= DATE_ONLY_KM) return m.dueDateIso;
+  const kmBit = `${m.dueKm.toLocaleString('fr-FR')} km`;
+  return m.dueDateIso ? `${kmBit} · ${m.dueDateIso}` : kmBit;
+}
+
+function maintOverdue(m: MaintenanceItem, odometerKm: number, todayIso: string): boolean {
+  if (m.status === 'fait') return false;
+  if (m.dueDateIso && m.dueDateIso <= todayIso) return true;
+  if (m.dueKm < DATE_ONLY_KM && m.dueKm <= odometerKm) return true;
+  return false;
+}
+
+function maintIcon(title: string): 'water-outline' | 'car-sport-outline' | 'document-text-outline' | 'shield-checkmark-outline' | 'construct-outline' {
+  const t = title.toLowerCase();
+  if (t.includes('vidange') || t.includes('huile') || t.includes('filtre')) return 'water-outline';
+  if (t.includes('pneu') || t.includes('frein')) return 'car-sport-outline';
+  if (t.includes('assurance') || t.includes('contrôle') || t.includes('inspection')) {
+    return 'shield-checkmark-outline';
+  }
+  if (t.includes('distribution') || t.includes('chaîne') || t.includes('chaine')) return 'construct-outline';
+  return 'document-text-outline';
+}
+
+function maintTone(status: MaintenanceItem['status']): string {
+  if (status === 'fait') return colors.garageSoft;
+  if (status === 'planifie') return colors.warnSoft;
+  return colors.signalSoft;
 }
 
 const DEFAULT_ITEMS: MaintenanceItem[] = [
@@ -145,7 +100,7 @@ const INITIAL_CARNET: CarnetEntry[] = [
   },
 ];
 
-/** Module 10 — entretien prédictif, rappels admin, carnet persisté + share texte/HTML-lite. */
+/** Module 10 — fiches entretien type catalogue : photo + nom + info clé. */
 export default function EntretienScreen() {
   const { t } = useI18n();
   useModuleVisit(10);
@@ -153,17 +108,15 @@ export default function EntretienScreen() {
   const km = active?.odometerKm ?? 0;
   const vehicleKey = active?.id ?? active?.vin ?? 'default';
   const [items, setItems] = useState<MaintenanceItem[]>(DEFAULT_ITEMS);
-  const [adminCountry, setAdminCountry] = useState(active?.country ?? 'FR');
-  const [admin, setAdmin] = useState(() => adminRemindersForCountry(active?.country));
   const [carnet, setCarnet] = useState<CarnetEntry[]>(INITIAL_CARNET);
+  const [query, setQuery] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [pdfMsg, setPdfMsg] = useState<string | null>(null);
-  const [batteryV] = useState(12.6);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       setHydrated(false);
       void (async () => {
         const stored = await loadCarnet(vehicleKey);
@@ -190,7 +143,7 @@ export default function EntretienScreen() {
     }, 0);
     return () => {
       cancelled = true;
-      clearTimeout(t);
+      clearTimeout(timer);
     };
   }, [vehicleKey]);
 
@@ -204,25 +157,28 @@ export default function EntretienScreen() {
     });
   }, [carnet, items, vehicleKey, hydrated]);
 
-  const overdue = useMemo(
-    () => items.filter((m) => m.status !== 'fait' && m.dueKm <= km),
-    [items, km],
-  );
+  const vehicleTitle = active
+    ? `${active.make ?? ''} ${active.model ?? ''}`.trim() || active.label
+    : 'Aucun véhicule';
+
+  const vehicleKeyInfo = active
+    ? `${km.toLocaleString('fr-FR')} km · ${active.year ?? '—'} · ${active.currency ?? ''}`
+    : 'Activez un véhicule (M2)';
+
+  const filteredMaint = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((m) => m.title.toLowerCase().includes(q));
+  }, [items, query]);
+
+  const filteredCarnet = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return carnet;
+    return carnet.filter((e) => e.title.toLowerCase().includes(q));
+  }, [carnet, query]);
 
   const cycleItem = (id: string) =>
     setItems((prev) => prev.map((x) => (x.id === id ? { ...x, status: nextStatus(x.status) } : x)));
-
-  const cycleAdmin = (id: string) =>
-    setAdmin((prev) =>
-      prev.map((x) =>
-        x.id === id ? { ...x, status: nextStatus(x.status) as AdminReminder['status'] } : x,
-      ),
-    );
-
-  const switchCountry = (c: string) => {
-    setAdminCountry(c);
-    setAdmin(adminRemindersForCountry(c));
-  };
 
   const addCarnet = () => {
     const title = newTitle.trim();
@@ -239,27 +195,19 @@ export default function EntretienScreen() {
       ...prev,
     ]);
     setNewTitle('');
+    // Clear search so the newly added row is visible immediately.
+    setQuery('');
   };
 
   const exportPayload = () => ({
-    vehicleLabel: active?.label ?? `${active?.make ?? 'Véhicule'} ${active?.model ?? ''}`.trim(),
+    vehicleLabel: active?.label ?? vehicleTitle,
     vin: active?.vin,
     odometerKm: km,
     entries: carnet,
     maintenanceDone: items.filter((i) => i.status === 'fait').map((i) => i.title),
   });
 
-  const exportCarnet = () => {
-    void shareCarnetText(exportPayload()).then((r) => setPdfMsg(r.message));
-  };
-
-  const exportHtml = () => {
-    void shareCarnetHtmlLite(exportPayload()).then((r) => setPdfMsg(r.message));
-  };
-
-  const exportPdf = () => {
-    void shareCarnetPdf(exportPayload()).then((r) => setPdfMsg(r.message));
-  };
+  const todayIso = new Date().toISOString().slice(0, 10);
 
   return (
     <>
@@ -267,193 +215,212 @@ export default function EntretienScreen() {
       <Screen
         variant="stack"
         title={t('moduleTitles.entretien')}
-        subtitle={`${t('moduleTitles.entretienSub')} · ${active?.label ?? '—'} · ${km.toLocaleString('fr-FR')} km`}
+        subtitle={t('moduleTitles.entretienSub')}
       >
         <StubBanner text="Carnet persisté + texte/HTML-lite + PDF LIVE avec attestation locale (hash) · signature serveur = option externe" />
 
-        <Card title="Maintenance automatique (km)">
-          <Text style={styles.meta}>
-            Vidange, freins, distribution, pneus — selon kilométrage. Touchez pour faire défiler le
-            statut.
-          </Text>
-          {overdue.length > 0 ? (
-            <View style={styles.alert}>
-              <Text style={styles.alertTxt}>
-                {overdue.length} entretien(s) à échéance ≤ {km.toLocaleString('fr-FR')} km
-              </Text>
-            </View>
-          ) : null}
-          {items.map((m) => (
-            <Pressable key={m.id} style={styles.row} onPress={() => cycleItem(m.id)}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{m.title}</Text>
-                <Text style={styles.meta}>
-                  Échéance {m.dueKm.toLocaleString('fr-FR')} km
-                  {m.dueDateIso ? ` · ${m.dueDateIso}` : ''}
-                  {m.dueKm <= km && m.status !== 'fait' ? ' · dépassé' : ''}
-                </Text>
-              </View>
-              <Text style={[styles.status, { color: statusColor(m.status) }]}>{m.status}</Text>
-            </Pressable>
-          ))}
-          <Text style={styles.meta}>Batterie (suivi mock) : {batteryV.toFixed(1)} V — OK</Text>
-        </Card>
+        <View style={styles.vehicleWrap}>
+          <CatalogProductCard
+            title={vehicleTitle}
+            priceLine={vehicleKeyInfo}
+            icon="car-outline"
+            photoTone={colors.mist}
+            fullWidth
+            accessibilityLabel={`Fiche véhicule ${vehicleTitle}`}
+          />
+        </View>
 
-        <Card title={`Rappels administratifs · ${adminCountry}`}>
-          <Text style={styles.meta}>
-            Plaques, assurance, contrôle technique / rego / inspection selon le pays.
+        <View style={styles.searchWrap}>
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Rechercher un entretien…"
+            placeholderTextColor={colors.muted}
+            style={styles.search}
+            autoCorrect={false}
+            autoCapitalize="none"
+            accessibilityLabel="Rechercher un entretien"
+          />
+        </View>
+
+        <Text style={styles.section}>Entretiens</Text>
+        {filteredMaint.length === 0 ? (
+          <Text style={styles.empty}>
+            {query.trim() && items.length > 0
+              ? `Aucun entretien pour « ${query.trim()} ».`
+              : 'Aucun entretien.'}
           </Text>
-          <View style={styles.regionRow}>
-            {(['FR', 'CA', 'US', 'AU', 'DE'] as const).map((c) => (
-              <Pressable
-                key={c}
-                style={[styles.chip, adminCountry === c && styles.chipOn]}
-                onPress={() => switchCountry(c)}
-              >
-                <Text style={[styles.chipTxt, adminCountry === c && styles.chipTxtOn]}>{c}</Text>
-              </Pressable>
+        ) : (
+          <View style={styles.grid}>
+            {filteredMaint.map((m) => {
+              const overdue = maintOverdue(m, km, todayIso);
+              // Always show status so tap-to-cycle has readable feedback; dépassé is additive.
+              const keyLine = overdue
+                ? `${maintScheduleLine(m)} · ${statusLabel(m.status)} · dépassé`
+                : `${maintScheduleLine(m)} · ${statusLabel(m.status)}`;
+              return (
+                <CatalogProductCard
+                  key={m.id}
+                  title={m.title}
+                  priceLine={keyLine}
+                  icon={maintIcon(m.title)}
+                  photoTone={maintTone(m.status)}
+                  onPress={() => cycleItem(m.id)}
+                  accessibilityLabel={`${m.title}, ${keyLine}`}
+                />
+              );
+            })}
+          </View>
+        )}
+
+        <Text style={styles.section}>Carnet</Text>
+        <TextInput
+          value={newTitle}
+          onChangeText={setNewTitle}
+          placeholder="Ajouter une intervention…"
+          placeholderTextColor={colors.muted}
+          style={styles.input}
+          accessibilityLabel="Ajouter une intervention"
+        />
+        <Pressable style={styles.btnDark} onPress={addCarnet} accessibilityRole="button">
+          <Text style={styles.btnTxt}>Ajouter</Text>
+        </Pressable>
+
+        {filteredCarnet.length === 0 ? (
+          <Text style={styles.empty}>
+            {carnet.length === 0
+              ? 'Carnet vide.'
+              : query.trim()
+                ? `Aucune entrée pour « ${query.trim()} ».`
+                : 'Carnet vide.'}
+          </Text>
+        ) : (
+          <View style={styles.grid}>
+            {filteredCarnet.map((e) => (
+              <CatalogProductCard
+                key={e.id}
+                title={e.title}
+                priceLine={
+                  e.cost != null
+                    ? `${e.cost} ${e.currency ?? ''}`.trim()
+                    : `${e.km.toLocaleString('fr-FR')} km`
+                }
+                icon="receipt-outline"
+                photoTone={colors.garageSoft}
+              />
             ))}
           </View>
-          {admin.map((r) => (
-            <Pressable key={r.id} style={styles.row} onPress={() => cycleAdmin(r.id)}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{r.title}</Text>
-                <Text style={styles.meta}>
-                  {r.region} · échéance {r.dueDateIso}
-                </Text>
-              </View>
-              <Text style={[styles.status, { color: statusColor(r.status) }]}>{r.status}</Text>
-            </Pressable>
-          ))}
-        </Card>
+        )}
 
-        <Card title="Carnet numérique">
-          <Text style={styles.meta}>
-            Historique réparations / factures — persisté AsyncStorage par véhicule (
-            {items.filter((i) => i.status === 'fait').length} entretiens « fait »).
-          </Text>
-          <TextInput
-            value={newTitle}
-            onChangeText={setNewTitle}
-            placeholder="Ajouter une intervention…"
-            placeholderTextColor={colors.muted}
-            style={styles.input}
-          />
-          <Pressable style={styles.btnDark} onPress={addCarnet}>
-            <Text style={styles.exportTxt}>Ajouter au carnet</Text>
-          </Pressable>
-          {carnet.length === 0 ? (
-            <Text style={styles.meta}>Carnet vide — ajoutez une intervention ci-dessus.</Text>
-          ) : (
-            carnet.map((e) => (
-              <View key={e.id} style={styles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.name}>{e.title}</Text>
-                  <Text style={styles.meta}>
-                    {e.dateIso} · {e.km.toLocaleString('fr-FR')} km
-                    {e.invoiceRef ? ` · ${e.invoiceRef}` : ''}
-                  </Text>
-                </View>
-                {e.cost != null ? (
-                  <Text style={styles.cost}>
-                    {e.cost} {e.currency}
-                  </Text>
-                ) : (
-                  <Text style={styles.meta}>—</Text>
-                )}
-              </View>
-            ))
-          )}
-          <Pressable style={styles.export} onPress={exportCarnet}>
-            <Text style={styles.exportTxt}>Partager carnet (texte)</Text>
-          </Pressable>
-          <Pressable style={styles.exportAlt} onPress={exportHtml}>
-            <Text style={styles.exportTxt}>Partager HTML-lite (imprimable)</Text>
-          </Pressable>
-          <Pressable style={styles.exportPdf} onPress={exportPdf}>
-            <Text style={styles.exportTxt}>Générer PDF (attestation locale)</Text>
-          </Pressable>
-          <Text style={styles.meta}>
-            PDF réel via expo-print + hash d’intégrité local — signature serveur juridique =
-            option externe.
-          </Text>
-          {pdfMsg ? <Text style={styles.pdfMsg}>{pdfMsg}</Text> : null}
-        </Card>
+        <Text style={styles.meta}>
+          Historique réparations / factures — persisté AsyncStorage par véhicule (
+          {items.filter((i) => i.status === 'fait').length} entretiens « fait »). PDF réel via
+          expo-print + hash local — signature serveur = option externe.
+        </Text>
+        <Pressable
+          style={styles.btnDark}
+          onPress={() => void shareCarnetText(exportPayload()).then((r) => setPdfMsg(r.message))}
+        >
+          <Text style={styles.btnTxt}>Partager (texte)</Text>
+        </Pressable>
+        <Pressable
+          style={styles.btnSignal}
+          onPress={() => void shareCarnetHtmlLite(exportPayload()).then((r) => setPdfMsg(r.message))}
+        >
+          <Text style={styles.btnTxt}>Partager HTML</Text>
+        </Pressable>
+        <Pressable
+          style={styles.btnGarage}
+          onPress={() => void shareCarnetPdf(exportPayload()).then((r) => setPdfMsg(r.message))}
+        >
+          <Text style={styles.btnTxt}>PDF</Text>
+        </Pressable>
+        {pdfMsg ? <Text style={styles.pdfMsg}>{pdfMsg}</Text> : null}
       </Screen>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
+  vehicleWrap: {
+    alignItems: 'stretch',
   },
-  name: { fontWeight: '700', color: colors.ink },
-  meta: { color: colors.muted, fontSize: 12 },
-  status: { fontWeight: '800', textTransform: 'uppercase', fontSize: 11 },
-  cost: { fontWeight: '800', color: colors.signal },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 10,
-    padding: 10,
-    backgroundColor: colors.mist,
+  searchWrap: {
+    backgroundColor: colors.white,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  search: {
+    fontSize: 18,
+    fontWeight: '700',
     color: colors.ink,
-    marginTop: 6,
+    padding: 0,
+    minHeight: 28,
+  },
+  section: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: colors.ink,
+    marginTop: 4,
+  },
+  empty: {
+    color: colors.ink,
+    fontSize: 17,
+    fontWeight: '700',
+    lineHeight: 24,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    justifyContent: 'space-between',
+  },
+  input: {
+    borderWidth: 2,
+    borderColor: colors.ink,
+    borderRadius: 12,
+    padding: 14,
+    backgroundColor: colors.white,
+    color: colors.ink,
+    fontSize: 17,
+    fontWeight: '700',
   },
   btnDark: {
     backgroundColor: colors.asphalt,
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  export: {
-    backgroundColor: colors.asphalt,
     borderRadius: 12,
-    padding: 14,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 8,
   },
-  exportAlt: {
+  btnSignal: {
     backgroundColor: colors.signal,
     borderRadius: 12,
-    padding: 14,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 8,
   },
-  exportPdf: {
+  btnGarage: {
     backgroundColor: colors.garage,
     borderRadius: 12,
-    padding: 14,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 8,
   },
-  exportTxt: { color: colors.white, fontWeight: '800' },
-  pdfMsg: { color: colors.warn, fontWeight: '700', fontSize: 12, marginTop: 8 },
-  alert: {
-    backgroundColor: colors.warnSoft,
-    borderRadius: 8,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: colors.warn,
-    marginBottom: 4,
+  btnTxt: {
+    color: colors.white,
+    fontWeight: '900',
+    fontSize: 17,
   },
-  alertTxt: { color: colors.ink, fontWeight: '700', fontSize: 12 },
-  regionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginVertical: 6 },
-  chip: {
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: colors.mist,
+  pdfMsg: {
+    color: colors.warn,
+    fontWeight: '800',
+    fontSize: 15,
+    lineHeight: 22,
   },
-  chipOn: { backgroundColor: colors.asphalt, borderColor: colors.asphalt },
-  chipTxt: { fontWeight: '700', color: colors.slate, fontSize: 12 },
-  chipTxtOn: { color: colors.white },
+  meta: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
 });
