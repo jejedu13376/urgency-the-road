@@ -90,6 +90,10 @@ service cloud.firestore {
         && request.resource.data.subscriptionActive == false
         && (!('referrerDiscountActive' in request.resource.data)
           || request.resource.data.referrerDiscountActive == false)
+        && (!('referrerDiscountStartedAt' in request.resource.data)
+          || request.resource.data.referrerDiscountStartedAt == null)
+        && (!('referrerDiscountEndsAt' in request.resource.data)
+          || request.resource.data.referrerDiscountEndsAt == null)
         && (!('referralRewardCredits' in request.resource.data)
           || request.resource.data.referralRewardCredits == 0)
         && (!('successfulReferralCount' in request.resource.data)

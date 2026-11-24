@@ -242,10 +242,11 @@ function mergeRewardOnClaim(
   eventIds: string[],
   nowIso: string,
 ): ReferralRewardState {
-  const claimCount = eventIds.length;
-  if (claimCount <= 0) return prev;
   const prevIds = new Set(prev.rewardedEventIds ?? []);
-  for (const id of eventIds) prevIds.add(id);
+  const freshIds = eventIds.filter((id) => !prevIds.has(id));
+  if (freshIds.length <= 0) return prev;
+  for (const id of freshIds) prevIds.add(id);
+  const claimCount = freshIds.length;
   const credits = prev.referralRewardCredits + claimCount * REFERRAL_SIGNUP_REWARD_CREDITS;
   const successfulReferralCount = prev.successfulReferralCount + claimCount;
   // Extend / (re)start the 3-month $12 window from now for each claim batch.
