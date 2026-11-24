@@ -1,6 +1,7 @@
 /**
  * Self-contained Leaflet map HTML for WebView.
- * Right-side icon rail: Roads · Satellite · Terrain · Traffic · Transit · 3D · AQI · Street View.
+ * Bottom-right icon rail: Roads · Satellite · Terrain · Traffic · Transit · 3D · AQI ·
+ * Street View · Incident report (UR-148 — restored from mid-rail after #56).
  * Extends Esri/#47 basemap work (Esri imagery + Carto/OSM roads) with Terrain + overlays.
  * Vehicle DivIcon = LIVE GPS — not a canned polyline demo.
  */
@@ -135,6 +136,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     --pad-top:0px;--pad-right:0px;--pad-bottom:0px;--pad-left:0px;
     --ink:#101820;--slate:#2C3A47;--signal:#C45C26;--garage:#1F6B4A;--paper:#F7F4EF;--muted:#6B7785;
   }
+  /* Do not give #map a z-index — that traps Leaflet panes under sibling #mb3d (Bugbot). */
   html,body,#map{margin:0;padding:0;height:100%;width:100%;background:#1B2430;overflow:hidden}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   .hud{
@@ -197,14 +199,19 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     }
     .eta-bar .eta-dist{opacity:.72}
   }
-  /* Right-side map control rail — icon FABs, rounded cards, light shadows. */
+  /* Bottom-right map control rail — full set above SOS (pad-bottom clearance). */
   .map-rail{
     position:absolute;z-index:1100;
     right:calc(10px + var(--pad-right));
-    top:50%;
-    transform:translateY(-42%);
-    display:flex;flex-direction:column;align-items:flex-end;gap:10px;
+    bottom:calc(14px + var(--pad-bottom));
+    top:auto;
+    transform:none;
+    display:flex;flex-direction:column;align-items:flex-end;gap:8px;
     pointer-events:none;
+    max-height:min(72vh,560px);
+    overflow-y:auto;
+    overflow-x:hidden;
+    -webkit-overflow-scrolling:touch;
   }
   .map-rail-card{
     pointer-events:auto;
@@ -233,6 +240,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   .map-fab:disabled{opacity:.38}
   .map-fab.locked{color:var(--muted)}
   .map-fab[data-act="streetview"]{color:var(--ink)}
+  .map-fab[data-act="report"]{color:#A61B1B}
   .map-rail-hint{
     pointer-events:none;
     font:600 9px/1 system-ui,sans-serif;letter-spacing:.04em;text-transform:uppercase;
@@ -285,12 +293,15 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     filter:drop-shadow(0 2px 4px rgba(16,24,32,.4));
   }
   .draft-pin svg{width:28px;height:36px;display:block}
-  /* Google Maps-style right bubble — quick report picks only (no form). */
+  /* Incident bubble — anchored bottom-right, left of the control rail. */
   .report-bubble{
     display:none;position:absolute;z-index:1200;
     right:calc(64px + var(--pad-right));
-    top:50%;transform:translateY(-42%);
+    bottom:calc(14px + var(--pad-bottom));
+    top:auto;transform:none;
     width:min(208px,46vw);
+    max-height:min(70vh,520px);
+    overflow-y:auto;
     pointer-events:auto;
     background:rgba(255,255,255,.98);
     border-radius:18px;
@@ -398,7 +409,10 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14c2-1 3-1 5 0s3 1 5 0 3-1 5 0"/><path d="M4 10c2-1 3-1 5 0s3 1 5 0 3-1 5 0"/><path d="M4 18c2-1 3-1 5 0s3 1 5 0 3-1 5 0"/></svg>
     </button>
   </div>
-  <div class="map-rail-card">
+  <div class="map-rail-card" aria-label="Actions">
+    <button type="button" class="map-fab" data-act="report" title="Signaler un incident" aria-label="Signaler un incident">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 16H3L12 3z"/><path d="M12 10v4"/><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"/></svg>
+    </button>
     <button type="button" class="map-fab" data-act="streetview" title="Street View (pin)" aria-label="Street View">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="3"/><path d="M6 20c1.5-4 4-6 6-6s4.5 2 6 6"/><path d="M12 10v3"/></svg>
     </button>
@@ -1727,6 +1741,10 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     else if (tog === 'traffic') setTraffic(!trafficOn);
     else if (tog === 'buildings3d') setBuildings3d(!buildingsOn);
     else if (tog === 'aqi') setAqiOverlay(!aqiOn);
+    else if (act === 'report') {
+      var c = map.getCenter();
+      openReportBubble(c || L.latLng(origin.lat, origin.lon));
+    }
     else if (act === 'streetview') {
       var focus = draftLL || dest || origin;
       post({ type: 'streetview', lat: focus.lat, lon: focus.lon });
