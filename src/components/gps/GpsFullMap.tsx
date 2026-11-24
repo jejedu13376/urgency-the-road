@@ -25,11 +25,13 @@ import {
   watchDevicePosition,
 } from '../../services/geo/deviceLocation';
 import {
-  fetchPlacesAutocomplete,
+  fetchAddressSuggestions,
   isGooglePlacesConfigured,
+  type AddressSuggestion,
+} from '../../services/geo/addressSuggest';
+import {
   newPlacesSessionToken,
   resolvePlaceCoords,
-  type PlacesSuggestion,
 } from '../../services/geo/googlePlacesAutocomplete';
 import {
   fetchPlaceDetailsWithReviews,
@@ -321,16 +323,17 @@ export function GpsFullMap() {
   const waypointsRef = useRef<GpsWaypoint[]>([]);
   const [stopSearchOpen, setStopSearchOpen] = useState(false);
   const [stopQ, setStopQ] = useState('');
-  const [stopHits, setStopHits] = useState<PlacesSuggestion[]>([]);
+  const [stopHits, setStopHits] = useState<AddressSuggestion[]>([]);
   const [stopBusy, setStopBusy] = useState(false);
   const [modeLabel, setModeLabel] = useState<GpsVehicleMode>('voiture');
   const [gpsOk, setGpsOk] = useState(false);
   const [searchQ, setSearchQ] = useState('');
-  const [searchHits, setSearchHits] = useState<PlacesSuggestion[]>([]);
+  const [searchHits, setSearchHits] = useState<AddressSuggestion[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const placesSessionRef = useRef(newPlacesSessionToken());
   const searchReqIdRef = useRef(0);
+  const stopReqIdRef = useRef(0);
   const skipSuggestRef = useRef(false);
   const placesConfigured = isGooglePlacesConfigured();
   const placeReviewsReqIdRef = useRef(0);
@@ -1541,7 +1544,7 @@ export function GpsFullMap() {
     [commitDestination],
   );
 
-  /** Debounced live Google Places suggestions while typing. */
+  /** Debounced live address suggestions (Places when keyed, else Open-Meteo/Photon). */
   useEffect(() => {
     if (skipSuggestRef.current) {
       skipSuggestRef.current = false;
@@ -1554,7 +1557,7 @@ export function GpsFullMap() {
     const timer = setTimeout(() => {
       void (async () => {
         if (reqId !== searchReqIdRef.current) return;
-        if (!placesConfigured || q.length < 2) {
+        if (q.length < 2) {
           setSearchOpen(false);
           setSearchHits([]);
           setSearchBusy(false);
@@ -1562,7 +1565,7 @@ export function GpsFullMap() {
         }
         setSearchBusy(true);
         try {
-          const res = await fetchPlacesAutocomplete(q, placesSessionRef.current, {
+          const res = await fetchAddressSuggestions(q, placesSessionRef.current, {
             limit: 6,
           });
           if (reqId !== searchReqIdRef.current) return;
@@ -1579,9 +1582,33 @@ export function GpsFullMap() {
     }, 320);
 
     return () => clearTimeout(timer);
-  }, [searchQ, placesConfigured, abandonPendingPlacePick]);
+  }, [searchQ, abandonPendingPlacePick]);
 
-  /** Explicit OK: Places resolve if one hit, else Open-Meteo/Photon fallback. */
+  /** Apply one address hit — Places Details when placeId, else geocode coords. */
+  const applyAddressHit = useCallback(
+    async (hit: AddressSuggestion): Promise<'ok' | 'error' | 'cancelled'> => {
+      if (
+        hit.placeId &&
+        placesConfigured &&
+        typeof hit.lat !== 'number' &&
+        typeof hit.lon !== 'number'
+      ) {
+        return applySelectedPlace(hit.placeId, hit.label);
+      }
+      if (typeof hit.lat === 'number' && typeof hit.lon === 'number') {
+        commitDestination(hit.lat, hit.lon, hit.label, hit.source);
+        return 'ok';
+      }
+      if (hit.placeId) {
+        return applySelectedPlace(hit.placeId, hit.label);
+      }
+      setHudNote('Adresse incomplete — pas de coordonnées');
+      return 'error';
+    },
+    [placesConfigured, applySelectedPlace, commitDestination],
+  );
+
+  /** Explicit OK: one hit → go; several → keep list open. */
   const runSearch = useCallback(async () => {
     const q = searchQ.trim();
     if (!q) return;
@@ -1591,63 +1618,106 @@ export function GpsFullMap() {
     setSearchBusy(true);
     setSearchOpen(true);
     try {
-      if (placesConfigured) {
-        const res = await fetchPlacesAutocomplete(q, placesSessionRef.current, {
-          limit: 6,
-        });
-        setSearchHits(res.suggestions);
-        if (res.suggestions.length === 1) {
-          const only = res.suggestions[0];
-          const outcome = await applySelectedPlace(only.placeId, only.label);
-          if (outcome === 'error') skipSuggestRef.current = false;
-          return;
-        }
-        if (!res.ok) setHudNote(res.error ?? 'Adresse introuvable (Places)');
-        else setHudNote(`${res.suggestions.length} suggestion(s) · google_places`);
+      const res = await fetchAddressSuggestions(q, placesSessionRef.current, {
+        limit: 6,
+      });
+      setSearchHits(res.suggestions);
+      if (res.suggestions.length === 1) {
+        const outcome = await applyAddressHit(res.suggestions[0]);
+        if (outcome === 'error') skipSuggestRef.current = false;
         return;
       }
-
-      setPlaceReviewsOpen(true);
-      setPlaceReviewsStatus(
-        'Avis Google indisponibles — EXPO_PUBLIC_GOOGLE_PLACES_API_KEY manquante',
-      );
-
-      const res = await geocodePlace(q, 6);
-      if (res.ok && res.hits[0]) {
-        const hit = res.hits[0];
-        commitDestination(hit.lat, hit.lon, hit.label, res.source);
+      if (!res.ok) {
+        setHudNote(res.error ?? 'Adresse introuvable');
       } else {
-        setSearchHits([]);
-        setHudNote(
-          res.error ??
-            'EXPO_PUBLIC_GOOGLE_PLACES_API_KEY manquant — géocode fallback KO',
-        );
+        setHudNote(`${res.suggestions.length} adresse(s) · ${res.source}`);
       }
     } finally {
       setSearchBusy(false);
     }
-  }, [
-    searchQ,
-    placesConfigured,
-    commitDestination,
-    applySelectedPlace,
-    abandonPendingPlacePick,
-  ]);
+  }, [searchQ, applyAddressHit, abandonPendingPlacePick]);
 
   const pickSearchHit = useCallback(
-    (hit: PlacesSuggestion) => {
+    (hit: AddressSuggestion) => {
       void (async () => {
         invalidateInFlightSuggest();
         setSearchBusy(true);
         try {
-          const outcome = await applySelectedPlace(hit.placeId, hit.label);
+          const outcome = await applyAddressHit(hit);
           if (outcome === 'error') skipSuggestRef.current = false;
         } finally {
           setSearchBusy(false);
         }
       })();
     },
-    [invalidateInFlightSuggest, applySelectedPlace],
+    [invalidateInFlightSuggest, applyAddressHit],
+  );
+
+  /** Debounced étape address suggestions (same Places / geocode path). */
+  useEffect(() => {
+    if (!stopSearchOpen) return;
+    const q = stopQ.trim();
+    const reqId = ++stopReqIdRef.current;
+    const timer = setTimeout(() => {
+      void (async () => {
+        if (reqId !== stopReqIdRef.current) return;
+        if (q.length < 2) {
+          setStopHits([]);
+          setStopBusy(false);
+          return;
+        }
+        setStopBusy(true);
+        try {
+          const r = await fetchAddressSuggestions(q, placesSessionRef.current, {
+            limit: 6,
+          });
+          if (reqId !== stopReqIdRef.current) return;
+          setStopHits(r.suggestions);
+        } finally {
+          if (reqId === stopReqIdRef.current) setStopBusy(false);
+        }
+      })();
+    }, 320);
+    return () => clearTimeout(timer);
+  }, [stopQ, stopSearchOpen]);
+
+  /** Resolve an address hit into a waypoint and replan. */
+  const commitStopFromHit = useCallback(
+    async (hit: AddressSuggestion): Promise<boolean> => {
+      let lat = hit.lat;
+      let lon = hit.lon;
+      let label = hit.label;
+
+      if (
+        (typeof lat !== 'number' || typeof lon !== 'number') &&
+        hit.placeId
+      ) {
+        const res = await resolvePlaceCoords(hit.placeId, placesSessionRef.current);
+        if (!res.ok || res.lat == null || res.lon == null) return false;
+        lat = res.lat;
+        lon = res.lon;
+        label = res.label || hit.label;
+        placesSessionRef.current = newPlacesSessionToken();
+      }
+
+      if (typeof lat !== 'number' || typeof lon !== 'number') return false;
+
+      const wp: GpsWaypoint = {
+        id: `${lat.toFixed(5)},${lon.toFixed(5)}-${Date.now()}`,
+        lat,
+        lon,
+        label: label || hit.label,
+      };
+      const next = [...waypointsRef.current, wp].slice(0, 6);
+      waypointsRef.current = next;
+      setWaypoints(next);
+      setStopSearchOpen(false);
+      setStopQ('');
+      setStopHits([]);
+      void replanCurrentDestination({ waypoints: next });
+      return true;
+    },
+    [replanCurrentDestination],
   );
 
   const destRouteStatus: GpsRouteStatus = !lastRoute
@@ -1784,18 +1854,20 @@ export function GpsFullMap() {
           <TextInput
             value={searchQ}
             onChangeText={setSearchQ}
-            placeholder={
-              placesConfigured ? 'Adresse / lieu…' : 'Adresse… (clé Places manquante)'
-            }
+            placeholder="Tapez une adresse…"
             placeholderTextColor={colors.muted}
             style={styles.searchInput}
             returnKeyType="search"
             onSubmitEditing={() => void runSearch()}
-            accessibilityLabel="Recherche adresse autocomplete"
+            accessibilityLabel="Recherche adresse — suggestions en direct"
             autoCorrect={false}
             autoCapitalize="none"
           />
-          <Pressable style={styles.searchBtn} onPress={() => void runSearch()}>
+          <Pressable
+            style={styles.searchBtn}
+            onPress={() => void runSearch()}
+            accessibilityLabel="Valider la recherche d’adresse"
+          >
             {searchBusy ? (
               <ActivityIndicator color={colors.white} size="small" />
             ) : (
@@ -1807,15 +1879,21 @@ export function GpsFullMap() {
           <FlatList
             keyboardShouldPersistTaps="handled"
             data={searchHits}
-            keyExtractor={(item) => item.placeId}
+            keyExtractor={(item) => item.id}
             style={styles.hits}
+            accessibilityLabel="Suggestions d’adresse"
             renderItem={({ item }) => (
-              <Pressable style={styles.hitRow} onPress={() => pickSearchHit(item)}>
-                <Text style={styles.hitTxt} numberOfLines={1}>
+              <Pressable
+                style={styles.hitRow}
+                onPress={() => pickSearchHit(item)}
+                accessibilityRole="button"
+                accessibilityLabel={`Adresse ${item.label}`}
+              >
+                <Text style={styles.hitTxt} numberOfLines={2}>
                   {item.mainText || item.label}
                 </Text>
                 {item.secondaryText ? (
-                  <Text style={styles.hitSub} numberOfLines={1}>
+                  <Text style={styles.hitSub} numberOfLines={2}>
                     {item.secondaryText}
                   </Text>
                 ) : null}
@@ -2144,28 +2222,14 @@ export function GpsFullMap() {
           <View style={styles.searchRow}>
             <TextInput
               value={stopQ}
-              onChangeText={(t) => {
-                setStopQ(t);
-                if (!placesConfigured || t.trim().length < 2) {
-                  setStopHits([]);
-                  return;
-                }
-                void (async () => {
-                  setStopBusy(true);
-                  const r = await fetchPlacesAutocomplete(t.trim(), placesSessionRef.current, {
-                    limit: 6,
-                  });
-                  setStopBusy(false);
-                  if (r.ok) setStopHits(r.suggestions);
-                })();
-              }}
-              placeholder={
-                placesConfigured ? 'Adresse étape…' : 'Adresse étape… (clé Places?)'
-              }
+              onChangeText={setStopQ}
+              placeholder="Tapez une adresse d’étape…"
               placeholderTextColor={colors.muted}
               style={styles.searchInput}
               autoFocus
-              accessibilityLabel="Recherche étape"
+              accessibilityLabel="Recherche adresse étape — suggestions en direct"
+              autoCorrect={false}
+              autoCapitalize="none"
             />
             <Pressable
               style={styles.searchBtn}
@@ -2174,48 +2238,27 @@ export function GpsFullMap() {
                   const q = stopQ.trim();
                   if (!q) return;
                   setStopBusy(true);
-                  if (placesConfigured && stopHits[0]) {
-                    const hit = stopHits[0];
-                    const res = await resolvePlaceCoords(hit.placeId, placesSessionRef.current);
-                    setStopBusy(false);
-                    if (!res.ok || res.lat == null || res.lon == null) {
-                      setHudNote(res.error ?? 'Étape KO');
+                  try {
+                    let hit = stopHits[0];
+                    if (!hit) {
+                      const r = await fetchAddressSuggestions(q, placesSessionRef.current, {
+                        limit: 6,
+                      });
+                      setStopHits(r.suggestions);
+                      hit = r.suggestions[0];
+                    }
+                    if (!hit) {
+                      setHudNote('Étape introuvable');
                       return;
                     }
-                    const wp: GpsWaypoint = {
-                      id: `${res.lat.toFixed(5)},${res.lon.toFixed(5)}-${Date.now()}`,
-                      lat: res.lat,
-                      lon: res.lon,
-                      label: res.label || hit.label,
-                    };
-                    const next = [...waypointsRef.current, wp].slice(0, 6);
-                    waypointsRef.current = next;
-                    setWaypoints(next);
-                    setStopSearchOpen(false);
-                    placesSessionRef.current = newPlacesSessionToken();
-                    void replanCurrentDestination({ waypoints: next });
-                    return;
+                    const ok = await commitStopFromHit(hit);
+                    if (!ok) setHudNote('Étape KO');
+                  } finally {
+                    setStopBusy(false);
                   }
-                  const geo = await geocodePlace(q);
-                  setStopBusy(false);
-                  const hit = geo.ok ? geo.hits[0] : null;
-                  if (!hit) {
-                    setHudNote(geo.error ?? 'Étape introuvable');
-                    return;
-                  }
-                  const wp: GpsWaypoint = {
-                    id: `${hit.lat.toFixed(5)},${hit.lon.toFixed(5)}-${Date.now()}`,
-                    lat: hit.lat,
-                    lon: hit.lon,
-                    label: hit.label || q,
-                  };
-                  const next = [...waypointsRef.current, wp].slice(0, 6);
-                  waypointsRef.current = next;
-                  setWaypoints(next);
-                  setStopSearchOpen(false);
-                  void replanCurrentDestination({ waypoints: next });
                 })();
               }}
+              accessibilityLabel="Valider l’adresse d’étape"
             >
               {stopBusy ? (
                 <ActivityIndicator color={colors.white} size="small" />
@@ -2228,43 +2271,31 @@ export function GpsFullMap() {
             <FlatList
               keyboardShouldPersistTaps="handled"
               data={stopHits}
-              keyExtractor={(item) => item.placeId}
+              keyExtractor={(item) => item.id}
               style={styles.hits}
+              accessibilityLabel="Suggestions d’adresse pour étape"
               renderItem={({ item }) => (
                 <Pressable
                   style={styles.hitRow}
                   onPress={() => {
                     void (async () => {
                       setStopBusy(true);
-                      const res = await resolvePlaceCoords(
-                        item.placeId,
-                        placesSessionRef.current,
-                      );
-                      setStopBusy(false);
-                      if (!res.ok || res.lat == null || res.lon == null) {
-                        setHudNote(res.error ?? 'Étape KO');
-                        return;
+                      try {
+                        const ok = await commitStopFromHit(item);
+                        if (!ok) setHudNote('Étape KO');
+                      } finally {
+                        setStopBusy(false);
                       }
-                      const wp: GpsWaypoint = {
-                        id: `${res.lat.toFixed(5)},${res.lon.toFixed(5)}-${Date.now()}`,
-                        lat: res.lat,
-                        lon: res.lon,
-                        label: res.label || item.label,
-                      };
-                      const next = [...waypointsRef.current, wp].slice(0, 6);
-                      waypointsRef.current = next;
-                      setWaypoints(next);
-                      setStopSearchOpen(false);
-                      placesSessionRef.current = newPlacesSessionToken();
-                      void replanCurrentDestination({ waypoints: next });
                     })();
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Étape ${item.label}`}
                 >
-                  <Text style={styles.hitTxt} numberOfLines={1}>
+                  <Text style={styles.hitTxt} numberOfLines={2}>
                     {item.mainText || item.label}
                   </Text>
                   {item.secondaryText ? (
-                    <Text style={styles.hitSub} numberOfLines={1}>
+                    <Text style={styles.hitSub} numberOfLines={2}>
                       {item.secondaryText}
                     </Text>
                   ) : null}
