@@ -29,7 +29,7 @@ export const FATIGUE_WARN_SCORE = 55;
 
 /**
  * Score from driving time + breaks, blended with regional HOS compliance.
- * - Base: driving toward comfort 4h + break credits.
+ * - Base: driving toward comfort 2h + break credits.
  * - HOS near (≥85%) → at least warn; HOS over → critical / mustStop.
  */
 export function computeFatigueScore(opts: {

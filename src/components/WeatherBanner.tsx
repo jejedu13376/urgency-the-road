@@ -74,6 +74,8 @@ export function WeatherBanner() {
         if (!cancelled) {
           setW({
             tempC: 8,
+            weatherCode: 0,
+            precipKind: 'none',
             road: 'ouvertes',
             updatedAt: new Date().toISOString(),
             source: 'fallback',

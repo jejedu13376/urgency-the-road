@@ -131,3 +131,7 @@ Near-limit warning when any tracked ratio ≥ **85%** of the regional cap; over-
 This document and the in-app fatigue score are **safety aids**, not a certified ELD, ROADS, or legal compliance system. Always verify against the current official text and carrier policies.
 
 **Live personal display** (`hosLive.ts` + `HosLivePanel`): while GPS motion accumulates, UI shows **legal hours left today** (`maxDrive − drivingSec`) and **next mandatory stop** clock (sooner of break-due vs max-drive), updating as the driver moves. Country chips force `CA` / `US` / `EU` / `AU`.
+
+**Comfort break (app):** motion-only reminder every **2 h** (`drivingBreak.ts` TTS FR→EN→ES) — complementary to regional HOS `breakAfterDriveSec` (CA/US 8 h, EU 4.5 h, AU 5.25 h).
+
+**Route weather:** `fetchWeatherAlongRoute` samples the Valhalla polyline (Open-Meteo) and raises pluie/neige overlays via `truckerRouteAdvisories`.

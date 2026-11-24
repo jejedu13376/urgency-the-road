@@ -3,7 +3,12 @@
  * Honest about missing live traffic / DOT closure feeds.
  */
 import { haversineKm } from '../geo/deviceLocation';
-import { fetchWeather, type WeatherSnapshot } from '../weather/openMeteo';
+import {
+  fetchWeather,
+  fetchWeatherAlongRoute,
+  type RouteWeatherBrief,
+  type WeatherSnapshot,
+} from '../weather/openMeteo';
 import {
   bridgePassForTruck,
   fetchNearbyBridgeClearances,
@@ -43,6 +48,8 @@ export type RouteAlert = {
 export type TruckerRouteBrief = {
   alerts: RouteAlert[];
   weather: WeatherSnapshot | null;
+  /** Rain/snow samples along the active polyline (Open-Meteo). */
+  routeWeather: RouteWeatherBrief | null;
   fuelNearby: { id: string; name: string; lat: number; lon: number; distanceKm: number }[];
   restNearby: { id: string; name: string; lat: number; lon: number; distanceKm: number }[];
   bridgesNoPass: BridgeClearance[];
@@ -90,29 +97,46 @@ function profileAlerts(prefs: GpsNavPrefs): RouteAlert[] {
 
 function weatherAlerts(w: WeatherSnapshot | null, lat: number, lon: number): RouteAlert[] {
   if (!w) return [];
-  if (w.road === 'glacees') {
+  if (w.precipKind === 'storm' || w.road === 'fermees') {
     return [
       {
-        id: 'wx-ice',
-        kind: 'weather',
-        title: 'Routes glacées',
-        detail: `${w.label} · ${w.tempC}°C — conditions glissantes (Open-Meteo).`,
-        voice: `Attention, routes glacées. Température ${w.tempC} degrés.`,
+        id: 'wx-closed',
+        kind: 'closure',
+        title: 'Conditions sévères',
+        detail: `${w.label} · orage/extrême — pas de feed fermeture DOT live.`,
+        voice: 'Attention, conditions météo sévères sur le parcours.',
         severity: 'critical',
         lat,
         lon,
       },
     ];
   }
-  if (w.road === 'fermees') {
+  if (w.precipKind === 'ice' || w.precipKind === 'snow' || w.road === 'glacees') {
     return [
       {
-        id: 'wx-closed',
-        kind: 'closure',
-        title: 'Conditions sévères',
-        detail: `${w.label} · code orage/extrême — pas de feed fermeture DOT live.`,
-        voice: 'Attention, conditions météo sévères sur le parcours.',
+        id: 'wx-ice',
+        kind: 'weather',
+        title: w.precipKind === 'snow' ? 'Neige sur le trajet' : 'Routes glacées',
+        detail: `${w.label} · ${w.tempC}°C — ${w.precipKind} (Open-Meteo).`,
+        voice:
+          w.precipKind === 'snow'
+            ? `Attention, neige sur le parcours. Température ${w.tempC} degrés.`
+            : `Attention, routes glacées. Température ${w.tempC} degrés.`,
         severity: 'critical',
+        lat,
+        lon,
+      },
+    ];
+  }
+  if (w.precipKind === 'rain' || w.precipKind === 'mixed') {
+    return [
+      {
+        id: 'wx-rain',
+        kind: 'weather',
+        title: w.precipKind === 'mixed' ? 'Pluie / neige' : 'Pluie sur le trajet',
+        detail: `${w.label} · ${w.tempC}°C — chaussée mouillée (Open-Meteo).`,
+        voice: 'Attention, pluie sur le parcours. Réduisez la vitesse.',
+        severity: 'warn',
         lat,
         lon,
       },
@@ -129,6 +153,62 @@ function weatherAlerts(w: WeatherSnapshot | null, lat: number, lon: number): Rou
       lon,
     },
   ];
+}
+
+/** Alerts from polyline-sampled rain/snow (ahead on route, not only GPS point). */
+function routeWeatherAlerts(brief: RouteWeatherBrief | null): RouteAlert[] {
+  if (!brief?.samples.length) return [];
+  const out: RouteAlert[] = [];
+  const snow = brief.samples.find(
+    (s) =>
+      s.weather.precipKind === 'snow' ||
+      s.weather.precipKind === 'ice' ||
+      s.weather.precipKind === 'mixed',
+  );
+  const rain = brief.samples.find(
+    (s) => s.weather.precipKind === 'rain' || s.weather.precipKind === 'mixed',
+  );
+  const storm = brief.samples.find((s) => s.weather.precipKind === 'storm');
+
+  if (storm) {
+    out.push({
+      id: `wx-route-storm-${storm.distanceKm}`,
+      kind: 'closure',
+      title: `Orage ~${storm.distanceKm} km`,
+      detail: `${brief.label} · ${storm.weather.tempC}°C`,
+      voice: `Attention, orage sur le trajet à environ ${Math.round(storm.distanceKm)} kilomètres.`,
+      severity: 'critical',
+      lat: storm.lat,
+      lon: storm.lon,
+      distanceKm: storm.distanceKm,
+    });
+  }
+  if (snow) {
+    out.push({
+      id: `wx-route-snow-${snow.distanceKm}`,
+      kind: 'weather',
+      title: `Neige ~${snow.distanceKm} km`,
+      detail: `${brief.label} · ${snow.weather.tempC}°C · Open-Meteo`,
+      voice: `Attention, neige sur le trajet à environ ${Math.round(snow.distanceKm)} kilomètres.`,
+      severity: 'critical',
+      lat: snow.lat,
+      lon: snow.lon,
+      distanceKm: snow.distanceKm,
+    });
+  } else if (rain) {
+    out.push({
+      id: `wx-route-rain-${rain.distanceKm}`,
+      kind: 'weather',
+      title: `Pluie ~${rain.distanceKm} km`,
+      detail: `${brief.label} · ${rain.weather.tempC}°C · Open-Meteo`,
+      voice: `Attention, pluie sur le trajet à environ ${Math.round(rain.distanceKm)} kilomètres.`,
+      severity: 'warn',
+      lat: rain.lat,
+      lon: rain.lon,
+      distanceKm: rain.distanceKm,
+    });
+  }
+  return out;
 }
 
 function bridgeAlerts(
@@ -158,21 +238,29 @@ function bridgeAlerts(
 }
 
 /**
- * Build a trucker brief around live GPS. Traffic/closures: honest soft notes (no free global feed).
+ * Build a trucker brief around live GPS (+ optional route polyline for rain/snow ahead).
+ * Traffic/closures: honest soft notes (no free global feed).
  */
 export async function buildTruckerRouteBrief(
   lat: number,
   lon: number,
   prefs: GpsNavPrefs,
+  opts?: { routeCoords?: [number, number][] },
 ): Promise<TruckerRouteBrief> {
   const truck = {
     heightM: prefs.truckHeightM,
     weightT: prefs.truckPtacT,
     widthM: prefs.truckWidthM,
   };
+  const routeCoords = opts?.routeCoords?.filter(
+    (c) => Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1]),
+  );
 
-  const [weather, bridges, weigh, pois] = await Promise.all([
+  const [weather, routeWeather, bridges, weigh, pois] = await Promise.all([
     fetchWeather(lat, lon).catch(() => null),
+    routeCoords && routeCoords.length >= 2
+      ? fetchWeatherAlongRoute(routeCoords).catch(() => null)
+      : Promise.resolve(null),
     prefs.mode === 'camion'
       ? fetchNearbyBridgeClearances(lat, lon, 25000, truck)
       : Promise.resolve({ ok: true, bridges: [] as BridgeClearance[], label: '' }),
@@ -232,6 +320,7 @@ export async function buildTruckerRouteBrief(
   const alerts: RouteAlert[] = [
     ...profileAlerts(prefs),
     ...weatherAlerts(weather, lat, lon),
+    ...routeWeatherAlerts(routeWeather),
     ...bridgeAlerts(bridgesNoPass.length ? bridgesNoPass : bridgesList.filter((b) => b.pass === 'no'), prefs),
     {
       id: 'traffic-honest',
@@ -290,16 +379,18 @@ export async function buildTruckerRouteBrief(
   }
 
   const critical = alerts.filter((a) => a.severity === 'critical' || a.severity === 'warn');
+  const wxBit = routeWeather?.label ?? `météo ${weather?.tempC ?? '?'}°C`;
   return {
     alerts,
     weather,
+    routeWeather,
     fuelNearby,
     restNearby,
     bridgesNoPass,
     label:
       critical.length > 0
-        ? `${critical.length} alerte(s) gabarit/météo — overlay immédiat`
-        : `Brief camion OK · ${bridgesList.length} ouvrages OSM · météo ${weather?.tempC ?? '?'}°C`,
+        ? `${critical.length} alerte(s) gabarit/météo — overlay immédiat · ${wxBit}`
+        : `Brief camion OK · ${bridgesList.length} ouvrages OSM · ${wxBit}`,
   };
 }
 

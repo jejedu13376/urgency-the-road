@@ -563,9 +563,11 @@ export function GpsFullMap() {
   }, [bootHtml, gpsOk, injectLayers]);
 
   const runTruckerBrief = useCallback(
-    async (lat: number, lon: number) => {
+    async (lat: number, lon: number, routeCoords?: [number, number][]) => {
       const prefs = prefsRef.current ?? (await loadGpsNavPrefs());
-      const brief = await buildTruckerRouteBrief(lat, lon, prefs);
+      const brief = await buildTruckerRouteBrief(lat, lon, prefs, {
+        routeCoords: routeCoords?.length ? routeCoords : lastRouteRef.current?.coords,
+      });
       setHudNote(brief.label);
       enqueueAlerts(brief.alerts);
     },
@@ -984,7 +986,11 @@ export function GpsFullMap() {
           injectRoute(route);
           void refreshLayers();
           const originPt = liveOriginRef.current ?? msg.from;
-          void runTruckerBrief(originPt.lat, originPt.lon);
+          void runTruckerBrief(
+            originPt.lat,
+            originPt.lon,
+            route.ok ? route.coords : undefined,
+          );
         })();
         return;
       }

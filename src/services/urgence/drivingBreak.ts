@@ -1,5 +1,5 @@
 /**
- * Module 13 — mandatory 4h driving break reminder.
+ * Module 13 — mandatory 2h driving break reminder.
  * Accumulates GPS motion time only (not wall-clock while the app is merely open).
  * TTS speaks FR then EN at max volume; resets after the driver takes a break.
  */
@@ -8,8 +8,8 @@ import { speakViaExpo, speechStop } from './speechBridge';
 
 export const DRIVING_BREAK_STORAGE_KEY = 'um.urgence.drivingBreak.v1';
 
-/** Mandatory break after this much accumulated driving time. */
-export const DRIVING_BREAK_THRESHOLD_SEC = 4 * 60 * 60;
+/** Mandatory comfort break after this much accumulated driving time. */
+export const DRIVING_BREAK_THRESHOLD_SEC = 2 * 60 * 60;
 
 /**
  * Minimum ground speed (m/s) to count as driving (~7.2 km/h).
@@ -36,7 +36,7 @@ export const BREAK_TTS_SEQUENCE: ReadonlyArray<{ language: string; text: string 
 export type DrivingBreakState = {
   /** Accumulated seconds while GPS speed indicated motion. */
   drivingSec: number;
-  /** True after the 4h TTS has been spoken until the driver resets/takes a break. */
+  /** True after the 2h TTS has been spoken until the driver resets/takes a break. */
   alertSpoken: boolean;
   updatedAt: string;
 };
@@ -54,7 +54,7 @@ export function shouldCountAsDriving(speedMps: number | null | undefined): boole
 }
 
 /**
- * Pure accumulator: only motion deltas add time. Returns whether a new 4h crossing occurred.
+ * Pure accumulator: only motion deltas add time. Returns whether a new 2h crossing occurred.
  */
 export function accumulateDrivingTime(
   state: DrivingBreakState,
