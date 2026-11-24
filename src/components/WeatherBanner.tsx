@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CONNEXION_CHIP_HEIGHT } from './ConnexionChip';
 import { useI18n } from '../context/I18nContext';
 import { localeTag } from '../i18n';
 import { getDeviceCoords } from '../services/geo/deviceLocation';
@@ -91,10 +92,11 @@ export function WeatherBanner() {
   const temp = w?.tempC ?? '…';
   const road = roadLabel(w?.road, t);
 
-  // Leave room for top-right ConnexionChip (~118px).
+  // Stack under ConnexionChip (same right edge) — no horizontal overlap.
+  const top = Math.max(insets.top, 8) + CONNEXION_CHIP_HEIGHT + 4;
   return (
     <View
-      style={[styles.wrap, { top: Math.max(insets.top, 8), right: 118 }]}
+      style={[styles.wrap, { top, right: 10 }]}
       accessibilityLabel={t('weather.a11y')}
     >
       <Text style={styles.main}>
@@ -109,7 +111,7 @@ const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
     zIndex: 20,
-    maxWidth: '58%',
+    maxWidth: '72%',
     backgroundColor: 'rgba(16,24,32,0.88)',
     paddingHorizontal: 10,
     paddingVertical: 6,

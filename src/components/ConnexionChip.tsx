@@ -5,9 +5,12 @@ import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../context/I18nContext';
 import { colors } from '../theme/colors';
 
+/** Fixed chrome width — weather sits below this row (see WeatherBanner). */
+export const CONNEXION_CHIP_HEIGHT = 36;
+
 /**
  * Top-right « Connexion » chrome — always on tabs (hidden on /modules/* and carte plein écran).
- * Opens Compte (M15) for sign-in / sign-up.
+ * Compact fixed width so it never overlaps the weather chip underneath.
  */
 export function ConnexionChip() {
   const insets = useSafeAreaInsets();
@@ -20,11 +23,8 @@ export function ConnexionChip() {
 
   if (onModules || onCarte) return null;
 
-  const label = profile?.email
-    ? profile.email.length > 18
-      ? `${profile.email.slice(0, 16)}…`
-      : profile.email
-    : t('connexion.chip');
+  // Keep label short — full email lives on Compte / Settings.
+  const label = profile?.email ? t('connexion.chipSignedIn') : t('connexion.chip');
 
   return (
     <View style={[styles.wrap, { top: Math.max(insets.top, 8), right: 10 }]}>
@@ -49,14 +49,15 @@ const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
     zIndex: 25,
-    maxWidth: '42%',
+    width: 112,
   },
   btn: {
     backgroundColor: colors.signal,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 12,
     alignItems: 'center',
+    minHeight: CONNEXION_CHIP_HEIGHT - 4,
   },
   txt: { color: colors.white, fontSize: 12, fontWeight: '800' },
 });

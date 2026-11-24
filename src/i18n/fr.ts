@@ -45,6 +45,7 @@ export const fr = {
 
   connexion: {
     chip: 'Connexion',
+    chipSignedIn: 'Compte',
     openA11y: 'Ouvrir Connexion — Compte',
     openAccountA11y: 'Ouvrir mon compte',
   },

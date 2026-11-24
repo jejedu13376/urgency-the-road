@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useState,
 } from 'react';
+import { getFirebase, isFirebaseConfigured } from '../firebase/config';
 import { useAuth } from './AuthContext';
 import {
   isRegisterCompleted,
@@ -21,9 +22,16 @@ type RegisterGateCtx = {
 
 const Ctx = createContext<RegisterGateCtx | null>(null);
 
+/** Live Firebase Auth only — never the static MOCK_USER from unconfigured Firebase. */
+function hasLiveAuthSession(uid?: string | null): boolean {
+  if (!isFirebaseConfigured() || !uid || uid === 'mock-local-user') return false;
+  return Boolean(getFirebase()?.auth.currentUser);
+}
+
 /**
  * First-time register gate — blocks AppShell until the user creates/signs in
- * at least once on this device (AsyncStorage). Returning Auth sessions auto-unlock.
+ * at least once on this device (AsyncStorage). Returning live Auth sessions auto-unlock.
+ * Mock Auth (Firebase off) must go through RegisterGateScreen → completeRegistration.
  */
 export function RegisterGateProvider({ children }: { children: React.ReactNode }) {
   const { profile, ready: authReady } = useAuth();
@@ -41,9 +49,9 @@ export function RegisterGateProvider({ children }: { children: React.ReactNode }
           setReady(true);
           return;
         }
-        // Wait for Auth bootstrap — existing session counts as registered.
+        // Wait for Auth bootstrap — live Firebase session only (not MOCK_USER).
         if (!authReady) return;
-        if (profile?.email) {
+        if (hasLiveAuthSession(profile?.uid) && profile?.email) {
           await markRegisterCompleted();
           await saveLocalUserProfile({
             email: profile.email,
@@ -69,7 +77,7 @@ export function RegisterGateProvider({ children }: { children: React.ReactNode }
     return () => {
       cancelled = true;
     };
-  }, [authReady, profile?.email, profile?.displayName]);
+  }, [authReady, profile?.uid, profile?.email, profile?.displayName]);
 
   const completeRegistration = useCallback(
     async (opts?: { email?: string; displayName?: string }) => {

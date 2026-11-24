@@ -48,6 +48,7 @@ export const en: FrDict = {
 
   connexion: {
     chip: 'Sign in',
+    chipSignedIn: 'Account',
     openA11y: 'Open Sign in — Account',
     openAccountA11y: 'Open my account',
   },
