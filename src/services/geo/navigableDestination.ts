@@ -1054,11 +1054,111 @@ export function reportNavigableCoverage(): CoverageReport[] {
   });
 }
 
+/**
+ * Nation/region aliases that are also common city names elsewhere
+ * (Holland MI, Malta MT, England AR, Wales AK, …). Bare labels still remap;
+ * "Name, Subregion" only remaps when a secondary token is a known country.
+ */
+const CITY_COLLISION_ALIASES = new Set([
+  'holland',
+  'hollande',
+  'malta',
+  'malte',
+  'england',
+  'angleterre',
+  'scotland',
+  'ecosse',
+  'wales',
+  'pays de galles',
+  'monaco',
+  'luxembourg',
+  'andorra',
+  'andorre',
+]);
+
+/** Country-level tokens used to allow collision aliases with a country secondary. */
+const COUNTRY_SECONDARY_HINTS = new Set(
+  [
+    'united states',
+    'united states of america',
+    'usa',
+    'us',
+    'u.s.',
+    'u.s.a.',
+    'etats-unis',
+    'canada',
+    'australia',
+    'australie',
+    'united kingdom',
+    'uk',
+    'u.k.',
+    'great britain',
+    'britain',
+    'royaume-uni',
+    'grande-bretagne',
+    'france',
+    'germany',
+    'allemagne',
+    'netherlands',
+    'pays-bas',
+    'spain',
+    'espagne',
+    'italy',
+    'italie',
+    'portugal',
+    'ireland',
+    'irlande',
+    'malta',
+    'malte',
+    'luxembourg',
+    'andorra',
+    'andorre',
+    'monaco',
+    'switzerland',
+    'suisse',
+    'belgium',
+    'belgique',
+    'austria',
+    'autriche',
+    'poland',
+    'pologne',
+    'europe',
+  ].map(lookupKey),
+);
+
+/** True when every secondary token is a country hint (e.g. "Scotland, UK"). */
+function secondaryOnlyCountryHints(label: string): boolean {
+  const parts = label
+    .split(/[,|/·•]/)
+    .slice(1)
+    .map((p) => lookupKey(normalizeAdminToken(p)))
+    .filter(Boolean);
+  if (!parts.length) return true;
+  return parts.every((p) => COUNTRY_SECONDARY_HINTS.has(p));
+}
+
+function labelLooksLikeUsCountry(label: string): boolean {
+  // lookupKey keeps hyphens: "États-Unis" → "etats-unis" (not "etats unis").
+  const full = lookupKey(label);
+  return (
+    /\bunited states\b/.test(full) ||
+    /\bunited states of america\b/.test(full) ||
+    /\busa\b/.test(full) ||
+    /\bu\.s\.a\b/.test(full) ||
+    /\bu\.s\b/.test(full) ||
+    /(^|[^a-z])us([^a-z]|$)/.test(full) ||
+    /\betats-unis\b/.test(full) ||
+    /\betats unis\b/.test(full)
+  );
+}
+
 function matchAdmin(label: string): { key: string; city: City; id: string } | null {
   // Only the primary place name (before first comma) — never remap
   // "Orlando, Florida" / "Miami, FL" just because the state appears later.
-  const primary = normalizeAdminToken(label.split(/[,|/·•]/)[0] ?? label);
+  const parts = label.split(/[,|/·•]/);
+  const primary = normalizeAdminToken(parts[0] ?? label);
   if (!primary) return null;
+  const hasSecondary = parts.length > 1 && normalizeAdminToken(parts[1] ?? '').length > 0;
 
   const tryKey = (raw: string): { key: string; city: City; id: string } | null => {
     const key = lookupKey(raw);
@@ -1096,20 +1196,31 @@ function matchAdmin(label: string): { key: string; city: City; id: string } | nu
   };
 
   // Prefer US when label secondary mentions USA (disambiguate Georgia vs country).
-  const fullLower = lookupKey(label);
-  const usHint = /\bunited states\b|\busa\b|\bu\.?s\.?a\.?\b|\betats unis\b/.test(fullLower);
+  // Must run before tryKey — FR "Géorgie" alone maps to Tbilisi.
   const primaryKey = lookupKey(primary);
-  if (usHint && (primaryKey === 'georgia' || primaryKey === 'georgie')) {
+  if (labelLooksLikeUsCountry(label) && (primaryKey === 'georgia' || primaryKey === 'georgie')) {
     const usGa = ADMIN_CITIES.georgia;
     if (usGa) {
       return { key: 'georgia', city: { lat: usGa.lat, lon: usGa.lon, city: usGa.city }, id: usGa.id };
     }
   }
 
-  const direct = tryKey(primary);
+  const accept = (
+    hit: { key: string; city: City; id: string } | null,
+  ): { key: string; city: City; id: string } | null => {
+    if (!hit) return null;
+    // "Holland, Michigan, USA" / "Malta, Montana" — city/state context, not the country.
+    // Bare "Holland" or "Scotland, United Kingdom" still remaps.
+    if (CITY_COLLISION_ALIASES.has(hit.key) && hasSecondary && !secondaryOnlyCountryHints(label)) {
+      return null;
+    }
+    return hit;
+  };
+
+  const direct = accept(tryKey(primary));
   if (direct) return direct;
 
-  return tryKey(normalizeAdminToken(label));
+  return accept(tryKey(normalizeAdminToken(label)));
 }
 
 /**

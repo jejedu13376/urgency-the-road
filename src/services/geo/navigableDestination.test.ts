@@ -97,4 +97,38 @@ describe('resolveNavigableDestination', () => {
     assert.equal(byScope.CA, 14); // 13 + country
     assert.ok(byScope.EU >= 50, `EU expected >= 50, got ${byScope.EU}`);
   });
+
+  it('maps FR Géorgie + États-Unis to Atlanta (not Tbilisi)', () => {
+    const r = resolveNavigableDestination(32.16, -82.9, 'Géorgie, États-Unis');
+    assert.equal(r.remapped, true);
+    assert.ok(Math.abs(r.lat - 33.749) < 0.01, `got ${r.lat},${r.lon} label=${r.label}`);
+    assert.match(r.label, /Atlanta/i);
+  });
+
+  it('maps bare FR Géorgie to Tbilisi (country)', () => {
+    const r = resolveNavigableDestination(42.0, 43.5, 'Géorgie');
+    assert.equal(r.remapped, true);
+    assert.ok(Math.abs(r.lat - 41.7151) < 0.01);
+  });
+
+  it('does not remap Holland, Michigan / Malta, Montana as countries', () => {
+    const holland = resolveNavigableDestination(42.7875, -86.1089, 'Holland, Michigan, USA');
+    assert.equal(holland.remapped, false);
+    assert.equal(holland.lat, 42.7875);
+    const malta = resolveNavigableDestination(48.3594, -107.874, 'Malta, Montana, USA');
+    assert.equal(malta.remapped, false);
+    assert.equal(malta.lat, 48.3594);
+  });
+
+  it('still remaps bare Holland / Scotland / Malta as nations', () => {
+    const holland = resolveNavigableDestination(51.0, 6.0, 'Holland');
+    assert.equal(holland.remapped, true);
+    assert.match(holland.label, /Amsterdam/i);
+    const sco = resolveNavigableDestination(57.2, -4.5, 'Scotland, United Kingdom');
+    assert.equal(sco.remapped, true);
+    assert.match(sco.label, /Edinburgh/i);
+    const malta = resolveNavigableDestination(36.5, 14.2, 'Malta');
+    assert.equal(malta.remapped, true);
+    assert.match(malta.label, /Valletta/i);
+  });
 });
