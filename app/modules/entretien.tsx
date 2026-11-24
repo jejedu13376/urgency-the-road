@@ -179,6 +179,8 @@ export default function EntretienScreen() {
       ...prev,
     ]);
     setNewTitle('');
+    // Clear search so the newly added row is visible immediately.
+    setQuery('');
   };
 
   const exportPayload = () => ({
@@ -225,7 +227,11 @@ export default function EntretienScreen() {
 
         <Text style={styles.section}>Entretiens</Text>
         {filteredMaint.length === 0 ? (
-          <Text style={styles.empty}>Aucun entretien trouvé.</Text>
+          <Text style={styles.empty}>
+            {query.trim() && items.length > 0
+              ? `Aucun entretien pour « ${query.trim()} ».`
+              : 'Aucun entretien.'}
+          </Text>
         ) : (
           <View style={styles.grid}>
             {filteredMaint.map((m) => {
@@ -262,7 +268,13 @@ export default function EntretienScreen() {
         </Pressable>
 
         {filteredCarnet.length === 0 ? (
-          <Text style={styles.empty}>Carnet vide.</Text>
+          <Text style={styles.empty}>
+            {carnet.length === 0
+              ? 'Carnet vide.'
+              : query.trim()
+                ? `Aucune entrée pour « ${query.trim()} ».`
+                : 'Carnet vide.'}
+          </Text>
         ) : (
           <View style={styles.grid}>
             {filteredCarnet.map((e) => (

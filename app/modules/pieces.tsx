@@ -74,7 +74,8 @@ export default function PiecesScreen() {
     );
   }, [parts, query]);
 
-  const selected = parts.find((p) => p.id === selectedId) ?? null;
+  // Only show buy strip for a part still visible in search results.
+  const selected = filtered.find((p) => p.id === selectedId) ?? null;
 
   return (
     <>
@@ -95,17 +96,25 @@ export default function PiecesScreen() {
           <Ionicons name="search" size={22} color={colors.ink} />
           <TextInput
             value={query}
-            onChangeText={setQuery}
+            onChangeText={(text) => {
+              setQuery(text);
+              setSelectedId(null);
+            }}
             placeholder="Rechercher une pièce…"
             placeholderTextColor={colors.muted}
             style={styles.search}
             autoCorrect={false}
             autoCapitalize="none"
-            clearButtonMode="while-editing"
             accessibilityLabel="Rechercher une pièce"
           />
           {query.length > 0 ? (
-            <Pressable onPress={() => setQuery('')} accessibilityLabel="Effacer la recherche">
+            <Pressable
+              onPress={() => {
+                setQuery('');
+                setSelectedId(null);
+              }}
+              accessibilityLabel="Effacer la recherche"
+            >
               <Ionicons name="close-circle" size={22} color={colors.slate} />
             </Pressable>
           ) : null}
