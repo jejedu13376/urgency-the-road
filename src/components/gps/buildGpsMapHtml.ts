@@ -2,23 +2,59 @@
  * Self-contained Leaflet map HTML for WebView.
  * Bottom-right icon rail: Roads · Satellite · Terrain · Traffic · Transit · 3D · AQI ·
  * Street View · Incident report (UR-148 — restored from mid-rail after #56).
- * Extends Esri/#47 basemap work (Esri imagery + Carto/OSM roads) with Terrain + overlays.
+ * Extends Esri/#47 basemap work (Esri imagery + Carto/Esri roads) with Terrain + overlays.
  * Vehicle DivIcon = LIVE GPS — not a canned polyline demo.
+ *
+ * Place labels: Carto Voyager (with key) and Esri World Street Map (fallback) are both
+ * global OSM-based styles — city/place names for AU/EU/Asia/NA. Do not use *_nolabels
+ * variants. OSM CDN is avoided: iframe/WebView often send no Referer → OSMF 403, and
+ * Carto website-restricted keys also break without Referer.
  */
 
-/** Carto raster basemaps need a free key since 2026-09-25 — carto.com/basemaps/apikey */
-function roadsTileUrl(): { url: string; kind: 'carto' | 'osm' } {
-  const raw = (process.env.EXPO_PUBLIC_CARTO_BASEMAPS_API_KEY ?? '').trim();
+export type RoadsTileConfig = {
+  url: string;
+  kind: 'carto' | 'esri';
+  /** Leaflet subdomains string, or omit when URL has no {s}. */
+  subdomains?: string;
+  /** Esri REST tiles use {z}/{y}/{x}; Carto uses {z}/{x}/{y}. */
+  scheme: 'xyz' | 'esri';
+  attribution: string;
+};
+
+/** Esri World Street Map — global city/place labels, no API key, Referer-tolerant. */
+export const ESRI_WORLD_STREET_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
+
+/** Esri place-name overlay for satellite (global Boundaries & Places). */
+export const ESRI_PLACES_LABELS_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}';
+
+/**
+ * Roads basemap with worldwide place labels.
+ * Prefer Carto Voyager when `EXPO_PUBLIC_CARTO_BASEMAPS_API_KEY` is set (free key since
+ * 2026-09-25 — carto.com/basemaps/apikey). Key must not use website restrictions for
+ * WebView/srcDoc (no Referer). Else Esri World Street Map.
+ */
+export function roadsTileUrl(
+  envKey = process.env.EXPO_PUBLIC_CARTO_BASEMAPS_API_KEY,
+): RoadsTileConfig {
+  const raw = (envKey ?? '').trim();
   const key = raw.replace(/[^a-zA-Z0-9_-]/g, '');
   if (key) {
     return {
       kind: 'carto',
+      // voyager (not voyager_nolabels) — roads + place labels worldwide
       url: `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${key}`,
+      subdomains: 'abcd',
+      scheme: 'xyz',
+      attribution: '© OpenStreetMap © CARTO',
     };
   }
   return {
-    kind: 'osm',
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    kind: 'esri',
+    url: ESRI_WORLD_STREET_URL,
+    scheme: 'esri',
+    attribution: '© Esri',
   };
 }
 
@@ -102,6 +138,12 @@ export function buildGpsMapHtml(boot: GpsMapBoot): string {
   const bootJson = JSON.stringify(bootPayload).replace(/</g, '\\u003c');
   const roads = roadsTileUrl();
   const roadsUrlJson = JSON.stringify(roads.url);
+  const roadsMetaJson = JSON.stringify({
+    kind: roads.kind,
+    subdomains: roads.subdomains ?? null,
+    attribution: roads.attribution,
+  });
+  const satLabelsUrlJson = JSON.stringify(ESRI_PLACES_LABELS_URL);
   const mapboxTokenJson = JSON.stringify(token);
   const trafficJson = JSON.stringify(traffic);
   const hasMapbox = token.length > 0;
@@ -365,11 +407,18 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     transition:opacity .35s ease;
   }
   #mb3d.on{opacity:.5}
+  .map-attrib{
+    position:absolute;z-index:500;right:calc(8px + var(--pad-right));bottom:calc(6px + var(--pad-bottom));
+    max-width:55%;padding:3px 7px;border-radius:6px;
+    background:rgba(255,255,255,.82);color:#334;font:550 9px/1.3 system-ui,sans-serif;
+    letter-spacing:.01em;pointer-events:none;user-select:none;
+  }
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="mb3d" aria-hidden="true"></div>
+<div class="map-attrib" id="mapAttrib" aria-hidden="true"></div>
 <div class="hud">
   <div class="chip-row">
     <button type="button" class="chip" id="btnCar"><span>Voiture</span><small>Profil auto</small></button>
@@ -434,6 +483,8 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
 (function(){
   var BOOT = ${bootJson};
   var ROADS_URL = ${roadsUrlJson};
+  var ROADS_META = ${roadsMetaJson};
+  var SAT_LABELS_URL = ${satLabelsUrlJson};
   var MAPBOX_TOKEN = ${mapboxTokenJson};
   var TRAFFIC_CFG = ${trafficJson};
   var mode = BOOT.mode === 'camion' ? 'camion' : 'voiture';
@@ -468,6 +519,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   var baseKind = 'roads';
   var roadsLayer = null;
   var satLayer = null;
+  var satLabelsLayer = null;
   var terrainLayer = null;
   var transitLayer = null;
   var trafficLayer = null;
@@ -678,15 +730,22 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   }, true);
 
   /* No Leaflet chrome (Esri/#47). Pinch/scroll zoom still works.
-     Default base = colored roads; Satellite = Esri; Terrain = OpenTopoMap. */
+     Default base = Carto Voyager (keyed) or Esri World Street Map — both global place labels.
+     Satellite = Esri imagery + Boundaries & Places labels; Terrain = OpenTopoMap. */
   var map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true })
     .setView([origin.lat, origin.lon], gpsOk ? 14 : 5);
-  roadsLayer = L.tileLayer(ROADS_URL, { maxZoom: 19, attribution: '' });
+  var roadsOpts = { maxZoom: 19, attribution: (ROADS_META && ROADS_META.attribution) || '' };
+  if (ROADS_META && ROADS_META.subdomains) roadsOpts.subdomains = ROADS_META.subdomains;
+  roadsLayer = L.tileLayer(ROADS_URL, roadsOpts);
   satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 19, attribution: ''
+    maxZoom: 19, attribution: '© Esri'
+  });
+  /* Global city/place names over imagery (AU/EU/Asia/NA) — not a NA-only layer. */
+  satLabelsLayer = L.tileLayer(SAT_LABELS_URL, {
+    maxZoom: 19, opacity: 0.95, attribution: '© Esri'
   });
   terrainLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-    maxZoom: 17, attribution: '', subdomains: 'abc'
+    maxZoom: 17, attribution: '© OpenStreetMap © OpenTopoMap', subdomains: 'abc'
   });
   /* ÖPNVKarte / memomaps — free OSM-based public transit lines (no key). */
   transitLayer = L.tileLayer('https://tile.memomaps.de/tilegen/{z}/{x}/{y}.png', {
@@ -703,6 +762,13 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     });
   }
   roadsLayer.addTo(map);
+  (function syncAttrib(){
+    var el = document.getElementById('mapAttrib');
+    if (!el) return;
+    var bits = [];
+    if (ROADS_META && ROADS_META.attribution) bits.push(ROADS_META.attribution);
+    el.textContent = bits.join(' · ') || '';
+  })();
   layerGroup = L.layerGroup().addTo(map);
   aqiGroup = L.layerGroup().addTo(map);
   (function initTrafficBtn(){
@@ -726,8 +792,10 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     if (next !== 'roads' && next !== 'satellite' && next !== 'terrain') return;
     if (next === baseKind) return;
     map.removeLayer(currentBaseLayer());
+    if (satLabelsLayer && map.hasLayer(satLabelsLayer)) map.removeLayer(satLabelsLayer);
     baseKind = next;
     currentBaseLayer().addTo(map);
+    if (next === 'satellite' && satLabelsLayer) satLabelsLayer.addTo(map);
     if (transitOn) {
       map.removeLayer(transitLayer);
       transitLayer.addTo(map);
@@ -735,6 +803,12 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     if (trafficOn && trafficLayer) {
       map.removeLayer(trafficLayer);
       trafficLayer.addTo(map);
+    }
+    var attrib = document.getElementById('mapAttrib');
+    if (attrib) {
+      if (next === 'satellite') attrib.textContent = '© Esri';
+      else if (next === 'terrain') attrib.textContent = '© OpenStreetMap © OpenTopoMap';
+      else attrib.textContent = (ROADS_META && ROADS_META.attribution) || '';
     }
     syncMapTypeMenu();
     post(maptypePayload());
