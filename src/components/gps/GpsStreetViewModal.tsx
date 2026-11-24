@@ -1,7 +1,9 @@
 /**
- * Street View peek — Google Street View Static image when key present.
+ * Street View — interactive peek (embed) when Maps key present; static fallback.
+ * Shown only after explicit Street View ON + road tap (map HTML).
  */
-import { Image, Modal, Pressable, StyleSheet, Text, View, Platform, Linking } from 'react-native';
+import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { WebView as RNWebView } from 'react-native-webview';
 import {
   isStreetViewConfigured,
   streetViewEmbedUrl,
@@ -16,11 +18,29 @@ type Props = {
   onClose: () => void;
 };
 
+/** RN WebView typings collapse under strict TS — cast like GpsFullMap. */
+const PeekWebView = RNWebView as unknown as React.ComponentType<{
+  source?: { uri: string } | { html: string; baseUrl?: string };
+  style?: object;
+  javaScriptEnabled?: boolean;
+  domStorageEnabled?: boolean;
+  allowsInlineMediaPlayback?: boolean;
+  setSupportMultipleWindows?: boolean;
+  originWhitelist?: string[];
+}>;
+
 export function GpsStreetViewModal({ visible, lat, lon, onClose }: Props) {
   const ready = lat != null && lon != null && Number.isFinite(lat) && Number.isFinite(lon);
   const configured = isStreetViewConfigured();
-  const staticUrl = ready ? streetViewStaticUrl(lat!, lon!) : null;
   const embed = ready ? streetViewEmbedUrl(lat!, lon!) : null;
+  const staticUrl = ready ? streetViewStaticUrl(lat!, lon!) : null;
+
+  const html =
+    ready && configured && staticUrl
+      ? `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<style>html,body{margin:0;height:100%;background:#111}img{width:100%;height:100%;object-fit:cover}</style></head>
+<body><img src="${staticUrl.replace(/"/g, '&quot;')}" alt="Street View"/></body></html>`
+      : null;
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
@@ -32,15 +52,26 @@ export function GpsStreetViewModal({ visible, lat, lon, onClose }: Props) {
           </Text>
           {!configured ? (
             <Text style={styles.hint}>
-              Ajoutez EXPO_PUBLIC_GOOGLE_MAPS_API_KEY (ou Places) + Street View Static API pour l’image.
+              Ajoutez EXPO_PUBLIC_GOOGLE_MAPS_API_KEY (ou Places) + Street View Static API pour
+              l’aperçu. Déplacez-vous dans la vue quand la clé est active.
             </Text>
           ) : null}
-          {staticUrl ? (
-            <Image
-              source={{ uri: staticUrl }}
-              style={styles.img}
-              resizeMode="cover"
-              accessibilityLabel="Street View static"
+          {ready && embed && configured ? (
+            <PeekWebView
+              source={{ uri: embed }}
+              style={styles.webview}
+              javaScriptEnabled
+              domStorageEnabled
+              allowsInlineMediaPlayback
+              setSupportMultipleWindows={false}
+              originWhitelist={['*']}
+            />
+          ) : ready && html ? (
+            <PeekWebView
+              source={{ html, baseUrl: 'https://maps.googleapis.com' }}
+              style={styles.webview}
+              javaScriptEnabled
+              originWhitelist={['*']}
             />
           ) : (
             <View style={styles.placeholder}>
@@ -48,16 +79,6 @@ export function GpsStreetViewModal({ visible, lat, lon, onClose }: Props) {
             </View>
           )}
           <View style={styles.actions}>
-            {embed ? (
-              <Pressable
-                style={styles.secondary}
-                onPress={() => {
-                  void Linking.openURL(embed);
-                }}
-              >
-                <Text style={styles.secondaryTxt}>Ouvrir</Text>
-              </Pressable>
-            ) : null}
             <Pressable style={styles.primary} onPress={onClose}>
               <Text style={styles.primaryTxt}>Fermer</Text>
             </Pressable>
@@ -73,20 +94,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(16,24,32,0.5)',
     justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
   card: {
     backgroundColor: colors.white,
     borderRadius: 16,
-    padding: 14,
+    padding: 12,
+    maxHeight: '88%',
   },
   title: { color: colors.ink, fontWeight: '800', fontSize: 16 },
-  coords: { color: colors.muted, fontSize: 11, fontWeight: '600', marginTop: 2, marginBottom: 10 },
-  hint: { color: colors.slate, fontSize: 11, fontWeight: '600', marginBottom: 8, lineHeight: 15 },
-  img: {
+  coords: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+    marginBottom: 8,
+  },
+  hint: {
+    color: colors.slate,
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 8,
+    lineHeight: 15,
+  },
+  webview: {
     width: '100%',
-    height: 220,
+    height: Platform.OS === 'web' ? 320 : 360,
     borderRadius: 12,
+    overflow: 'hidden',
     backgroundColor: colors.mist,
   },
   placeholder: {
@@ -103,11 +138,6 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 12,
   },
-  secondary: {
-    paddingHorizontal: 12,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
-  },
-  secondaryTxt: { color: colors.slate, fontWeight: '700' },
   primary: {
     backgroundColor: colors.signal,
     borderRadius: 10,

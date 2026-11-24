@@ -184,7 +184,7 @@ type MapMsg =
   | { type: 'navigating'; mode: GpsVehicleMode; to: { lat: number; lon: number } }
   | { type: 'arrived'; mode: GpsVehicleMode; to: { lat: number; lon: number } }
   | { type: 'recenter' }
-  | { type: 'streetview'; lat: number; lon: number }
+  | { type: 'streetview'; lat: number; lon: number; snapGps?: boolean }
   | { type: 'aqi_request'; lat: number; lon: number }
   | {
       type: 'maptype';
@@ -228,6 +228,9 @@ function parseMapMsg(raw: string): MapMsg | null {
   }
   if (msg.type === 'streetview' || msg.type === 'aqi_request') {
     if (!isFiniteCoord(msg.lat) || !isFiniteCoord(msg.lon)) return null;
+  }
+  if (msg.type === 'streetview' && msg.snapGps != null && typeof msg.snapGps !== 'boolean') {
+    return null;
   }
   if (msg.type === 'report') {
     if (!isCrowdReportKind(msg.kind)) return null;
@@ -1286,6 +1289,9 @@ export function GpsFullMap() {
       }
 
       if (msg.type === 'streetview') {
+        if (msg.snapGps) {
+          setMapOrigin(msg.lat, msg.lon, true);
+        }
         setStreetView({ lat: msg.lat, lon: msg.lon });
         return;
       }
