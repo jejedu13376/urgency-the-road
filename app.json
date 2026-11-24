@@ -32,7 +32,11 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_MEDIA_VIDEO",
-        "android.permission.READ_MEDIA_IMAGES"
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.CAMERA",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
@@ -107,7 +111,11 @@
         "expo-localization",
         {
           "supportsRTL": false,
-          "supportedLocales": ["fr", "en", "es"]
+          "supportedLocales": [
+            "fr",
+            "en",
+            "es"
+          ]
         }
       ]
     ],
@@ -116,12 +124,21 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "supportsRTL": false,
+      "eas": {
+        "projectId": "9e9b03ee-a97c-45ca-be5c-1d89d74ccf78"
+      }
     },
     "locales": {
       "fr": "./locales/fr.json",
       "en": "./locales/en.json",
       "es": "./locales/es.json"
-    }
+    },
+    "owner": "jejedu13376"
   }
 }
