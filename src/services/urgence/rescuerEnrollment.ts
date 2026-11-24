@@ -8,7 +8,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { UserDoc } from '../../types/firestore';
 import { isDevSoftAuth } from '../firebase/devSoftAuth';
 
-const KEY = 'um.rescuer.enrollment.v1';
+const KEY_PREFIX = 'um.rescuer.enrollment.v1.';
+/** Legacy unscoped key — cleared on load/sign-out to stop cross-account leaks. */
+const LEGACY_KEY = 'um.rescuer.enrollment.v1';
 
 export type RescuerChecklistId =
   | 'id_pro'
@@ -17,11 +19,11 @@ export type RescuerChecklistId =
   | 'tos_secours';
 
 export type RescuerEnrollment = {
-  uid: string | null;
+  uid: string;
   badgeId: string;
   orgName: string;
   checklist: Record<RescuerChecklistId, boolean>;
-  /** draft → editing · submitted → waiting admin · soft_active → DEV overlay */
+  /** draft → editing · submitted → waiting admin · soft_active → DEV overlay only */
   status: 'draft' | 'submitted' | 'soft_active';
   submittedAt?: string;
   updatedAt: string;
@@ -34,6 +36,10 @@ export const RESCUER_CHECKLIST: { id: RescuerChecklistId; label: string }[] = [
   { id: 'tos_secours', label: 'CGU accès secours acceptées' },
 ];
 
+function storageKey(uid: string): string {
+  return `${KEY_PREFIX}${uid}`;
+}
+
 function emptyChecklist(): Record<RescuerChecklistId, boolean> {
   return {
     id_pro: false,
@@ -43,7 +49,7 @@ function emptyChecklist(): Record<RescuerChecklistId, boolean> {
   };
 }
 
-export function defaultEnrollment(uid: string | null = null): RescuerEnrollment {
+export function defaultEnrollment(uid: string): RescuerEnrollment {
   return {
     uid,
     badgeId: '',
@@ -54,19 +60,22 @@ export function defaultEnrollment(uid: string | null = null): RescuerEnrollment 
   };
 }
 
-export async function loadRescuerEnrollment(uid: string | null): Promise<RescuerEnrollment> {
+export async function loadRescuerEnrollment(uid: string | null): Promise<RescuerEnrollment | null> {
+  if (!uid) return null;
   try {
-    const raw = await AsyncStorage.getItem(KEY);
+    // Drop legacy unscoped blob so a prior soft_active cannot leak across accounts.
+    await AsyncStorage.removeItem(LEGACY_KEY);
+    const raw = await AsyncStorage.getItem(storageKey(uid));
     if (!raw) return defaultEnrollment(uid);
-    const parsed = JSON.parse(raw) as RescuerEnrollment;
-    if (uid && parsed.uid && parsed.uid !== uid) {
+    const parsed = JSON.parse(raw) as Partial<RescuerEnrollment>;
+    if (parsed.uid && parsed.uid !== uid) {
       return defaultEnrollment(uid);
     }
     return {
       ...defaultEnrollment(uid),
       ...parsed,
       checklist: { ...emptyChecklist(), ...(parsed.checklist ?? {}) },
-      uid: uid ?? parsed.uid ?? null,
+      uid,
     };
   } catch {
     return defaultEnrollment(uid);
@@ -74,12 +83,24 @@ export async function loadRescuerEnrollment(uid: string | null): Promise<Rescuer
 }
 
 export async function saveRescuerEnrollment(enrollment: RescuerEnrollment): Promise<RescuerEnrollment> {
+  if (!enrollment.uid) {
+    throw new Error('rescuerEnrollment: uid requis');
+  }
   const next: RescuerEnrollment = {
     ...enrollment,
     updatedAt: new Date().toISOString(),
   };
-  await AsyncStorage.setItem(KEY, JSON.stringify(next));
+  await AsyncStorage.setItem(storageKey(enrollment.uid), JSON.stringify(next));
   return next;
+}
+
+export async function clearRescuerEnrollment(uid: string | null): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(LEGACY_KEY);
+    if (uid) await AsyncStorage.removeItem(storageKey(uid));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function checklistComplete(enrollment: RescuerEnrollment): boolean {
@@ -93,6 +114,12 @@ export function checklistComplete(enrollment: RescuerEnrollment): boolean {
 export async function submitRescuerEnrollment(
   enrollment: RescuerEnrollment,
 ): Promise<{ enrollment: RescuerEnrollment; message: string }> {
+  if (!enrollment.uid) {
+    return {
+      enrollment,
+      message: 'Connexion requise avant soumission secours (uid manquant).',
+    };
+  }
   const badge = enrollment.badgeId.trim().toUpperCase();
   if (!badge || badge.length < 4) {
     return {
@@ -124,15 +151,20 @@ export async function submitRescuerEnrollment(
   };
 }
 
-/** Overlay rescuer fields onto Auth profile when soft enrollment is active. */
+/**
+ * Overlay rescuer fields onto Auth profile — DEV soft-auth only.
+ * Never elevate from a leftover soft_active blob in production builds.
+ */
 export function applyRescuerOverlay(
   profile: UserDoc | null,
   enrollment: RescuerEnrollment | null,
 ): UserDoc | null {
   if (!profile || !enrollment) return profile;
+  if (!isDevSoftAuth()) return profile;
+  if (enrollment.uid !== profile.uid) return profile;
   const active =
     enrollment.status === 'soft_active' ||
-    (isDevSoftAuth() && enrollment.status === 'submitted' && checklistComplete(enrollment));
+    (enrollment.status === 'submitted' && checklistComplete(enrollment));
   if (!active) return profile;
   return {
     ...profile,

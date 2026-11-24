@@ -37,12 +37,10 @@ describe('rescuerEnrollment', () => {
     assert.equal(checklistComplete(e), true);
   });
 
-  it('applyRescuerOverlay elevates soft_active only', () => {
-    const draft = defaultEnrollment('u1');
-    assert.equal(applyRescuerOverlay(baseUser, draft)?.role, 'user');
-
+  it('applyRescuerOverlay refuses elevation without DEV soft-auth', () => {
+    // NODE test runs without EXPO_PUBLIC_DEV_SOFT_AUTH / __DEV__ → no overlay.
     const soft = {
-      ...draft,
+      ...defaultEnrollment('u1'),
       badgeId: 'SP-59-4421',
       status: 'soft_active' as const,
       checklist: {
@@ -53,9 +51,22 @@ describe('rescuerEnrollment', () => {
       },
     };
     const over = applyRescuerOverlay(baseUser, soft);
-    assert.equal(over?.role, 'rescuer');
-    assert.equal(over?.subscription, 'rescuer');
-    assert.equal(over?.subscriptionActive, true);
-    assert.equal(over?.rescuerBadgeId, 'SP-59-4421');
+    assert.equal(over?.role, 'user');
+    assert.equal(over?.subscriptionActive, false);
+  });
+
+  it('applyRescuerOverlay ignores mismatched uid even if soft status set', () => {
+    const other = {
+      ...defaultEnrollment('u-other'),
+      badgeId: 'SP-99',
+      status: 'soft_active' as const,
+      checklist: {
+        id_pro: true,
+        org_attestation: true,
+        phi_training: true,
+        tos_secours: true,
+      },
+    };
+    assert.equal(applyRescuerOverlay(baseUser, other)?.role, 'user');
   });
 });

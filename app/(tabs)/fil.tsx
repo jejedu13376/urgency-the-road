@@ -117,18 +117,27 @@ export default function FilMecaniqueScreen() {
         setUploadingCdn(false);
       }
     }
-    const caption =
-      captionDraft.trim() ||
-      (remoteMediaUrl
-        ? `[vidéo CDN] ${remoteMediaUrl}`
-        : localVideoUri
-          ? '[vidéo locale] — fichier on-device (CDN soft-fail)'
-          : '');
+    // Always embed CDN URL in caption when present so reload stays honest even if fields lag.
+    let caption = captionDraft.trim();
+    if (remoteMediaUrl && !caption.includes(remoteMediaUrl)) {
+      caption = caption
+        ? `${caption}\n[vidéo CDN] ${remoteMediaUrl}`
+        : `[vidéo CDN] ${remoteMediaUrl}`;
+    } else if (!caption && localVideoUri) {
+      caption = '[vidéo locale] — fichier on-device (CDN soft-fail)';
+    }
+    const mediaKind: FeedPost['mediaKind'] = remoteMediaUrl
+      ? 'video_cdn'
+      : localVideoUri
+        ? 'video_local'
+        : 'text';
     const res = await createTextFeedPost({
       title:
         titleDraft.trim() ||
         (remoteMediaUrl ? 'Clip réparation (CDN)' : localVideoUri ? 'Clip réparation (local)' : 'Conseil mécanique'),
       caption,
+      remoteMediaUrl,
+      mediaKind,
       // Never publish email — feedPosts is world-readable
       authorName:
         profile?.displayName?.trim() ||
@@ -143,8 +152,8 @@ export default function FilMecaniqueScreen() {
       const post: FeedPost = {
         ...(res.data as FeedPost),
         localMediaUri: localVideoUri ?? undefined,
-        remoteMediaUrl,
-        mediaKind: remoteMediaUrl ? 'video_cdn' : localVideoUri ? 'video_local' : 'text',
+        remoteMediaUrl: remoteMediaUrl ?? res.data.remoteMediaUrl,
+        mediaKind: remoteMediaUrl ? 'video_cdn' : res.data.mediaKind ?? mediaKind,
       };
       setPosts((p) => [post, ...p]);
       setCaptionDraft('');

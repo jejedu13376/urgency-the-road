@@ -18,6 +18,17 @@ import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
 function mapDoc(id: string, data: Record<string, unknown>): FeedPost {
+  const remoteMediaUrl =
+    typeof data.remoteMediaUrl === 'string' && data.remoteMediaUrl.trim()
+      ? data.remoteMediaUrl.trim()
+      : undefined;
+  const rawKind = typeof data.mediaKind === 'string' ? data.mediaKind : undefined;
+  const mediaKind: FeedPost['mediaKind'] =
+    rawKind === 'video_cdn' || rawKind === 'video_local' || rawKind === 'text'
+      ? rawKind
+      : remoteMediaUrl
+        ? 'video_cdn'
+        : 'text';
   return {
     id,
     author: String(data.author ?? data.authorName ?? 'Anonyme'),
@@ -26,6 +37,8 @@ function mapDoc(id: string, data: Record<string, unknown>): FeedPost {
     likes: Number(data.likes ?? 0),
     comments: Number(data.comments ?? 0),
     createdAt: String(data.createdAt ?? new Date().toISOString()),
+    remoteMediaUrl,
+    mediaKind,
   };
 }
 
@@ -66,11 +79,16 @@ export async function createTextFeedPost(input: {
   title: string;
   caption: string;
   authorName?: string;
+  remoteMediaUrl?: string;
+  mediaKind?: FeedPost['mediaKind'];
 }): Promise<ServiceResult<FeedPost | null>> {
   const fb = getFirebase();
   const uid = getSignedInUid();
   const title = input.title.trim() || 'Publication';
   const caption = input.caption.trim();
+  const remoteMediaUrl = input.remoteMediaUrl?.trim() || undefined;
+  const mediaKind: FeedPost['mediaKind'] =
+    input.mediaKind ?? (remoteMediaUrl ? 'video_cdn' : 'text');
   // Defense in depth: never persist email-like author on world-readable feedPosts
   const rawAuthor = input.authorName?.trim() || '';
   const looksLikeEmail = /@/.test(rawAuthor);
@@ -90,6 +108,8 @@ export async function createTextFeedPost(input: {
       likes: 0,
       comments: 0,
       createdAt: new Date().toISOString(),
+      remoteMediaUrl,
+      mediaKind,
     };
     return mockResult(local, 'MOCK publish — connectez-vous pour sync Firestore');
   }
@@ -108,6 +128,7 @@ export async function createTextFeedPost(input: {
       comments: 0,
       createdAt: new Date().toISOString(),
       createdAtServer: serverTimestamp(),
+      ...(remoteMediaUrl ? { remoteMediaUrl, mediaKind: 'video_cdn' } : { mediaKind }),
     });
     return liveResult({
       id: ref.id,
@@ -117,6 +138,8 @@ export async function createTextFeedPost(input: {
       likes: 0,
       comments: 0,
       createdAt: new Date().toISOString(),
+      remoteMediaUrl,
+      mediaKind: remoteMediaUrl ? 'video_cdn' : mediaKind,
     });
   } catch (e) {
     if (isPermissionDenied(e) || isDevSoftAuth()) {
@@ -128,6 +151,8 @@ export async function createTextFeedPost(input: {
         likes: 0,
         comments: 0,
         createdAt: new Date().toISOString(),
+        remoteMediaUrl,
+        mediaKind: remoteMediaUrl ? 'video_cdn' : mediaKind,
       };
       // Keep draft data for UI append, but ok:false — never fake live publish success.
       return failResult(local, 'SOFT publish — permission/DEV (brouillon local, ok:false)');

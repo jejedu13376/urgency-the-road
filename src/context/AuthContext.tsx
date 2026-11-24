@@ -21,7 +21,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refresh = async () => {
     try {
       const res = await getCurrentUserProfile();
-      const enrollment = await loadRescuerEnrollment(res.data?.uid ?? null);
+      const enrollment = res.data?.uid
+        ? await loadRescuerEnrollment(res.data.uid)
+        : null;
       setProfile(applyRescuerOverlay(res.data, enrollment));
     } catch {
       // Soft-fail: never leave Expo stuck / crash on Auth bootstrap errors.

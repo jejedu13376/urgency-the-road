@@ -680,20 +680,11 @@ const styles = StyleSheet.create({
   btnTxt: { color: colors.white, fontWeight: '800', fontSize: 13 },
   dtc: { borderRadius: 10, padding: 12, gap: 6 },
   dtcHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-<<<<<<< HEAD
   code: { fontWeight: '900', fontSize: 20, lineHeight: 28 },
   sevBadge: { fontSize: 13, fontWeight: '800', textTransform: 'uppercase' },
   plain: { color: colors.slate, fontSize: 15, lineHeight: 22, fontWeight: '600' },
   meta: { color: colors.muted, fontSize: 13, marginTop: 4, lineHeight: 20 },
   hint: { color: colors.muted, fontSize: 14, lineHeight: 22 },
-  ok: { color: colors.garage, fontWeight: '700', fontSize: 13, marginTop: 6, lineHeight: 20 },
-  section: { fontWeight: '800', color: colors.ink, fontSize: 15, lineHeight: 22 },
-=======
-  code: { fontWeight: '900', fontSize: 15 },
-  sevBadge: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  plain: { color: colors.slate },
-  meta: { color: colors.muted, fontSize: 12, marginTop: 4 },
-  hint: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   input: {
     borderWidth: 1,
     borderColor: colors.line,
@@ -703,9 +694,8 @@ const styles = StyleSheet.create({
     color: colors.ink,
     marginTop: 8,
   },
-  ok: { color: colors.garage, fontWeight: '700', fontSize: 12, marginTop: 6 },
-  section: { fontWeight: '800', color: colors.ink, fontSize: 13 },
->>>>>>> ac5efe4 (feat(modules): Batch G — M4 vision, M5 DTC, M12 CDN, M13 secours)
+  ok: { color: colors.garage, fontWeight: '700', fontSize: 13, marginTop: 6, lineHeight: 20 },
+  section: { fontWeight: '800', color: colors.ink, fontSize: 15, lineHeight: 22 },
   clear: { backgroundColor: colors.asphalt, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 8 },
   deviceRow: {
     flexDirection: 'row',

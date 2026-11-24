@@ -15,11 +15,12 @@ service firebase.storage {
 
     /**
      * Module 12 — Fil mécanique CDN.
-     * Owner write under feedVideos/{uid}/… ; signed-in read for feed playback.
+     * Owner-only get/list/write under feedVideos/{uid}/…
+     * Feed playback uses tokenized getDownloadURL (bypasses list IDOR).
      * Deny everything else (no world-open bucket).
      */
     match /feedVideos/{userId}/{fileName} {
-      allow read: if signedIn();
+      allow get, list: if isOwner(userId);
       allow write: if isOwner(userId) && isVideo();
       allow delete: if isOwner(userId);
     }
