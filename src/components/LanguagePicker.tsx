@@ -19,14 +19,16 @@ type Props = {
   /** Show full language names under the section title. */
   showTitle?: boolean;
   compact?: boolean;
+  /** Square FR/EN/ES tiles for the global top bar. */
+  square?: boolean;
 };
 
-/** EN / FR / ES selector — Settings + visible Menu control. */
-export function LanguagePicker({ showTitle = true, compact = false }: Props) {
+/** EN / FR / ES selector — Settings + global top bar. */
+export function LanguagePicker({ showTitle = true, compact = false, square = false }: Props) {
   const { locale, setLocale, t, locales } = useI18n();
 
   return (
-    <View style={[styles.wrap, compact && styles.wrapCompact]}>
+    <View style={[styles.wrap, compact && styles.wrapCompact, square && styles.wrapSquare]}>
       {showTitle ? (
         <>
           <Text style={styles.title}>{t('language')}</Text>
@@ -42,10 +44,25 @@ export function LanguagePicker({ showTitle = true, compact = false }: Props) {
               accessibilityRole="radio"
               accessibilityState={{ selected: on }}
               accessibilityLabel={t(A11Y_KEYS[code])}
-              style={[styles.chip, on && styles.chipOn, compact && styles.chipCompact]}
+              style={[
+                styles.chip,
+                on && styles.chipOn,
+                compact && styles.chipCompact,
+                square && styles.chipSquare,
+                square && on && styles.chipSquareOn,
+              ]}
               onPress={() => void setLocale(code)}
             >
-              <Text style={[styles.chipTxt, on && styles.chipTxtOn]}>{LABELS[code]}</Text>
+              <Text
+                style={[
+                  styles.chipTxt,
+                  on && styles.chipTxtOn,
+                  square && styles.chipTxtSquare,
+                  square && on && styles.chipTxtSquareOn,
+                ]}
+              >
+                {LABELS[code]}
+              </Text>
             </Pressable>
           );
         })}
@@ -57,6 +74,7 @@ export function LanguagePicker({ showTitle = true, compact = false }: Props) {
 const styles = StyleSheet.create({
   wrap: { gap: 6 },
   wrapCompact: { marginBottom: 4 },
+  wrapSquare: { marginBottom: 0 },
   title: { color: colors.ink, fontWeight: '800', fontSize: 13 },
   hint: { color: colors.muted, fontSize: 11, lineHeight: 15 },
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
@@ -71,7 +89,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   chipCompact: { paddingVertical: 8, paddingHorizontal: 12, minWidth: 44 },
+  chipSquare: {
+    minWidth: 36,
+    width: 36,
+    height: 36,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    borderRadius: 8,
+    justifyContent: 'center',
+    backgroundColor: '#2A3542',
+    borderColor: '#3D4A5A',
+  },
+  chipSquareOn: {
+    backgroundColor: colors.signal,
+    borderColor: colors.signal,
+  },
   chipOn: { backgroundColor: colors.asphalt, borderColor: colors.asphalt },
   chipTxt: { color: colors.slate, fontWeight: '800', fontSize: 13 },
   chipTxtOn: { color: colors.white },
+  chipTxtSquare: { color: colors.mist, fontSize: 12, fontWeight: '800' },
+  chipTxtSquareOn: { color: colors.white },
 });

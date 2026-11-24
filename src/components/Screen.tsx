@@ -3,8 +3,11 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 
-/** Room below status bar for Connexion + weather chrome stack. */
-const CHROME_BELOW_INSET = 88;
+/**
+ * Room below status bar for GlobalTopBar + Connexion + weather chrome stack.
+ * Keep in sync with GlobalTopBar / ConnexionChip / WeatherBanner offsets.
+ */
+const CHROME_BELOW_INSET = 132;
 /** SOS FAB sits at bottom ~92 with height 58 — clear last CTAs. */
 const SOS_FAB_CLEARANCE = 166;
 

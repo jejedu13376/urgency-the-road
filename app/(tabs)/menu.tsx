@@ -2,9 +2,9 @@ import { Link } from 'expo-router';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
-import { LanguagePicker } from '../../src/components/LanguagePicker';
 import { ProgressHero } from '../../src/components/ProgressHero';
 import { Screen } from '../../src/components/Screen';
+import { BRAND_NAME } from '../../src/brand';
 import { useI18n } from '../../src/context/I18nContext';
 import { useProgress } from '../../src/context/ProgressContext';
 import { MODULES } from '../../src/data/modulesMeta';
@@ -46,8 +46,7 @@ export default function MenuScreen() {
         });
 
   return (
-    <Screen title={t('appName')} subtitle={t('menu.subtitle')}>
-      <LanguagePicker compact />
+    <Screen title={BRAND_NAME} subtitle={t('menu.subtitle')}>
       <BackendStatusBanner />
       <ProgressHero />
 

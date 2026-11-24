@@ -1,6 +1,7 @@
 /** Français = langue par défaut / fallback (produit FR-first). */
 export const fr = {
-  appName: 'Urgence Mécanique',
+  /** Always English — never localize the product brand. */
+  appName: 'Urgency road',
   loading: 'Chargement…',
   close: 'Fermer',
   open: 'Ouvrir',
@@ -52,7 +53,7 @@ export const fr = {
 
   registerGate: {
     title: 'Créer votre compte',
-    sub: 'Première ouverture — inscrivez-vous ou connectez-vous pour accéder à Urgence Mécanique.',
+    sub: 'Première ouverture — inscrivez-vous ou connectez-vous pour accéder à Urgency road.',
     namePh: 'Nom complet',
     emailPh: 'email@exemple.com',
     passwordPh: 'Mot de passe',
@@ -72,12 +73,12 @@ export const fr = {
   support: {
     title: 'Support',
     subtitle: 'Aide & contact entreprise',
-    intro: 'Une question, un bug Expo, un abonnement ? Écrivez à l’équipe Urgence Mécanique.',
+    intro: 'Une question, un bug Expo, un abonnement ? Écrivez à l’équipe Urgency road.',
     emailLabel: 'Email support entreprise',
     emailA11y: 'Email support %{email}',
     write: 'Écrire un email',
     writeA11y: 'Ouvrir le client mail vers le support',
-    mailSubject: 'Support Urgence Mécanique',
+    mailSubject: 'Support Urgency road',
     mailBody: 'Bonjour %{app},\n\n',
     mailOpened: 'Client mail ouvert.',
     mailUnavailable: 'Impossible d’ouvrir le mail — écrivez à %{email}',
@@ -116,7 +117,7 @@ export const fr = {
   },
 
   progress: {
-    kicker: 'Parcours vendeur Urgence Mécanique',
+    kicker: 'Parcours vendeur Urgency road',
     loadingA11y: 'Chargement progression',
     pctOf17: '%{pct}% des 17 modules',
     days: 'jours',

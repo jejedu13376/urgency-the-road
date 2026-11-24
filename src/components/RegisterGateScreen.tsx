@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { BRAND_NAME } from '../brand';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../context/I18nContext';
 import { useRegisterGate } from '../context/RegisterGateContext';
@@ -116,7 +117,7 @@ export function RegisterGateScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.card}>
-        <Text style={styles.brand}>{t('appName')}</Text>
+        <Text style={styles.brand}>{BRAND_NAME}</Text>
         <Text style={styles.title}>{t('registerGate.title')}</Text>
         <Text style={styles.sub}>{t('registerGate.sub')}</Text>
 
@@ -208,9 +209,8 @@ const styles = StyleSheet.create({
   brand: {
     color: colors.signal,
     fontWeight: '800',
-    fontSize: 13,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
+    fontSize: 15,
+    letterSpacing: -0.2,
   },
   title: { fontSize: 22, fontWeight: '800', color: colors.ink },
   sub: { color: colors.muted, fontSize: 13, lineHeight: 18, marginBottom: 4 },

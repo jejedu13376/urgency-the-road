@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
 import { ConnexionChip } from '../src/components/ConnexionChip';
+import { GlobalTopBar } from '../src/components/GlobalTopBar';
 import { RegisterGateScreen } from '../src/components/RegisterGateScreen';
 import { SafetyDrivingMonitor } from '../src/components/SafetyDrivingMonitor';
 import { SosButton } from '../src/components/SosButton';
@@ -13,7 +14,7 @@ import { WeatherBanner } from '../src/components/WeatherBanner';
 import { AuthProvider } from '../src/context/AuthContext';
 import { FleetProvider } from '../src/context/FleetContext';
 import { I18nProvider } from '../src/context/I18nContext';
-import { NightModeProvider, useNightMode } from '../src/context/NightModeContext';
+import { NightModeProvider } from '../src/context/NightModeContext';
 import { ProgressProvider } from '../src/context/ProgressContext';
 import { RegisterGateProvider, useRegisterGate } from '../src/context/RegisterGateContext';
 import { SafetyDrivingProvider } from '../src/context/SafetyDrivingContext';
@@ -23,12 +24,12 @@ import { colors } from '../src/theme/colors';
 function AppShell() {
   const { unlocked } = useStartupGate();
   const { ready: registerReady, registered } = useRegisterGate();
-  const { active: night } = useNightMode();
 
   if (!unlocked) {
     return (
       <>
         <StatusBar style="light" />
+        <GlobalTopBar />
         <StartupGateScreen />
       </>
     );
@@ -38,6 +39,7 @@ function AppShell() {
     return (
       <View style={styles.boot}>
         <StatusBar style="light" />
+        <GlobalTopBar />
         <ActivityIndicator color={colors.signal} size="large" />
       </View>
     );
@@ -47,6 +49,7 @@ function AppShell() {
     return (
       <>
         <StatusBar style="light" />
+        <GlobalTopBar />
         <RegisterGateScreen />
       </>
     );
@@ -54,7 +57,8 @@ function AppShell() {
 
   return (
     <>
-      <StatusBar style={night ? 'light' : 'dark'} />
+      <StatusBar style="light" />
+      <GlobalTopBar />
       <WeatherBanner />
       <ConnexionChip />
       <SafetyDrivingProvider>
