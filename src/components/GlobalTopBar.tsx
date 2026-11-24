@@ -37,7 +37,8 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 40,
+    zIndex: 50,
+
     backgroundColor: colors.asphalt,
     borderBottomWidth: 1,
     borderBottomColor: '#2A3542',

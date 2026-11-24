@@ -1,13 +1,15 @@
 import { Stack } from 'expo-router';
 import { View } from 'react-native';
-import { GLOBAL_TOP_BAR_BODY } from '../../src/components/GlobalTopBar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { belowGlobalTopBar } from '../../src/chromeInsets';
 import { colors } from '../../src/theme/colors';
 
 export default function ModulesLayout() {
-  // GlobalTopBar already covers status-bar inset; only clear its body height.
-  // Native stack still applies its own top safe-area for the header title.
+  const insets = useSafeAreaInsets();
+  // Full clear of GlobalTopBar (status inset + body). Once the stack sits below the
+  // notch, native header topInset collapses to ~0 so we do not double-pad.
   return (
-    <View style={{ flex: 1, paddingTop: GLOBAL_TOP_BAR_BODY, backgroundColor: colors.white }}>
+    <View style={{ flex: 1, paddingTop: belowGlobalTopBar(insets), backgroundColor: colors.white }}>
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: colors.white },

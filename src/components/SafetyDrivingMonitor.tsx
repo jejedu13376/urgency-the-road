@@ -4,6 +4,7 @@
  */
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { belowGlobalTopBar, CHROME_GAP, CONNEXION_RIGHT_CLEARANCE } from '../chromeInsets';
 import { HosLivePanel } from './HosLivePanel';
 import { useSafetyDriving } from '../context/SafetyDrivingContext';
 import { DRIVING_BREAK_THRESHOLD_SEC } from '../services/urgence/drivingBreak';
@@ -38,7 +39,17 @@ export function SafetyDrivingMonitor() {
 
   return (
     <>
-      <View style={[styles.chip, { top: insets.top + 44 }]} pointerEvents="box-none">
+      <View
+        style={[
+          styles.chip,
+          {
+            // Under GlobalTopBar; leave right clearance so Connexion stays tappable.
+            top: belowGlobalTopBar(insets) + CHROME_GAP,
+            right: CONNEXION_RIGHT_CLEARANCE,
+          },
+        ]}
+        pointerEvents="box-none"
+      >
         <Pressable
           style={[styles.chipBtn, monitoring ? styles.chipOn : styles.chipOff]}
           onPress={() => setMonitoring((v) => !v)}
@@ -88,9 +99,8 @@ const styles = StyleSheet.create({
   chip: {
     position: 'absolute',
     left: 8,
-    right: 8,
-    zIndex: 40,
-    elevation: 40,
+    zIndex: 35,
+    elevation: 35,
   },
   chipBtn: {
     borderRadius: 10,

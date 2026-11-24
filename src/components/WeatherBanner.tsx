@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { belowGlobalTopBar, CHROME_GAP } from '../chromeInsets';
 import { CONNEXION_CHIP_HEIGHT } from './ConnexionChip';
-import { GLOBAL_TOP_BAR_BODY } from './GlobalTopBar';
 import { useI18n } from '../context/I18nContext';
 import { localeTag } from '../i18n';
 import { getDeviceCoords } from '../services/geo/deviceLocation';
@@ -95,8 +95,8 @@ export function WeatherBanner() {
   const temp = w?.tempC ?? '…';
   const road = roadLabel(w?.road, t);
 
-  // Under GlobalTopBar + ConnexionChip (same right edge) — no horizontal overlap.
-  const top = Math.max(insets.top, 0) + GLOBAL_TOP_BAR_BODY + 6 + CONNEXION_CHIP_HEIGHT + 4;
+  // Under GlobalTopBar + ConnexionChip (same right edge) — no horizontal overlap with HOS.
+  const top = belowGlobalTopBar(insets) + CHROME_GAP + CONNEXION_CHIP_HEIGHT + 4;
   return (
     <View
       style={[styles.wrap, { top, right: 10 }]}

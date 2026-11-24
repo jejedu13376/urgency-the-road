@@ -13,7 +13,7 @@ import {
 import { Link, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
-import { GLOBAL_TOP_BAR_BODY } from '../GlobalTopBar';
+import { belowGlobalTopBar } from '../../chromeInsets';
 import { useAuth } from '../../context/AuthContext';
 import { useFleet } from '../../context/FleetContext';
 import { getDeviceCoords, haversineKm, watchDevicePosition } from '../../services/geo/deviceLocation';
@@ -364,7 +364,7 @@ export function GpsFullMap() {
   const chromePads = useMemo<ChromePads>(
     () => ({
       // Clear persistent GlobalTopBar (brand + FR/EN/ES) on every page including Carte.
-      padTop: Math.max(insets.top, 0) + GLOBAL_TOP_BAR_BODY + 4,
+      padTop: belowGlobalTopBar(insets) + 4,
       padRight: Math.max(insets.right, 8),
       padBottom: Math.max(insets.bottom, 8) + SOS_FAB_CLEARANCE,
       padLeft: Math.max(insets.left, 8),
