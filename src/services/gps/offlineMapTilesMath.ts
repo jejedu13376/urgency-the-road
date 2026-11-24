@@ -90,7 +90,50 @@ function downsampleRoute(
 }
 
 /**
- * Tile set covering a route corridor (sampled points + pad) across zoom levels.
+ * Insert points so consecutive samples are at most `maxStepDeg` apart
+ * (covers GPS→destination and sparse polylines between vertices).
+ */
+export function densifyCoords(
+  coords: [number, number][],
+  maxStepDeg = 0.015,
+): [number, number][] {
+  if (coords.length < 2) return coords.slice();
+  const out: [number, number][] = [coords[0]!];
+  for (let i = 1; i < coords.length; i++) {
+    const a = coords[i - 1]!;
+    const b = coords[i]!;
+    const dLat = b[0] - a[0];
+    const dLon = b[1] - a[1];
+    const dist = Math.hypot(dLat, dLon);
+    const steps = Math.max(1, Math.ceil(dist / Math.max(1e-6, maxStepDeg)));
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps;
+      out.push([a[0] + dLat * t, a[1] + dLon * t]);
+    }
+  }
+  return out;
+}
+
+function addBBoxTiles(
+  add: (z: number, x: number, y: number) => void,
+  bbox: OfflineBBox,
+  z: number,
+): void {
+  const x0 = lonToTileX(bbox.west, z);
+  const x1 = lonToTileX(bbox.east, z);
+  const y0 = latToTileY(bbox.north, z);
+  const y1 = latToTileY(bbox.south, z);
+  for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
+    for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) {
+      add(z, x, y);
+    }
+  }
+}
+
+/**
+ * Tile set covering a route corridor (densified samples + pad) across zoom levels.
+ * Sparse inputs (GPS + destination, few vertices) also fill the bbox so the
+ * area between endpoints is covered — not only 3×3 pads at the tips.
  */
 export function tilesForOfflinePack(
   coords: [number, number][],
@@ -107,6 +150,7 @@ export function tilesForOfflinePack(
   const add = (z: number, x: number, y: number) => {
     const n = 2 ** z;
     if (x < 0 || y < 0 || x >= n || y >= n) return;
+    if (out.length >= maxTiles) return;
     const t = { z, x, y };
     const k = key(t);
     if (seen.has(k)) return;
@@ -114,9 +158,10 @@ export function tilesForOfflinePack(
     out.push(t);
   };
 
-  const samples = downsampleRoute(coords);
+  const sparse = coords.length < 8;
+  const samples = densifyCoords(downsampleRoute(coords));
   for (let z = minZoom; z <= maxZoom; z++) {
-    if (samples.length >= 2) {
+    if (samples.length >= 1) {
       for (const [lat, lon] of samples) {
         const cx = lonToTileX(lon, z);
         const cy = latToTileY(lat, z);
@@ -126,16 +171,10 @@ export function tilesForOfflinePack(
           }
         }
       }
-    } else {
-      const x0 = lonToTileX(bbox.west, z);
-      const x1 = lonToTileX(bbox.east, z);
-      const y0 = latToTileY(bbox.north, z);
-      const y1 = latToTileY(bbox.south, z);
-      for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
-        for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) {
-          add(z, x, y);
-        }
-      }
+    }
+    // Sparse packs (few vertices): fill bbox so the zone between points is cached.
+    if (sparse || samples.length < 2) {
+      addBBoxTiles(add, bbox, z);
     }
     if (out.length >= maxTiles) break;
   }

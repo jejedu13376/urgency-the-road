@@ -33,6 +33,8 @@ export type { OfflineBBox, OfflineTileCoord } from './offlineMapTilesMath';
 
 export const OFFLINE_MAP_MANIFEST_KEY = 'um.gps.offline.map.v1';
 export const OFFLINE_MAP_DIR = 'offline-map';
+/** Local HTML shell so WKWebView loadFileURL can read offline tile files. */
+export const GPS_MAP_SHELL_DIR = 'gps-map-shell';
 
 const CONCURRENCY = 6;
 
@@ -73,10 +75,34 @@ function layerTileUrl(layer: OfflineMapLayer, t: OfflineTileCoord): string {
     : roadsTileUrl(t.z, t.x, t.y);
 }
 
+export function documentsRootUri(): string | null {
+  return FileSystem.documentDirectory;
+}
+
 export function offlineMapRootUri(): string | null {
   const base = FileSystem.documentDirectory;
   if (!base) return null;
   return `${base}${OFFLINE_MAP_DIR}/`;
+}
+
+/**
+ * Persist Leaflet HTML under documentDirectory and return its file:// URI.
+ * Required so iOS allowingReadAccessToURL applies (loadFileURL, not loadHTMLString).
+ */
+export async function persistGpsMapShellHtml(html: string): Promise<string | null> {
+  const base = FileSystem.documentDirectory;
+  if (!base || Platform.OS === 'web') return null;
+  const dir = `${base}${GPS_MAP_SHELL_DIR}/`;
+  try {
+    await ensureDirSafe(dir);
+    const path = `${dir}index.html`;
+    await FileSystem.writeAsStringAsync(path, html, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+    return path;
+  } catch {
+    return null;
+  }
 }
 
 export async function loadOfflineMapManifest(): Promise<OfflineMapManifest | null> {
@@ -110,10 +136,18 @@ export async function clearOfflineMapPack(): Promise<void> {
   await AsyncStorage.removeItem(OFFLINE_MAP_MANIFEST_KEY);
 }
 
-async function ensureDir(uri: string): Promise<void> {
-  const info = await FileSystem.getInfoAsync(uri);
-  if (!info.exists) {
-    await FileSystem.makeDirectoryAsync(uri, { intermediates: true });
+/** Race-safe mkdir — concurrent workers may all see missing then create. */
+async function ensureDirSafe(uri: string): Promise<void> {
+  const normalized = uri.endsWith('/') ? uri : `${uri}/`;
+  const info = await FileSystem.getInfoAsync(normalized);
+  if (info.exists) return;
+  try {
+    await FileSystem.makeDirectoryAsync(normalized, { intermediates: true });
+  } catch {
+    const again = await FileSystem.getInfoAsync(normalized);
+    if (!again.exists) {
+      throw new Error(`mkdir failed: ${normalized}`);
+    }
   }
 }
 
@@ -122,8 +156,6 @@ async function downloadOne(
   dest: string,
 ): Promise<{ ok: boolean; bytes: number }> {
   try {
-    const parent = dest.replace(/\/[^/]+$/, '/');
-    await ensureDir(parent);
     const existing = await FileSystem.getInfoAsync(dest);
     if (existing.exists && !existing.isDirectory) {
       return { ok: true, bytes: existing.size ?? 0 };
@@ -239,7 +271,15 @@ export async function downloadOfflineMapPack(
   });
 
   try {
-    await ensureDir(root);
+    await ensureDirSafe(root);
+    // Pre-create every parent dir serially — avoids race in the download pool.
+    const parents = new Set<string>();
+    for (const job of jobs) {
+      parents.add(job.dest.replace(/\/[^/]+$/, '/'));
+    }
+    for (const p of [...parents].sort()) {
+      await ensureDirSafe(p);
+    }
   } catch {
     return { ok: false, error: 'Impossible de créer le dossier hors ligne' };
   }

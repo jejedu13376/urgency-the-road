@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   bboxAroundPoint,
   bboxFromCoords,
+  densifyCoords,
   latToTileY,
   lonToTileX,
   roadsTileUrl,
@@ -56,6 +57,40 @@ describe('offlineMapTiles math', () => {
     assert.ok(tiles.length <= 500);
     const keys = new Set(tiles.map((t) => `${t.z}/${t.x}/${t.y}`));
     assert.equal(keys.size, tiles.length);
+  });
+
+  it('densifyCoords inserts midpoints on long segments', () => {
+    const dense = densifyCoords(
+      [
+        [45.0, -73.0],
+        [45.2, -72.8],
+      ],
+      0.05,
+    );
+    assert.ok(dense.length > 2);
+    assert.deepEqual(dense[0], [45.0, -73.0]);
+    assert.deepEqual(dense[dense.length - 1], [45.2, -72.8]);
+  });
+
+  it('sparse GPS+dest pack covers area between endpoints (not only tips)', () => {
+    const tiles = tilesForOfflinePack(
+      [
+        [45.5, -73.6],
+        [45.7, -73.4],
+      ],
+      10,
+      11,
+      2000,
+    );
+    // Midpoint of the bbox should appear in the pack at z10.
+    const midLat = 45.6;
+    const midLon = -73.5;
+    const mx = lonToTileX(midLon, 10);
+    const my = latToTileY(midLat, 10);
+    assert.ok(
+      tiles.some((t) => t.z === 10 && t.x === mx && t.y === my),
+      'expected midpoint tile from bbox fill',
+    );
   });
 
   it('roadsTileUrl is carto or osm png', () => {

@@ -102,8 +102,10 @@ import {
 import { colors } from '../../theme/colors';
 import { buildGpsMapHtml } from './buildGpsMapHtml';
 import {
+  documentsRootUri,
   loadOfflineMapManifest,
   offlineTilesInjectPayload,
+  persistGpsMapShellHtml,
   type OfflineMapManifest,
 } from '../../services/gps/offlineMapTiles';
 import {
@@ -123,7 +125,7 @@ type WebViewHandle = {
 const MapWebView = RNWebView as unknown as React.ComponentType<{
   ref?: React.Ref<WebViewHandle | null>;
   originWhitelist?: string[];
-  source?: { html: string; baseUrl?: string };
+  source?: { html: string; baseUrl?: string } | { uri: string };
   style?: object;
   onMessage?: (ev: WebViewMessageEvent) => void;
   onShouldStartLoadWithRequest?: (req: { url: string }) => boolean;
@@ -251,6 +253,7 @@ function parseMapMsg(raw: string): MapMsg | null {
 function allowMapDocumentLoad(url: string): boolean {
   if (!url || url === 'about:blank' || url === 'about:srcdoc') return true;
   if (url.startsWith('data:text/html')) return true;
+  if (url.startsWith('file:')) return true;
   if (url === 'https://localhost/' || url === 'https://localhost') return true;
   return false;
 }
@@ -265,7 +268,12 @@ async function getDeviceCoordsTimed(timeoutMs = 8000) {
   ]);
 }
 
-const MAP_ORIGIN_WHITELIST = ['about:blank', 'about:srcdoc', 'https://localhost'];
+const MAP_ORIGIN_WHITELIST = [
+  'about:blank',
+  'about:srcdoc',
+  'https://localhost',
+  'file://*',
+];
 
 type MapWindow = Window & {
   postMessage: (message: unknown, targetOrigin: string) => void;
@@ -324,6 +332,9 @@ export function GpsFullMap() {
   /** Last local police pin — cloud publish only via explicit Publier. */
   const lastLocalPoliceRef = useRef<CrowdReport | null>(null);
   const [bootHtml, setBootHtml] = useState<string | null>(null);
+  /** file:// shell URI — required for iOS offline tile file access (loadFileURL). */
+  const [mapShellUri, setMapShellUri] = useState<string | null>(null);
+  const docsRootUri = documentsRootUri();
   const [mapReady, setMapReady] = useState(false);
   const [offlinePack, setOfflinePack] = useState<OfflineMapManifest | null>(null);
   const [canPublishPolice, setCanPublishPolice] = useState(false);
@@ -460,6 +471,18 @@ export function GpsFullMap() {
       cancelled = true;
     };
   }, []);
+
+  /** Write HTML to disk so WebView uses loadFileURL (allows file:// tiles on iOS). */
+  useEffect(() => {
+    if (!bootHtml || Platform.OS === 'web') return;
+    let cancelled = false;
+    void persistGpsMapShellHtml(bootHtml).then((uri) => {
+      if (!cancelled && uri) setMapShellUri(uri);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bootHtml]);
 
   useEffect(() => {
     if (!mapReady || !offlinePack) return;
@@ -1864,7 +1887,8 @@ export function GpsFullMap() {
 
   // Light icons only on Carte tab (pathname). Tabs stay mounted — leaving Carte clears this
   // immediately. modules/gps keeps root dark StatusBar for the white Stack header.
-  if (!bootHtml) {
+  // Native waits for file:// shell so offline tiles are readable (WKWebView loadFileURL).
+  if (!bootHtml || (Platform.OS !== 'web' && !mapShellUri)) {
     return (
       <View style={[styles.fill, styles.boot]}>
         {onCarteTab ? <StatusBar style="light" /> : null}
@@ -1887,10 +1911,7 @@ export function GpsFullMap() {
         <MapWebView
           ref={webRef}
           originWhitelist={MAP_ORIGIN_WHITELIST}
-          source={{
-            html: bootHtml,
-            baseUrl: 'https://localhost/',
-          }}
+          source={{ uri: mapShellUri! }}
           style={styles.fill}
           onMessage={onMessage}
           onShouldStartLoadWithRequest={(req) => allowMapDocumentLoad(req.url)}
@@ -1899,7 +1920,7 @@ export function GpsFullMap() {
           allowFileAccess
           allowFileAccessFromFileURLs
           allowUniversalAccessFromFileURLs
-          allowingReadAccessToURL={offlinePack?.rootUri}
+          allowingReadAccessToURL={docsRootUri ?? undefined}
           mixedContentMode="always"
           setSupportMultipleWindows={false}
           geolocationEnabled={false}
