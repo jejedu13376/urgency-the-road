@@ -1,6 +1,6 @@
 /**
  * Global safety monitor: GPS motion → driving time, HOS live readout (CA/US/EU/AU),
- * 4h break TTS, truck-class overspeed, fatigue score + mandatory stop.
+ * 2h break TTS, truck-class overspeed, fatigue score + mandatory stop.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';

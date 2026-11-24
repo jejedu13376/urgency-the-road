@@ -53,7 +53,7 @@ import type {
 import { colors } from '../../src/theme/colors';
 
 /**
- * Module 13 — SOS, pause 4h, personal printed QR per subscriber,
+ * Module 13 — SOS, pause 2h, personal printed QR per subscriber,
  * controlled access: public_limited vs emergency_full (name/address/contact/full fiche).
  * No electronic-beacon product; distinct from OBD valise + vehicle diagnostic hardware.
  */
@@ -546,7 +546,7 @@ export default function UrgenceScreen() {
               <Text style={styles.alertTxt}>
                 {fatigue.mustStop
                   ? 'Arrêt obligatoire — fatigue / HOS critique.'
-                  : `4 h confort (${DRIVING_BREAK_THRESHOLD_SEC / 3600} h) — café et jambes.`}
+                  : `2 h pause (${DRIVING_BREAK_THRESHOLD_SEC / 3600} h) — café et jambes.`}
               </Text>
             </View>
           ) : null}

@@ -18,7 +18,7 @@ describe('fatigueScore', () => {
     assert.equal(f.mustStop, false);
   });
 
-  it('goes critical at 4h without breaks', () => {
+  it('goes critical at 2h without breaks', () => {
     const f = computeFatigueScore({
       drivingSec: DRIVING_BREAK_THRESHOLD_SEC,
       breaksTaken: 0,
