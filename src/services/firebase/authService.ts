@@ -190,6 +190,10 @@ export async function signInEmail(
 
 export async function signOutUser(): Promise<ServiceResult<null>> {
   const fb = getFirebase();
+  // Clear medical PHI before auth uid disappears from getSignedInUid().
+  const { clearMedicalLocalStore } = await import('../urgence/medicalLocalStore');
+  const uid = fb?.auth.currentUser?.uid ?? null;
+  await clearMedicalLocalStore(uid);
   if (!fb) return mockResult(null, 'MOCK Auth — déconnexion locale');
   try {
     await signOut(fb.auth);

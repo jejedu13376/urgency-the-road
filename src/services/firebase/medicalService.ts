@@ -626,22 +626,7 @@ export async function scanMedicalEmergency(
       notes: idx.notes,
       updatedAt: idx.updatedAt,
     });
-    // Cache for later offline rescues on this device.
-    await saveMedicalCardLocal({
-      id: idx.cardId,
-      ownerUid: idx.ownerUid,
-      scanCode: idx.scanCode,
-      fullName: idx.fullName,
-      address: idx.address,
-      allergies: idx.allergies ?? [],
-      conditions: idx.conditions ?? [],
-      medications: idx.medications ?? [],
-      emergencyContacts: idx.emergencyContacts ?? [],
-      bloodType: idx.bloodType,
-      notes: idx.notes,
-      subscriberActive: idx.subscriberActive,
-      updatedAt: idx.updatedAt,
-    });
+    // Do not cache third-party PHI for rescuer offline — owner fiche only in AsyncStorage.
     return liveResult(view);
   } catch (e) {
     // Auth/rules deny: never mockResult PHI — drop revoked cache, soft-fail empty.

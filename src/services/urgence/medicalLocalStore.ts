@@ -1,40 +1,79 @@
 /**
- * Module 13 — on-device medical QR payload store (AsyncStorage).
- * Enables generate / save / scan without network once the fiche is on the device.
+ * Module 13 — on-device medical QR store (owner fiche only).
+ * Scoped per signed-in uid. Never caches third-party rescuer PHI.
+ * Cleared on sign-out. Legacy process-wide key is migrated then removed.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getSignedInUid } from '../../firebase/config';
 import type { MedicalCardDoc } from '../../types/firestore';
 
-export const MEDICAL_LOCAL_KEY = 'um.urgence.medicalQr.v1';
+/** @deprecated Unscoped key — migrated away on first read/write. */
+export const MEDICAL_LOCAL_KEY_LEGACY = 'um.urgence.medicalQr.v1';
+
+export function medicalLocalKeyForUid(uid: string): string {
+  return `um.urgence.medicalQr.v1:${uid}`;
+}
 
 type LocalMedicalStore = {
-  /** scanCode → card */
-  byScanCode: Record<string, MedicalCardDoc>;
-  /** ownerUid → scanCode (latest personal QR) */
-  byOwnerUid: Record<string, string>;
+  /** Owner fiche only (at most one personal QR). */
+  card: MedicalCardDoc | null;
   updatedAt: string;
 };
 
-async function readStore(): Promise<LocalMedicalStore> {
+function emptyStore(): LocalMedicalStore {
+  return { card: null, updatedAt: new Date().toISOString() };
+}
+
+async function readStoreForUid(uid: string): Promise<LocalMedicalStore> {
   try {
-    const raw = await AsyncStorage.getItem(MEDICAL_LOCAL_KEY);
-    if (!raw) {
-      return { byScanCode: {}, byOwnerUid: {}, updatedAt: new Date().toISOString() };
+    const raw = await AsyncStorage.getItem(medicalLocalKeyForUid(uid));
+    if (raw) {
+      const parsed = JSON.parse(raw) as LocalMedicalStore & {
+        byScanCode?: Record<string, MedicalCardDoc>;
+        byOwnerUid?: Record<string, string>;
+      };
+      if (parsed.card) {
+        return { card: parsed.card, updatedAt: parsed.updatedAt ?? new Date().toISOString() };
+      }
+      // Migrate mid-PR shape if present under scoped key.
+      const code = parsed.byOwnerUid?.[uid];
+      const card = code ? parsed.byScanCode?.[code] ?? null : null;
+      return { card, updatedAt: parsed.updatedAt ?? new Date().toISOString() };
     }
-    const parsed = JSON.parse(raw) as LocalMedicalStore;
-    return {
-      byScanCode: parsed.byScanCode ?? {},
-      byOwnerUid: parsed.byOwnerUid ?? {},
-      updatedAt: parsed.updatedAt ?? new Date().toISOString(),
+
+    // One-shot migrate from legacy process-wide key, then delete it.
+    const legacyRaw = await AsyncStorage.getItem(MEDICAL_LOCAL_KEY_LEGACY);
+    if (!legacyRaw) return emptyStore();
+    const legacy = JSON.parse(legacyRaw) as {
+      byScanCode?: Record<string, MedicalCardDoc>;
+      byOwnerUid?: Record<string, string>;
+      card?: MedicalCardDoc | null;
+      updatedAt?: string;
     };
+    const code = legacy.byOwnerUid?.[uid];
+    const card =
+      legacy.card?.ownerUid === uid
+        ? legacy.card
+        : code
+          ? legacy.byScanCode?.[code] ?? null
+          : null;
+    const migrated: LocalMedicalStore = {
+      card: card && card.ownerUid === uid ? card : null,
+      updatedAt: legacy.updatedAt ?? new Date().toISOString(),
+    };
+    if (migrated.card) {
+      await AsyncStorage.setItem(medicalLocalKeyForUid(uid), JSON.stringify(migrated));
+    }
+    await AsyncStorage.removeItem(MEDICAL_LOCAL_KEY_LEGACY);
+    return migrated;
   } catch {
-    return { byScanCode: {}, byOwnerUid: {}, updatedAt: new Date().toISOString() };
+    return emptyStore();
   }
 }
 
-async function writeStore(store: LocalMedicalStore): Promise<void> {
+async function writeStoreForUid(uid: string, store: LocalMedicalStore): Promise<void> {
   await AsyncStorage.setItem(
-    MEDICAL_LOCAL_KEY,
+    medicalLocalKeyForUid(uid),
     JSON.stringify({ ...store, updatedAt: new Date().toISOString() }),
   );
 }
@@ -50,13 +89,19 @@ export function isIsoNewer(a?: string, b?: string): boolean {
   return ta > tb;
 }
 
+/**
+ * Persist the signed-in owner's fiche only.
+ * Refuses third-party / unsigned cards so rescuer scans never land in AsyncStorage.
+ */
 export async function saveMedicalCardLocal(card: MedicalCardDoc): Promise<MedicalCardDoc> {
+  const uid = getSignedInUid();
   const code = card.scanCode.trim().toUpperCase();
-  if (!code.startsWith('UM-QR-')) {
+  if (!uid || !code.startsWith('UM-QR-') || card.ownerUid !== uid) {
     return card;
   }
   const normalized: MedicalCardDoc = {
     ...card,
+    ownerUid: uid,
     scanCode: code,
     allergies: card.allergies ?? [],
     conditions: card.conditions ?? [],
@@ -64,54 +109,52 @@ export async function saveMedicalCardLocal(card: MedicalCardDoc): Promise<Medica
     emergencyContacts: card.emergencyContacts ?? [],
     updatedAt: card.updatedAt || new Date().toISOString(),
   };
-  const store = await readStore();
-  store.byScanCode[code] = normalized;
-  if (normalized.ownerUid) {
-    const prev = store.byOwnerUid[normalized.ownerUid];
-    // Drop rotated ids so an old printed QR cannot unlock PHI from cache.
-    if (prev && prev !== code) {
-      delete store.byScanCode[prev];
-    }
-    store.byOwnerUid[normalized.ownerUid] = code;
-  }
-  await writeStore(store);
+  await writeStoreForUid(uid, { card: normalized, updatedAt: normalized.updatedAt });
   return normalized;
 }
 
 export async function loadMedicalCardByScanCode(
   scanCode: string,
 ): Promise<MedicalCardDoc | null> {
+  const uid = getSignedInUid();
+  if (!uid) return null;
   const code = scanCode.trim().toUpperCase();
   if (!code) return null;
-  const store = await readStore();
-  return store.byScanCode[code] ?? null;
+  const store = await readStoreForUid(uid);
+  if (!store.card || store.card.scanCode !== code || store.card.ownerUid !== uid) {
+    return null;
+  }
+  return store.card;
 }
 
 export async function loadMedicalCardByOwnerUid(
   ownerUid: string,
 ): Promise<MedicalCardDoc | null> {
   if (!ownerUid) return null;
-  const store = await readStore();
-  const code = store.byOwnerUid[ownerUid];
-  if (!code) return null;
-  return store.byScanCode[code] ?? null;
+  // Only the signed-in session may read its own scoped bucket.
+  const uid = getSignedInUid();
+  if (!uid || uid !== ownerUid) return null;
+  const store = await readStoreForUid(ownerUid);
+  if (!store.card || store.card.ownerUid !== ownerUid) return null;
+  return store.card;
 }
 
-/** Remove a cached fiche by scanCode (cloud says missing / rotated away). */
+/** Drop the signed-in owner's fiche when its scanCode was rotated away. */
 export async function removeMedicalCardByScanCode(scanCode: string): Promise<void> {
+  const uid = getSignedInUid();
+  if (!uid) return;
   const code = scanCode.trim().toUpperCase();
   if (!code) return;
-  const store = await readStore();
-  const card = store.byScanCode[code];
-  if (!card) return;
-  delete store.byScanCode[code];
-  if (card.ownerUid && store.byOwnerUid[card.ownerUid] === code) {
-    delete store.byOwnerUid[card.ownerUid];
-  }
-  await writeStore(store);
+  const store = await readStoreForUid(uid);
+  if (!store.card || store.card.scanCode !== code) return;
+  await writeStoreForUid(uid, emptyStore());
 }
 
-/** Test / reset helper — clears on-device medical QR cache. */
-export async function clearMedicalLocalStore(): Promise<void> {
-  await AsyncStorage.removeItem(MEDICAL_LOCAL_KEY);
+/** Clear medical PHI for the current session (call on sign-out). */
+export async function clearMedicalLocalStore(uid?: string | null): Promise<void> {
+  const target = uid ?? getSignedInUid();
+  if (target) {
+    await AsyncStorage.removeItem(medicalLocalKeyForUid(target));
+  }
+  await AsyncStorage.removeItem(MEDICAL_LOCAL_KEY_LEGACY);
 }
