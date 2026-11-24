@@ -15,7 +15,7 @@
         "NSLocationWhenInUseUsageDescription": "Urgence Mécanique utilise votre position pour garages, balances et SOS.",
         "NSFaceIDUsageDescription": "Urgence Mécanique utilise Face ID pour sécuriser l’accès au compte.",
         "NSMicrophoneUsageDescription": "Urgence Mécanique utilise le micro pour l’analyseur acoustique moteur (Module 4).",
-        "NSCameraUsageDescription": "Urgence Mécanique utilise la caméra pour VIN, diagnostic et devis.",
+        "NSCameraUsageDescription": "Urgence Mécanique utilise la caméra pour VIN, diagnostic, devis et surveillance somnolence (caméra frontale).",
         "NSPhotoLibraryUsageDescription": "Urgence Mécanique accède à la médiathèque pour sélectionner une vidéo locale (Fil) ou un devis."
       }
     },
@@ -63,7 +63,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Urgence Mécanique utilise la caméra pour scanner le VIN et les QR urgence."
+          "cameraPermission": "Urgence Mécanique utilise la caméra pour VIN, QR urgence et surveillance somnolence (caméra frontale)."
         }
       ],
       [
