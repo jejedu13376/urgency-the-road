@@ -1601,13 +1601,6 @@ export function GpsFullMap() {
               </Text>
             </Pressable>
           </View>
-          {lastRoute?.ok ? (
-            <View style={styles.etaChip}>
-              <Text style={styles.etaTxt} numberOfLines={1}>
-                ~{lastRoute.durationMin} min · {lastRoute.distanceKm} km
-              </Text>
-            </View>
-          ) : null}
         </View>
       ) : null}
 
@@ -1773,14 +1766,14 @@ export function GpsFullMap() {
         }}
       />
 
-      {/* Above map .bottom CTA (itinéraire / GPS) — leave room for dest menu. */}
+      {/* Above map .bottom CTA (itinéraire / GPS / ETA bar) — leave room for dest menu. */}
       <View
         pointerEvents="box-none"
         style={{
           position: 'absolute',
           left: chromePads.padLeft + 4,
           right: chromePads.padRight + 4,
-          bottom: chromePads.padBottom + 58,
+          bottom: chromePads.padBottom + (lastRoute?.ok ? 108 : 58),
           zIndex: 25,
           elevation: 25,
         }}
@@ -1959,22 +1952,4 @@ const styles = StyleSheet.create({
   },
   sideFabTxt: { color: colors.white, fontWeight: '800', fontSize: 12 },
   sideFabTxtDark: { color: colors.ink, fontWeight: '700', fontSize: 12 },
-  etaChip: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(27,36,48,0.9)',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 12,
-    maxWidth: 180,
-    shadowColor: '#101820',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  etaTxt: {
-    color: colors.white,
-    fontSize: 11,
-    fontWeight: '700',
-  },
 });

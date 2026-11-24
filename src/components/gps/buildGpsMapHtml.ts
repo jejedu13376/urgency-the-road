@@ -159,9 +159,10 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     position:absolute;z-index:1000;
     left:calc(10px + var(--pad-left));right:auto;
     bottom:calc(14px + var(--pad-bottom));
-    display:flex;flex-direction:row;align-items:center;gap:8px;pointer-events:none;
+    display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none;
   }
   .bottom > *{pointer-events:auto}
+  .bottom-actions{display:flex;flex-direction:row;align-items:center;gap:8px}
   .go{
     border:0;border-radius:16px;padding:13px 18px;font:750 13px system-ui,sans-serif;
     background:var(--signal);color:#fff;box-shadow:0 4px 14px rgba(196,92,38,.32);
@@ -176,6 +177,26 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     box-shadow:0 2px 10px rgba(16,24,32,.14);
   }
   .ghost:active{transform:scale(.97)}
+  /* Google Maps-style trip summary under Itinéraire: time + distance. */
+  .eta-bar{
+    display:none;align-self:flex-start;max-width:min(280px,78vw);
+    background:rgba(255,255,255,.97);color:var(--ink);
+    border-radius:12px;padding:10px 14px;
+    font:750 14px/1.25 system-ui,-apple-system,sans-serif;
+    letter-spacing:.01em;
+    box-shadow:0 2px 10px rgba(0,0,0,.18);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .eta-bar.on{display:block}
+  .eta-bar .eta-time{font-weight:800}
+  .eta-bar .eta-dist{font-weight:600;opacity:.78}
+  @media (prefers-color-scheme: dark){
+    .eta-bar{
+      background:rgba(32,33,36,.96);color:#E8EAED;
+      box-shadow:0 2px 12px rgba(0,0,0,.45);
+    }
+    .eta-bar .eta-dist{opacity:.72}
+  }
   /* Right-side map control rail — icon FABs, rounded cards, light shadows. */
   .map-rail{
     position:absolute;z-index:1100;
@@ -275,8 +296,11 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   <div class="status" id="status">Choisissez Voiture ou Camion en haut, puis touchez / cherchez une destination</div>
 </div>
 <div class="bottom">
-  <button type="button" class="go" id="btnGo" disabled>itinéraire</button>
-  <button type="button" class="ghost" id="btnRecenter">GPS</button>
+  <div class="bottom-actions">
+    <button type="button" class="go" id="btnGo" disabled>itinéraire</button>
+    <button type="button" class="ghost" id="btnRecenter">GPS</button>
+  </div>
+  <div class="eta-bar" id="etaBar" aria-live="polite" hidden></div>
 </div>
 <div class="map-rail" id="mapTypeMenu" role="toolbar" aria-label="Contrôles carte">
   <div class="map-rail-card" aria-label="Fonds de carte">
@@ -748,10 +772,39 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       : 'GPS live · mode voiture — touchez / cherchez une destination');
   }
 
+  function setEtaBar(distanceKm, durationMin){
+    var el = document.getElementById('etaBar');
+    if (!el) return;
+    var mins = typeof durationMin === 'number' && isFinite(durationMin) ? Math.round(durationMin) : null;
+    var km = typeof distanceKm === 'number' && isFinite(distanceKm) ? distanceKm : null;
+    if (mins == null || km == null) {
+      el.classList.remove('on');
+      el.setAttribute('hidden', 'hidden');
+      el.textContent = '';
+      el.removeAttribute('aria-label');
+      return;
+    }
+    var kmTxt = (Math.round(km * 10) / 10).toLocaleString('fr-FR');
+    var label = '~' + mins + ' min · ' + kmTxt + ' km';
+    el.textContent = '';
+    var timeSpan = document.createElement('span');
+    timeSpan.className = 'eta-time';
+    timeSpan.textContent = '~' + mins + ' min';
+    var distSpan = document.createElement('span');
+    distSpan.className = 'eta-dist';
+    distSpan.textContent = ' · ' + kmTxt + ' km';
+    el.appendChild(timeSpan);
+    el.appendChild(distSpan);
+    el.setAttribute('aria-label', 'Temps de trajet ' + label);
+    el.classList.add('on');
+    el.removeAttribute('hidden');
+  }
+
   function clearRouteGraphics(){
     if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
     routeCoords = [];
     document.getElementById('btnGo').disabled = true;
+    setEtaBar(null, null);
     followLive = false;
     navTripActive = false;
   }
@@ -793,6 +846,8 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       return;
     }
     setStatus('Calcul itinéraire ' + (mode === 'camion' ? 'camion' : 'voiture') + '…');
+    setEtaBar(null, null);
+    document.getElementById('btnGo').disabled = true;
     post({
       type: 'route',
       mode: mode,
@@ -824,10 +879,12 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       map.fitBounds(routeLine.getBounds(), { padding: [52, 52], animate: true, duration: 0.45 });
       ensureVehicleMarker();
       document.getElementById('btnGo').disabled = false;
+      setEtaBar(payload.distanceKm, payload.durationMin);
       setStatus(payload.label || 'Itinéraire prêt — tapez itinéraire pour le suivi live');
       post({ type: 'routed', mode: mode, distanceKm: payload.distanceKm, durationMin: payload.durationMin, label: payload.label });
     } catch (e) {
       setStatus('Affichage itinéraire KO');
+      setEtaBar(null, null);
     }
   };
 
