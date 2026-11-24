@@ -1057,7 +1057,8 @@ export function reportNavigableCoverage(): CoverageReport[] {
 /**
  * Nation/region aliases that are also common city names elsewhere
  * (Holland MI, Malta MT, England AR, Wales AK, …). Bare labels still remap;
- * "Name, Subregion" only remaps when a secondary token is a known country.
+ * with secondaries, only remaps when every token is a home-country/self hint
+ * (Open-Meteo/Photon often emit `Scotland, Scotland, United Kingdom`).
  */
 const CITY_COLLISION_ALIASES = new Set([
   'holland',
@@ -1076,65 +1077,58 @@ const CITY_COLLISION_ALIASES = new Set([
   'andorre',
 ]);
 
-/** Country-level tokens used to allow collision aliases with a country secondary. */
-const COUNTRY_SECONDARY_HINTS = new Set(
-  [
-    'united states',
-    'united states of america',
-    'usa',
-    'us',
-    'u.s.',
-    'u.s.a.',
-    'etats-unis',
-    'canada',
-    'australia',
-    'australie',
-    'united kingdom',
-    'uk',
-    'u.k.',
-    'great britain',
-    'britain',
-    'royaume-uni',
-    'grande-bretagne',
-    'france',
-    'germany',
-    'allemagne',
-    'netherlands',
-    'pays-bas',
-    'spain',
-    'espagne',
-    'italy',
-    'italie',
-    'portugal',
-    'ireland',
-    'irlande',
-    'malta',
-    'malte',
-    'luxembourg',
-    'andorra',
-    'andorre',
-    'monaco',
-    'switzerland',
-    'suisse',
-    'belgium',
-    'belgique',
-    'austria',
-    'autriche',
-    'poland',
-    'pologne',
-    'europe',
-  ].map(lookupKey),
-);
+const UK_HOME_HINTS = [
+  'united kingdom',
+  'uk',
+  'u.k.',
+  'great britain',
+  'britain',
+  'royaume-uni',
+  'grande-bretagne',
+  'europe',
+  'eu',
+  'ue',
+] as const;
 
-/** True when every secondary token is a country hint (e.g. "Scotland, UK"). */
-function secondaryOnlyCountryHints(label: string): boolean {
+/** Per-alias secondaries that still mean the nation (not a foreign city). */
+const COLLISION_HOME_SECONDARIES: Record<string, ReadonlySet<string>> = (() => {
+  const uk = (...self: string[]) =>
+    new Set([...self, ...UK_HOME_HINTS].map(lookupKey));
+  const eu = (...self: string[]) =>
+    new Set([...self, 'europe', 'eu', 'ue'].map(lookupKey));
+  return {
+    holland: eu('holland', 'hollande', 'netherlands', 'pays-bas'),
+    hollande: eu('holland', 'hollande', 'netherlands', 'pays-bas'),
+    malta: eu('malta', 'malte'),
+    malte: eu('malta', 'malte'),
+    england: uk('england', 'angleterre'),
+    angleterre: uk('england', 'angleterre'),
+    scotland: uk('scotland', 'ecosse'),
+    ecosse: uk('scotland', 'ecosse'),
+    wales: uk('wales', 'pays de galles'),
+    'pays de galles': uk('wales', 'pays de galles'),
+    monaco: eu('monaco'),
+    // Do not include Belgium — "Luxembourg, Belgium" is the Belgian province.
+    luxembourg: eu('luxembourg'),
+    andorra: eu('andorra', 'andorre'),
+    andorre: eu('andorra', 'andorre'),
+  };
+})();
+
+/**
+ * True when secondaries are only home-country / self-region tokens
+ * (e.g. "Scotland, Scotland, United Kingdom"), not "Holland, Michigan, USA".
+ */
+function collisionSecondariesAllowRemap(label: string, hitKey: string): boolean {
+  const allow = COLLISION_HOME_SECONDARIES[hitKey];
+  if (!allow) return true;
   const parts = label
     .split(/[,|/·•]/)
     .slice(1)
     .map((p) => lookupKey(normalizeAdminToken(p)))
     .filter(Boolean);
   if (!parts.length) return true;
-  return parts.every((p) => COUNTRY_SECONDARY_HINTS.has(p));
+  return parts.every((p) => allow.has(p));
 }
 
 function labelLooksLikeUsCountry(label: string): boolean {
@@ -1210,8 +1204,12 @@ function matchAdmin(label: string): { key: string; city: City; id: string } | nu
   ): { key: string; city: City; id: string } | null => {
     if (!hit) return null;
     // "Holland, Michigan, USA" / "Malta, Montana" — city/state context, not the country.
-    // Bare "Holland" or "Scotland, United Kingdom" still remaps.
-    if (CITY_COLLISION_ALIASES.has(hit.key) && hasSecondary && !secondaryOnlyCountryHints(label)) {
+    // Bare "Holland" or "Scotland, Scotland, United Kingdom" still remaps.
+    if (
+      CITY_COLLISION_ALIASES.has(hit.key) &&
+      hasSecondary &&
+      !collisionSecondariesAllowRemap(label, hit.key)
+    ) {
       return null;
     }
     return hit;
