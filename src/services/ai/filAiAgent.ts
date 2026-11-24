@@ -11,8 +11,8 @@ import {
 } from './multiIaRouter';
 import {
   buildFilAiPrompt,
+  emptyFilAiQuestionReply,
   formatFilAiReply,
-  pickFilAiLang,
   type FilAiChatTurn,
   type FilAiSubject,
 } from './filAiPrompts';
@@ -60,10 +60,7 @@ export async function askFilAiAgent(opts: FilAiAskOpts): Promise<FilAiReply> {
     const empty = await runMultiIaDiagnostic({ prompt: '' });
     return {
       ok: false,
-      reply:
-        pickFilAiLang(opts.locale) === 'en'
-          ? 'Type a short question for the AI agent.'
-          : 'Écrivez une question courte pour l’agent IA.',
+      reply: emptyFilAiQuestionReply(opts.locale),
       subject,
       label: empty.label,
       severity: 'info',

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -22,6 +22,9 @@ import { colors } from '../theme/colors';
 
 type Bubble = FilAiChatTurn & { id: string; at: string };
 
+/** Minimal scroll handle — avoids RN 0.88 ScrollView ref typing friction. */
+type ScrollHandle = { scrollToEnd: (opts?: { animated?: boolean }) => void };
+
 const SUBJECT_I18N: Record<FilAiSubject, string> = {
   car: 'fil.aiSubjectCar',
   truck: 'fil.aiSubjectTruck',
@@ -31,7 +34,7 @@ const SUBJECT_I18N: Record<FilAiSubject, string> = {
 };
 
 type Props = {
-  /** `sheet` = global overlay (no outer Card title). `card` = inline Card. */
+  /** `sheet` = global overlay (flex column, composer pinned). `card` = inline Card. */
   variant?: 'card' | 'sheet';
 };
 
@@ -49,6 +52,18 @@ export function FilAiAgentCard({ variant = 'card' }: Props) {
   const [speaking, setSpeaking] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [needVerify, setNeedVerify] = useState(false);
+  const chatScrollRef = useRef<ScrollHandle | null>(null);
+
+  const scrollChatToEnd = useCallback(() => {
+    requestAnimationFrame(() => {
+      chatScrollRef.current?.scrollToEnd({ animated: true });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (bubbles.length === 0) return;
+    scrollChatToEnd();
+  }, [bubbles.length, scrollChatToEnd]);
 
   const send = useCallback(async () => {
     const text = draft.trim();
@@ -86,8 +101,7 @@ export function FilAiAgentCard({ variant = 'card' }: Props) {
       };
       setBubbles((prev) => [...prev, assistant]);
     } catch (e) {
-      const msg =
-        e instanceof Error ? e.message : t('fil.aiError');
+      const msg = e instanceof Error ? e.message : t('fil.aiError');
       setBubbles((prev) => [
         ...prev,
         {
@@ -107,7 +121,6 @@ export function FilAiAgentCard({ variant = 'card' }: Props) {
     if (!last) return;
     setSpeaking(true);
     const lang = locale === 'en' ? 'en-US' : locale === 'es' ? 'es-ES' : 'fr-FR';
-    // Slightly slower rate helps dyslexic listeners follow.
     await speakViaExpo(lang, last.text.slice(0, 400), { rate: 0.88 });
     setSpeaking(false);
   };
@@ -123,9 +136,9 @@ export function FilAiAgentCard({ variant = 'card' }: Props) {
     setNeedVerify(false);
   };
 
-  const body = (
-    <View style={variant === 'sheet' ? styles.sheetBody : undefined}>
-      <Text style={styles.lead}>{t('fil.aiLead')}</Text>
+  const subjects = (
+    <>
+      {variant === 'card' ? <Text style={styles.lead}>{t('fil.aiLead')}</Text> : null}
 
       <Text style={styles.label}>{t('fil.aiSubjectLabel')}</Text>
       <View style={styles.chips} accessibilityRole="radiogroup">
@@ -158,36 +171,41 @@ export function FilAiAgentCard({ variant = 'card' }: Props) {
         </Text>
       </View>
 
-      {needVerify ? (
-        <Text style={styles.warn}>{t('fil.aiNeedVerify')}</Text>
-      ) : null}
+      {needVerify ? <Text style={styles.warn}>{t('fil.aiNeedVerify')}</Text> : null}
+    </>
+  );
 
-      <ScrollView
-        style={[styles.chatScroll, variant === 'sheet' && styles.chatScrollSheet]}
-        contentContainerStyle={styles.chatContent}
-        nestedScrollEnabled
-        keyboardShouldPersistTaps="handled"
-      >
-        {bubbles.length === 0 ? (
-          <Text style={styles.placeholder}>{t('fil.aiPlaceholder')}</Text>
-        ) : (
-          bubbles.map((b) => (
-            <View
-              key={b.id}
-              style={[
-                styles.bubble,
-                b.role === 'user' ? styles.bubbleUser : styles.bubbleAi,
-              ]}
-            >
-              <Text style={styles.bubbleRole}>
-                {b.role === 'user' ? t('fil.aiYou') : t('fil.aiAgent')}
-              </Text>
-              <Text style={styles.bubbleTxt}>{b.text}</Text>
-            </View>
-          ))
-        )}
-      </ScrollView>
+  const chatPane = (
+    <ScrollView
+      ref={(node) => {
+        chatScrollRef.current = node as ScrollHandle | null;
+      }}
+      style={variant === 'sheet' ? styles.chatScrollFlex : styles.chatScroll}
+      contentContainerStyle={styles.chatContent}
+      nestedScrollEnabled
+      keyboardShouldPersistTaps="handled"
+      onContentSizeChange={scrollChatToEnd}
+    >
+      {bubbles.length === 0 ? (
+        <Text style={styles.placeholder}>{t('fil.aiPlaceholder')}</Text>
+      ) : (
+        bubbles.map((b) => (
+          <View
+            key={b.id}
+            style={[styles.bubble, b.role === 'user' ? styles.bubbleUser : styles.bubbleAi]}
+          >
+            <Text style={styles.bubbleRole}>
+              {b.role === 'user' ? t('fil.aiYou') : t('fil.aiAgent')}
+            </Text>
+            <Text style={styles.bubbleTxt}>{b.text}</Text>
+          </View>
+        ))
+      )}
+    </ScrollView>
+  );
 
+  const composer = (
+    <View style={styles.composer}>
       <TextInput
         value={draft}
         onChangeText={setDraft}
@@ -250,16 +268,37 @@ export function FilAiAgentCard({ variant = 'card' }: Props) {
   );
 
   if (variant === 'sheet') {
-    return <ScrollView keyboardShouldPersistTaps="handled">{body}</ScrollView>;
+    return (
+      <View style={styles.sheetRoot}>
+        <View style={styles.sheetTop}>{subjects}</View>
+        {chatPane}
+        {composer}
+      </View>
+    );
   }
 
-  return <Card title={t('fil.aiTitle')}>{body}</Card>;
+  return (
+    <Card title={t('fil.aiTitle')}>
+      {subjects}
+      {chatPane}
+      {composer}
+    </Card>
+  );
 }
 
 /** Dyslexia-friendly tokens: larger type, open spacing, high contrast. */
 const styles = StyleSheet.create({
-  sheetBody: { paddingBottom: 24 },
-  chatScrollSheet: { maxHeight: 220 },
+  sheetRoot: {
+    flex: 1,
+    minHeight: 0,
+  },
+  sheetTop: {
+    flexShrink: 0,
+  },
+  composer: {
+    flexShrink: 0,
+    paddingTop: 4,
+  },
   lead: {
     color: colors.slate,
     fontSize: 17,
@@ -334,9 +373,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
+  chatScrollFlex: {
+    flex: 1,
+    minHeight: 120,
+    marginBottom: 10,
+    backgroundColor: colors.paper,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
   chatContent: {
     padding: 12,
     gap: 10,
+    flexGrow: 1,
   },
   placeholder: {
     color: colors.muted,

@@ -68,6 +68,17 @@ describe('filAiAgent prompts', () => {
     assert.notEqual(truckers.context, parts.context);
   });
 
+  it('uses Spanish prompts when locale is es', () => {
+    const { context, prompt } = buildFilAiPrompt({
+      message: 'ruido de frenos',
+      subject: 'car',
+      locale: 'es',
+    });
+    assert.match(prompt, /Agente Fil/);
+    assert.match(context, /COCHE|español/i);
+    assert.doesNotMatch(context, /Tu es l’agent/);
+  });
+
   it('folds recent history into context', () => {
     const { context } = buildFilAiPrompt({
       message: 'et les freins ?',
@@ -124,5 +135,19 @@ describe('formatFilAiReply', () => {
       'en',
     );
     assert.match(reply, /could not answer/i);
+  });
+
+  it('formats Spanish empty failure', () => {
+    const reply = formatFilAiReply(
+      {
+        ok: false,
+        consensus: '',
+        likelyParts: [],
+        severity: 'info',
+      },
+      'car',
+      'es',
+    );
+    assert.match(reply, /No pude responder/i);
   });
 });

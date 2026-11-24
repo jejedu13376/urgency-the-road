@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,8 +26,11 @@ const FAB_SIZE = 58;
 export function GlobalAiBubble() {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
+  const { height: winH } = useWindowDimensions();
   const [open, setOpen] = useState(false);
   const bottom = Math.max(insets.bottom, 8) + TAB_BAR_CONTENT + FAB_GAP;
+  // Bound sheet height so flex children (chat + composer) can shrink without clipping.
+  const sheetHeight = Math.min(winH * 0.92, winH - Math.max(insets.top, 8));
 
   return (
     <>
@@ -66,6 +70,7 @@ export function GlobalAiBubble() {
             style={[
               styles.sheet,
               {
+                height: sheetHeight,
                 paddingTop: Math.max(insets.top, 12),
                 paddingBottom: Math.max(insets.bottom, 12),
               },
@@ -82,7 +87,9 @@ export function GlobalAiBubble() {
                 <Text style={styles.closeTxt}>{t('close')}</Text>
               </Pressable>
             </View>
-            <FilAiAgentCard variant="sheet" />
+            <View style={styles.sheetBody}>
+              <FilAiAgentCard variant="sheet" />
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -124,7 +131,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(16, 24, 32, 0.45)',
   },
   sheet: {
-    maxHeight: '92%',
     backgroundColor: colors.paper,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
@@ -132,6 +138,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.line,
     borderBottomWidth: 0,
+    flexDirection: 'column',
   },
   sheetHeader: {
     flexDirection: 'row',
@@ -140,6 +147,11 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 8,
     paddingHorizontal: 4,
+    flexShrink: 0,
+  },
+  sheetBody: {
+    flex: 1,
+    minHeight: 0,
   },
   sheetTitle: {
     flex: 1,
