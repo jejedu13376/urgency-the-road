@@ -2,7 +2,7 @@
  * Itinerary sheet — Maps-inspired actions, Urgency Road chrome (no Google clone).
  * Dyslexia-friendly: large type, short labels, high contrast, clear spacing.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -25,6 +25,14 @@ import type {
   RouteAvoidOptions,
 } from '../../services/geo/planItinerary';
 import { DEFAULT_ROUTE_AVOID } from '../../services/geo/tomtomRoute';
+import {
+  downloadOfflineMapPack,
+  formatOfflineBytes,
+  loadOfflineMapManifest,
+  tilesForOfflinePack,
+  type OfflineDownloadProgress,
+  type OfflineMapManifest,
+} from '../../services/gps/offlineMapTiles';
 import type { GpsVehicleMode } from '../../services/prefs/gpsNavPrefs';
 import {
   formatMyLocationShareLine,
@@ -74,6 +82,8 @@ type Props = {
   onFeedback?: (note: string) => void;
   onOpenHistory?: () => void;
   onSaveMyLocation?: () => void;
+  /** After a successful tile pack download — wire Leaflet file:// layers. */
+  onOfflinePackReady?: (manifest: OfflineMapManifest) => void;
 };
 
 const DATA_SOURCES_FR =
@@ -131,12 +141,29 @@ export function GpsDestinationMenu({
   onFeedback,
   onOpenHistory,
   onSaveMyLocation,
+  onOfflinePackReady,
 }: Props) {
   const [plusOpen, setPlusOpen] = useState(false);
   const [tagModal, setTagModal] = useState(false);
   const [tagDraft, setTagDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [sheetNote, setSheetNote] = useState<string | null>(null);
+  const [offlineBusy, setOfflineBusy] = useState(false);
+  const [offlineProgress, setOfflineProgress] = useState<OfflineDownloadProgress | null>(
+    null,
+  );
+  const [offlineManifest, setOfflineManifest] = useState<OfflineMapManifest | null>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    void loadOfflineMapManifest().then((m) => {
+      if (!cancelled) setOfflineManifest(m);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
 
   const selected: ItineraryRouteOption | null = useMemo(() => {
     if (!plan?.ok || !plan.options.length) return null;
@@ -299,6 +326,73 @@ export function GpsDestinationMenu({
     },
     [feedback],
   );
+
+  const offlineCoords = useMemo((): [number, number][] => {
+    const pts: [number, number][] = [];
+    if (selected?.coords?.length) {
+      for (const c of selected.coords) pts.push([c[0], c[1]]);
+    }
+    const me = getMyLocation();
+    if (me) pts.push([me.lat, me.lon]);
+    if (destination) pts.push([destination.lat, destination.lon]);
+    for (const w of waypoints) pts.push([w.lat, w.lon]);
+    return pts;
+  }, [selected, getMyLocation, destination, waypoints]);
+
+  const offlineEstimate = useMemo(() => {
+    const tiles = tilesForOfflinePack(offlineCoords);
+    // roads + satellite
+    return tiles.length * 2;
+  }, [offlineCoords]);
+
+  const onDownloadOfflineMap = useCallback(async () => {
+    if (offlineBusy) return;
+    if (offlineCoords.length < 1) {
+      feedback('GPS ou destination requis pour télécharger la zone');
+      return;
+    }
+    setOfflineBusy(true);
+    setOfflineProgress({
+      done: 0,
+      total: offlineEstimate || 1,
+      layer: 'roads',
+      phase: 'prepare',
+      message: 'Préparation…',
+    });
+    try {
+      const result = await downloadOfflineMapPack({
+        coords: offlineCoords,
+        label: destination?.label,
+        onProgress: (p) => setOfflineProgress(p),
+      });
+      if (!result.ok) {
+        feedback(result.error);
+        setOfflineProgress({
+          done: 0,
+          total: 1,
+          layer: 'roads',
+          phase: 'error',
+          message: result.error,
+        });
+        return;
+      }
+      setOfflineManifest(result.manifest);
+      onOfflinePackReady?.(result.manifest);
+      const size = formatOfflineBytes(result.manifest.bytesApprox);
+      feedback(
+        `Carte hors ligne prête · ${result.manifest.tileCount} tuiles · ${size} (routes + satellite)`,
+      );
+    } finally {
+      setOfflineBusy(false);
+    }
+  }, [
+    offlineBusy,
+    offlineCoords,
+    offlineEstimate,
+    destination?.label,
+    feedback,
+    onOfflinePackReady,
+  ]);
 
   if (!destination) return null;
 
@@ -577,10 +671,54 @@ export function GpsDestinationMenu({
                   onPress={() => stubAction('Ajouter au contact')}
                 />
                 <ActionRow
-                  label="Télécharger la carte hors ligne"
+                  label={
+                    offlineBusy
+                      ? 'Téléchargement carte…'
+                      : offlineManifest
+                        ? 'Mettre à jour la carte hors ligne'
+                        : 'Télécharger la carte hors ligne'
+                  }
                   muted
-                  onPress={() => stubAction('Carte hors ligne')}
+                  disabled={offlineBusy || busy}
+                  hint={
+                    offlineBusy && offlineProgress
+                      ? offlineProgress.message ??
+                        `${offlineProgress.done}/${offlineProgress.total}`
+                      : offlineManifest
+                        ? `Prête · ${offlineManifest.tileCount} tuiles · ${formatOfflineBytes(offlineManifest.bytesApprox)}`
+                        : offlineEstimate > 0
+                          ? `Zone / itinéraire · ~${offlineEstimate} tuiles (Carto/OSM + Esri)`
+                          : undefined
+                  }
+                  onPress={() => void onDownloadOfflineMap()}
                 />
+                {offlineBusy ? (
+                  <View style={styles.offlineProgress} accessibilityLabel="Progression hors ligne">
+                    <ActivityIndicator color={colors.signal} />
+                    <View style={styles.offlineProgressText}>
+                      <Text style={styles.offlineProgressLabel}>
+                        {offlineProgress?.message ?? 'Téléchargement…'}
+                      </Text>
+                      {offlineProgress && offlineProgress.total > 0 ? (
+                        <View style={styles.offlineBarTrack}>
+                          <View
+                            style={[
+                              styles.offlineBarFill,
+                              {
+                                width: `${Math.min(
+                                  100,
+                                  Math.round(
+                                    (100 * offlineProgress.done) / offlineProgress.total,
+                                  ),
+                                )}%`,
+                              },
+                            ]}
+                          />
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                ) : null}
                 <ActionRow
                   label="Voir la chronologie des trajets"
                   muted
@@ -654,11 +792,18 @@ function ActionRow({
 }) {
   return (
     <Pressable
-      style={[styles.row, emphasis && styles.rowEmphasis, muted && styles.rowMuted]}
+      style={[
+        styles.row,
+        hint ? styles.rowStacked : null,
+        emphasis && styles.rowEmphasis,
+        muted && styles.rowMuted,
+        disabled && styles.rowDisabled,
+      ]}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityHint={hint}
     >
       <Text
         style={[
@@ -933,6 +1078,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   rowMuted: { opacity: 0.92 },
+  rowStacked: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  rowDisabled: { opacity: 0.55 },
   rowTxt: {
     color: colors.ink,
     fontSize: 17,
@@ -952,6 +1103,31 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
     fontWeight: '600',
+  },
+  offlineProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    marginBottom: 4,
+  },
+  offlineProgressText: { flex: 1, gap: 6 },
+  offlineProgressLabel: {
+    color: colors.slate,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  offlineBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.line,
+    overflow: 'hidden',
+  },
+  offlineBarFill: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.signal,
   },
   plusToggle: {
     marginTop: 10,

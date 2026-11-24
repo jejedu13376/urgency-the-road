@@ -102,6 +102,11 @@ import {
 import { colors } from '../../theme/colors';
 import { buildGpsMapHtml } from './buildGpsMapHtml';
 import {
+  loadOfflineMapManifest,
+  offlineTilesInjectPayload,
+  type OfflineMapManifest,
+} from '../../services/gps/offlineMapTiles';
+import {
   GpsDestinationMenu,
   type GpsDestinationSelection,
   type GpsRouteStatus,
@@ -125,7 +130,9 @@ const MapWebView = RNWebView as unknown as React.ComponentType<{
   javaScriptEnabled?: boolean;
   domStorageEnabled?: boolean;
   allowFileAccess?: boolean;
+  allowFileAccessFromFileURLs?: boolean;
   allowUniversalAccessFromFileURLs?: boolean;
+  allowingReadAccessToURL?: string;
   mixedContentMode?: string;
   setSupportMultipleWindows?: boolean;
   geolocationEnabled?: boolean;
@@ -318,6 +325,7 @@ export function GpsFullMap() {
   const lastLocalPoliceRef = useRef<CrowdReport | null>(null);
   const [bootHtml, setBootHtml] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [offlinePack, setOfflinePack] = useState<OfflineMapManifest | null>(null);
   const [canPublishPolice, setCanPublishPolice] = useState(false);
   const [hudNote, setHudNote] = useState<string | null>(null);
   const [lastRoute, setLastRoute] = useState<VehicleRouteResult | null>(null);
@@ -427,6 +435,36 @@ export function GpsFullMap() {
     if (Platform.OS === 'web') return;
     webRef.current?.injectJavaScript(`${script}; true;`);
   }, []);
+
+  const injectOfflineTiles = useCallback(
+    (manifest: OfflineMapManifest | null) => {
+      if (!manifest) return;
+      const payload = offlineTilesInjectPayload(manifest);
+      if (Platform.OS === 'web') {
+        postGpsCmd(iframeWinRef.current, { cmd: 'setOfflineTiles', payload });
+        return;
+      }
+      injectJs(
+        `window.__gpsSetOfflineTiles && window.__gpsSetOfflineTiles(${JSON.stringify(payload)})`,
+      );
+    },
+    [injectJs],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadOfflineMapManifest().then((m) => {
+      if (!cancelled) setOfflinePack(m);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mapReady || !offlinePack) return;
+    injectOfflineTiles(offlinePack);
+  }, [mapReady, offlinePack, injectOfflineTiles]);
 
   const injectRoute = useCallback(
     (
@@ -1092,6 +1130,13 @@ export function GpsFullMap() {
           recoveryRecenterRef.current = false;
           setMapOrigin(lastWatchRef.current.lat, lastWatchRef.current.lon, true);
         }
+        // Offline pack may have loaded before Leaflet ready.
+        void loadOfflineMapManifest().then((m) => {
+          if (m) {
+            setOfflinePack(m);
+            injectOfflineTiles(m);
+          }
+        });
         return;
       }
 
@@ -1345,6 +1390,7 @@ export function GpsFullMap() {
       paintCrowdReports,
       notifyReportResult,
       injectLayers,
+      injectOfflineTiles,
       runTruckerBrief,
       destSelection?.label,
       injectHighlightWeigh,
@@ -1850,9 +1896,11 @@ export function GpsFullMap() {
           onShouldStartLoadWithRequest={(req) => allowMapDocumentLoad(req.url)}
           javaScriptEnabled
           domStorageEnabled
-          allowFileAccess={false}
-          allowUniversalAccessFromFileURLs={false}
-          mixedContentMode="never"
+          allowFileAccess
+          allowFileAccessFromFileURLs
+          allowUniversalAccessFromFileURLs
+          allowingReadAccessToURL={offlinePack?.rootUri}
+          mixedContentMode="always"
           setSupportMultipleWindows={false}
           geolocationEnabled={false}
           mediaPlaybackRequiresUserAction
@@ -2152,6 +2200,13 @@ export function GpsFullMap() {
           }).then((r) => {
             setHudNote(r.ok ? `Position GPS enregistrée · ${r.place.label}` : r.error);
           });
+        }}
+        onOfflinePackReady={(manifest) => {
+          setOfflinePack(manifest);
+          injectOfflineTiles(manifest);
+          setHudNote(
+            `Carte hors ligne active · ${manifest.tileCount} tuiles (routes + satellite)`,
+          );
         }}
       />
 
