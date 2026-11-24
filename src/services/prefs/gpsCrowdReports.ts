@@ -5,7 +5,28 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type CrowdReportKind = 'police' | 'accident' | 'danger' | 'obstacle' | 'travaux' | 'autre';
+export type CrowdReportKind =
+  | 'police'
+  | 'accident'
+  | 'ralentissement'
+  | 'danger'
+  | 'obstacle'
+  | 'travaux'
+  | 'autre';
+
+export const CROWD_REPORT_KINDS: readonly CrowdReportKind[] = [
+  'police',
+  'accident',
+  'ralentissement',
+  'danger',
+  'obstacle',
+  'travaux',
+  'autre',
+] as const;
+
+export function isCrowdReportKind(v: unknown): v is CrowdReportKind {
+  return typeof v === 'string' && (CROWD_REPORT_KINDS as readonly string[]).includes(v);
+}
 
 export type CrowdReport = {
   id: string;
@@ -108,13 +129,13 @@ export function mergeCloudHazards(
   for (const h of cloud) {
     if (!Number.isFinite(h.lat) || !Number.isFinite(h.lon)) continue;
     if (h.lat < -90 || h.lat > 90 || h.lon < -180 || h.lon > 180) continue;
-    const kind = (['police', 'accident', 'danger', 'obstacle', 'travaux', 'autre'] as const).includes(
-      h.kind as CrowdReportKind,
-    )
-      ? (h.kind as CrowdReportKind)
+    const kind = isCrowdReportKind(h.kind)
+      ? h.kind
       : h.kind === 'radar'
         ? 'police'
-        : 'autre';
+        : h.kind === 'slowdown' || h.kind === 'traffic'
+          ? 'ralentissement'
+          : 'autre';
     const created = Date.parse(h.createdAt);
     const createdMs = Number.isFinite(created) ? created : now;
     // Never trust attacker-chosen far-future expiry — clamp to created+TTL.
