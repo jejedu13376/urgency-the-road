@@ -1,6 +1,10 @@
 /**
  * Lazy expo-speech bridge so Node unit tests can import urgence modules
  * without loading the Expo runtime (__DEV__).
+ *
+ * Safety alerts (break / drowsiness / fatigue / overspeed) intentionally
+ * ignore the GPS nav mute flag — mute only gates speakApp / speakNav.
+ * Dyslexia-friendly default rate when appSpeech is available.
  */
 
 type SpeakOpts = {
@@ -52,10 +56,19 @@ export function speakViaExpo(
         resolve();
         return;
       }
+      let rate = opts?.rate;
+      if (rate == null) {
+        try {
+          const { DYSLEXIA_SPEECH_RATE } = await import('../speech/appSpeech');
+          rate = DYSLEXIA_SPEECH_RATE;
+        } catch {
+          rate = 0.85;
+        }
+      }
       s.speak(text, {
         language,
         volume: opts?.volume ?? 1.0,
-        rate: opts?.rate ?? 1.0,
+        rate,
         pitch: opts?.pitch ?? 1.0,
         onDone: () => resolve(),
         onStopped: () => resolve(),

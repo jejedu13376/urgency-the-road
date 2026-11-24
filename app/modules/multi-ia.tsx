@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import * as Speech from 'expo-speech';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Link, Stack } from 'expo-router';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
+import { SpeakButton } from '../../src/components/speech/SpeakButton';
 import { StubBanner } from '../../src/components/StubBanner';
 import { YoutubeSuggestions } from '../../src/components/YoutubeSuggestions';
 import { useFleet } from '../../src/context/FleetContext';
@@ -16,6 +16,7 @@ import {
 import { resendEmailVerification } from '../../src/services/firebase/authService';
 import { recordLearnedFailure } from '../../src/services/firebase/learnedFailuresService';
 import { fetchRecallsByVehicle, type RecallHit } from '../../src/services/recalls/nhtsaRecalls';
+import { stopAppSpeech } from '../../src/services/speech/appSpeech';
 import { searchYoutubeVideos, type YoutubeVideoHit } from '../../src/services/youtube/youtubeSearch';
 import { colors } from '../../src/theme/colors';
 import { useI18n } from '../../src/context/I18nContext';
@@ -35,7 +36,6 @@ export default function MultiIaScreen() {
   const [q, setQ] = useState('remplacement plaquettes de frein');
   const [chat, setChat] = useState<ChatMsg[]>([]);
   const [out, setOut] = useState<string | null>(null);
-  const [speaking, setSpeaking] = useState(false);
   const [yt, setYt] = useState<YoutubeVideoHit[]>([]);
   const [ytLabel, setYtLabel] = useState<string | undefined>();
   const [recallsVisible, setRecallsVisible] = useState(true);
@@ -117,21 +117,6 @@ export default function MultiIaScreen() {
     } finally {
       setBusy(false);
     }
-  };
-
-  const speak = () => {
-    const text = out ?? 'Coach vocal prêt. Lancez d’abord une analyse.';
-    setSpeaking(true);
-    Speech.speak(text.slice(0, 280), {
-      language: 'fr-FR',
-      onDone: () => setSpeaking(false),
-      onStopped: () => setSpeaking(false),
-    });
-  };
-
-  const stopVoice = () => {
-    Speech.stop();
-    setSpeaking(false);
   };
 
   return (
@@ -235,15 +220,23 @@ export default function MultiIaScreen() {
         </Card>
 
         <Card title="Coach vocal mains-libres">
-          <Text style={styles.hint}>Synthèse vocale (expo-speech) — bouton Stop Voix instantané.</Text>
-          <View style={styles.row}>
-            <Pressable style={styles.btn} onPress={speak}>
-              <Text style={styles.btnTxt}>{speaking ? 'Lecture…' : 'Parler'}</Text>
-            </Pressable>
-            <Pressable style={styles.stop} onPress={stopVoice}>
-              <Text style={styles.btnTxt}>Stop Voix</Text>
-            </Pressable>
-          </View>
+          <Text style={styles.hint}>
+            Synthèse vocale (expo-speech) — langue FR/EN/ES active, rythme dyslexie-friendly. Mute global sur
+            la carte GPS.
+          </Text>
+          <SpeakButton
+            text={out ?? t('tts.coachReady')}
+            labelKey="tts.speakDiag"
+            testID="multiia-speak"
+          />
+          <Pressable
+            style={[styles.stop, { marginTop: 8 }]}
+            onPress={() => stopAppSpeech()}
+            accessibilityRole="button"
+            accessibilityLabel={t('tts.stop')}
+          >
+            <Text style={styles.btnTxt}>{t('tts.stop')}</Text>
+          </Pressable>
         </Card>
 
         <Card title="Recherche web — recalls NHTSA (live)">

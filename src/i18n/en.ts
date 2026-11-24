@@ -563,6 +563,41 @@ export const en: FrDict = {
     arrivedHud: 'Animated arrival — tap Maps / Waze for live guidance',
   },
 
+  tts: {
+    speak: 'Listen',
+    speaking: 'Speaking…',
+    stop: 'Stop voice',
+    mute: 'Mute',
+    unmute: 'Voice',
+    muteA11y: 'Mute voice',
+    unmuteA11y: 'Unmute voice',
+    mutedHud: 'Voice muted',
+    unmutedHud: 'Navigation voice on',
+    mutedHint: 'Voice muted — turn it back on with Mute on the GPS map',
+    speakDiag: 'Listen to diagnosis',
+    speakPrice: 'Listen to prices',
+    speakResult: 'Listen to result',
+    speakAlert: 'Listen to alert',
+    coachReady: 'Voice coach ready. Run an analysis first.',
+    meters: '%{m} meters',
+    kilometers: '%{km} kilometers',
+    upcomingTurn: 'In %{distance}: %{instruction}',
+    arrival: 'Arrived at destination',
+    arrivalEta: 'estimated time %{minutes} minutes',
+    weighDefault: 'weigh station',
+    weighNamed: 'weigh station %{name}',
+    weighAlert: 'Caution, %{label} in %{distance}',
+    weighNear: 'Caution, %{label} nearby',
+    navStartedCar:
+      'Navigation started. %{distance} kilometers, about %{minutes} minutes.',
+    navStartedTruck:
+      'Truck navigation started. %{distance} kilometers, about %{minutes} minutes.',
+    partPriceLine:
+      '%{name}. New %{priceNew}, OEM %{priceOem}, aftermarket %{priceAftermarket} %{currency}. Labor %{labor} %{currency}.',
+    diagPriceLine:
+      '%{problem}. Part %{partName}. Part %{partPrice} plus labor %{laborPrice}, total %{total} %{currency}.',
+  },
+
   voiceLogbook: {
     stub: 'LIVE expo-audio · local AsyncStorage · OS / Feed share (audio stays on-device, no CDN)',
     tripContext: 'Trip context',

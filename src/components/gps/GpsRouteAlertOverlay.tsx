@@ -4,9 +4,11 @@
  */
 import { useEffect } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View, Platform } from 'react-native';
+import { useI18n } from '../../context/I18nContext';
 import type { RouteAlert } from '../../services/gps/truckerRouteAdvisories';
 import { speakNav } from '../../services/gps/navSpeech';
 import { colors } from '../../theme/colors';
+import { SpeakButton } from '../speech/SpeakButton';
 
 type Props = {
   alert: RouteAlert | null;
@@ -16,6 +18,8 @@ type Props = {
 };
 
 export function GpsRouteAlertOverlay({ alert, voiceEnabled, onDismiss, onMuteVoice }: Props) {
+  const { t } = useI18n();
+
   useEffect(() => {
     if (!alert) return;
     if (voiceEnabled && alert.voice) {
@@ -31,6 +35,8 @@ export function GpsRouteAlertOverlay({ alert, voiceEnabled, onDismiss, onMuteVoi
       : alert.severity === 'warn'
         ? styles.cardWarn
         : styles.cardInfo;
+
+  const speakText = [alert.title, alert.detail].filter(Boolean).join('. ');
 
   return (
     <Modal visible animationType="fade" transparent onRequestClose={onDismiss}>
@@ -53,10 +59,21 @@ export function GpsRouteAlertOverlay({ alert, voiceEnabled, onDismiss, onMuteVoi
           {alert.distanceKm != null ? (
             <Text style={styles.meta}>≈ {alert.distanceKm} km</Text>
           ) : null}
+          <SpeakButton
+            text={speakText}
+            labelKey="tts.speakAlert"
+            style={styles.speakBtn}
+            testID="gps-alert-speak"
+          />
           <View style={styles.actions}>
             {voiceEnabled && onMuteVoice ? (
-              <Pressable style={styles.ghost} onPress={onMuteVoice}>
-                <Text style={styles.ghostTxt}>Couper voix</Text>
+              <Pressable
+                style={styles.ghost}
+                onPress={onMuteVoice}
+                accessibilityRole="button"
+                accessibilityLabel={t('tts.muteA11y')}
+              >
+                <Text style={styles.ghostTxt}>{t('tts.mute')}</Text>
               </Pressable>
             ) : null}
             <Pressable style={styles.ack} onPress={onDismiss} accessibilityRole="button">
@@ -119,6 +136,10 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
     fontWeight: '700',
     fontSize: 12,
+  },
+  speakBtn: {
+    marginTop: 14,
+    alignSelf: 'stretch',
   },
   actions: {
     flexDirection: 'row',

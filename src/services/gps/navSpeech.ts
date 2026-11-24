@@ -1,101 +1,78 @@
 /**
- * Turn-by-turn TTS via expo-speech — mute/unmute + upcoming turn / ETA phrases.
+ * Turn-by-turn TTS via app speech — mute/unmute + upcoming turn / ETA phrases.
+ * Phrases follow the active FR/EN/ES locale; mute is shared app-wide (GPS side rail).
  */
-import * as Speech from 'expo-speech';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { t } from '../../i18n';
+import {
+  isAppSpeechMutedSync,
+  loadAppSpeechMuted,
+  setAppSpeechMuted,
+  speakApp,
+  stopAppSpeech,
+} from '../speech/appSpeech';
 
-const MUTE_KEY = 'um.gps.nav.speech.muted.v1';
-
-let mutedMemory = false;
-let muteLoaded = false;
-
-export async function loadNavSpeechMuted(): Promise<boolean> {
-  if (muteLoaded) return mutedMemory;
-  try {
-    const raw = await AsyncStorage.getItem(MUTE_KEY);
-    mutedMemory = raw === '1';
-  } catch {
-    mutedMemory = false;
-  }
-  muteLoaded = true;
-  return mutedMemory;
-}
-
-export async function setNavSpeechMuted(muted: boolean): Promise<void> {
-  mutedMemory = muted;
-  muteLoaded = true;
-  try {
-    await AsyncStorage.setItem(MUTE_KEY, muted ? '1' : '0');
-  } catch {
-    /* ignore */
-  }
-  if (muted) {
-    try {
-      Speech.stop();
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
-export function isNavSpeechMutedSync(): boolean {
-  return mutedMemory;
-}
-
-export function stopNavSpeech(): void {
-  try {
-    Speech.stop();
-  } catch {
-    /* ignore */
-  }
-}
+export const loadNavSpeechMuted = loadAppSpeechMuted;
+export const setNavSpeechMuted = setAppSpeechMuted;
+export const isNavSpeechMutedSync = isAppSpeechMutedSync;
+export const stopNavSpeech = stopAppSpeech;
 
 export function speakNav(text: string, opts?: { force?: boolean; language?: string }): void {
-  const phrase = text.trim();
-  if (!phrase) return;
-  if (!opts?.force && mutedMemory) return;
-  try {
-    Speech.stop();
-    Speech.speak(phrase, {
-      language: opts?.language ?? 'fr-FR',
-      rate: 0.95,
-      pitch: 1.0,
-    });
-  } catch {
-    /* soft-fail — TTS unavailable on some web builds */
-  }
+  speakApp(text, {
+    force: opts?.force,
+    language: opts?.language,
+    maxLen: 280,
+  });
 }
 
-export function formatDistanceFr(km: number): string {
+export function formatDistanceSpoken(km: number): string {
   if (!Number.isFinite(km) || km < 0) return '';
   if (km < 1) {
     const m = Math.max(10, Math.round((km * 1000) / 10) * 10);
-    return `${m} mètres`;
+    return t('tts.meters', { m });
   }
   const rounded = km < 10 ? Math.round(km * 10) / 10 : Math.round(km);
-  return `${rounded} kilomètres`;
+  return t('tts.kilometers', { km: rounded });
+}
+
+/** @deprecated Prefer formatDistanceSpoken — kept for callers/tests expecting FR-only helper name. */
+export function formatDistanceFr(km: number): string {
+  return formatDistanceSpoken(km);
 }
 
 export function speakUpcomingTurn(instruction: string, distanceKm: number): void {
-  const dist = formatDistanceFr(distanceKm);
+  const dist = formatDistanceSpoken(distanceKm);
   const clean = instruction.replace(/\s+/g, ' ').trim().slice(0, 160);
   if (!clean) return;
-  speakNav(dist ? `Dans ${dist}: ${clean}` : clean);
+  speakNav(dist ? t('tts.upcomingTurn', { distance: dist, instruction: clean }) : clean);
 }
 
 export function speakArrival(durationMin?: number, distanceKm?: number): void {
-  const bits = ['Arrivée à destination'];
+  const bits: string[] = [t('tts.arrival')];
   if (typeof durationMin === 'number' && durationMin > 0) {
-    bits.push(`temps estimé ${Math.round(durationMin)} minutes`);
+    bits.push(t('tts.arrivalEta', { minutes: Math.round(durationMin) }));
   }
   if (typeof distanceKm === 'number' && distanceKm > 0) {
-    bits.push(formatDistanceFr(distanceKm));
+    bits.push(formatDistanceSpoken(distanceKm));
   }
   speakNav(bits.join(', '));
 }
 
 export function speakWeighAlert(distanceKm: number, name?: string): void {
-  const dist = formatDistanceFr(distanceKm);
-  const label = name ? `balance ${name}` : 'balance';
-  speakNav(dist ? `Attention, ${label} à ${dist}` : `Attention, ${label} proche`);
+  const dist = formatDistanceSpoken(distanceKm);
+  const label = name ? t('tts.weighNamed', { name }) : t('tts.weighDefault');
+  speakNav(dist ? t('tts.weighAlert', { label, distance: dist }) : t('tts.weighNear', { label }));
+}
+
+export function speakNavStarted(opts: {
+  mode: 'voiture' | 'camion';
+  distanceKm: number;
+  durationMin: number;
+}): void {
+  const distance = Math.round(opts.distanceKm * 10) / 10;
+  const minutes = Math.round(opts.durationMin);
+  speakNav(
+    opts.mode === 'camion'
+      ? t('tts.navStartedTruck', { distance, minutes })
+      : t('tts.navStartedCar', { distance, minutes }),
+  );
 }
