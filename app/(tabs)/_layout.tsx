@@ -130,7 +130,8 @@ export default function TabsLayout() {
         name="menu"
         options={{
           title: t('tabs.menu'),
-          tabBarAccessibilityLabel: t('tabs.menu'),
+          // Four-square grid = updates hub (NOT SOS / emergency). SOS FAB stays separate.
+          tabBarAccessibilityLabel: t('update.tabA11y'),
           tabBarLabel: ({ color }) => <TabLabel label={t('tabs.menuShort')} color={color} />,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons

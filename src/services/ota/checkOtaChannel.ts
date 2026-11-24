@@ -88,19 +88,22 @@ export async function checkOtaChannel(): Promise<OtaProbe> {
   };
 }
 
-/** Fetch + reload when an update is available. Never fakes success without expo-updates. */
+/**
+ * One-tap update launch: check → fetch → reload when expo-updates is enabled.
+ * Never opens a menu or confirmation. Never fakes success without the runtime.
+ */
 export async function applyOtaUpdateIfAvailable(): Promise<{ ok: boolean; message: string }> {
   const Updates = loadUpdates();
   if (!Updates?.isEnabled) {
     return {
       ok: false,
-      message: 'Appliquer OTA impossible ici — Dev Client / build EAS avec expo-updates requis',
+      message: 'Mise à jour impossible ici — Dev Client / build EAS avec expo-updates requis',
     };
   }
   try {
     const check = await Updates.checkForUpdateAsync?.();
     if (!check?.isAvailable) {
-      return { ok: false, message: 'Aucune mise à jour OTA en attente sur ce canal' };
+      return { ok: false, message: 'Aucune mise à jour en attente sur ce canal' };
     }
     // fetch may report isNew:false when Expo already background-downloaded the bundle —
     // still reload so the pending update actually applies.
@@ -109,13 +112,13 @@ export async function applyOtaUpdateIfAvailable(): Promise<{ ok: boolean; messag
     return {
       ok: true,
       message: fetched?.isNew
-        ? 'Update OTA téléchargée et appliquée — rechargement'
-        : 'Update OTA déjà en cache — rechargement pour appliquer',
+        ? 'Mise à jour téléchargée — rechargement'
+        : 'Mise à jour en cache — rechargement',
     };
   } catch (e) {
     return {
       ok: false,
-      message: e instanceof Error ? e.message : 'Échec apply OTA',
+      message: e instanceof Error ? e.message : 'Échec mise à jour',
     };
   }
 }

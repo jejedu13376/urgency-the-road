@@ -31,8 +31,21 @@ export const fr = {
     carteShort: 'Carte',
     fil: 'Fil méca',
     filShort: 'Fil',
-    menu: 'Menu',
-    menuShort: 'Menu',
+    /** Bottom-right 4-square grid — updates (not SOS / emergency). */
+    menu: 'Mise à jour',
+    menuShort: 'Màj',
+  },
+
+  update: {
+    button: 'Mise à jour',
+    buttonBusy: 'Màj…',
+    buttonDone: 'OK',
+    buttonFail: 'Échec',
+    a11y: 'Mise à jour — lance immédiatement la mise à jour de l’application',
+    a11yBusy: 'Mise à jour en cours',
+    a11yHint: 'Un seul appui lance la mise à jour. Pas de menu ni de confirmation.',
+    tabA11y: 'Mise à jour — les quatre points en bas à droite. Pas une urgence SOS. Utilisez le bouton Mise à jour en haut à droite pour lancer.',
+    hubHint: 'Mise à jour app — un appui. Pas une urgence SOS.',
   },
 
   stub: 'STUB — service non connecté',
@@ -95,7 +108,7 @@ export const fr = {
   },
 
   sos: {
-    a11y: 'SOS Urgence médicale — ouvrir le module Urgence',
+    a11y: 'SOS Urgence médicale — ouvrir le module Urgence. Ce n’est pas le bouton Mise à jour.',
     a11yClose: 'SOS Urgence médicale — fermer le module Urgence',
   },
 
