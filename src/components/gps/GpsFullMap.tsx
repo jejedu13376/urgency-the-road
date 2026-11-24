@@ -1096,7 +1096,7 @@ export function GpsFullMap() {
             lastWatchRef.current = { lat: loc.data.lat, lon: loc.data.lon };
             recoveryRecenterRef.current = false;
             setGpsOk(true);
-            setHudNote('GPS appareil OK — suivi live');
+            setHudNote('GPS appareil OK');
             setMapOrigin(loc.data.lat, loc.data.lon, true);
             return;
           }
