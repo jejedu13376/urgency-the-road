@@ -12,6 +12,13 @@ import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getFirebase, isFirebaseConfigured } from '../../firebase/config';
 import type { UserDoc } from '../../types/firestore';
 import { COLLECTIONS } from '../../types/firestore';
+import { generateReferralCode } from '../referral/referralCode';
+import {
+  applyReferralOnSignup,
+  ensureUserReferralCode,
+  hydrateReferralFields,
+  loadPendingReferralCode,
+} from '../referral/referralService';
 import { isDevSoftAuth, isPermissionDenied } from './devSoftAuth';
 import { failResult, liveResult, mockResult, ServiceResult } from './result';
 
@@ -24,6 +31,7 @@ const MOCK_USER: UserDoc = {
   subscriptionActive: false,
   locale: 'fr',
   currency: 'EUR',
+  referralCode: generateReferralCode('mock-local-user'),
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };
@@ -68,6 +76,10 @@ function profileFromAuth(
     subscriptionActive: false,
     locale: 'fr',
     currency: 'EUR',
+    referralCode: generateReferralCode(uid),
+    referrerDiscountActive: false,
+    referralRewardCredits: 0,
+    successfulReferralCount: 0,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -90,7 +102,9 @@ async function ensureUserDoc(
   const fallback = profileFromAuth(uid, email, displayName);
   try {
     const snap = await getDoc(ref);
-    if (snap.exists()) return snap.data() as UserDoc;
+    if (snap.exists()) {
+      return hydrateReferralFields(snap.data() as UserDoc);
+    }
     await setDoc(
       ref,
       stripUndefined({
@@ -99,10 +113,10 @@ async function ensureUserDoc(
         updatedAt: serverTimestamp(),
       }),
     );
-    return fallback;
+    return ensureUserReferralCode(fallback);
   } catch (e) {
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return fallback;
+      return ensureUserReferralCode(fallback);
     }
     throw e;
   }
@@ -112,9 +126,21 @@ export async function signUpEmail(
   email: string,
   password: string,
   displayName?: string,
+  referralCode?: string | null,
 ): Promise<ServiceResult<UserDoc | null>> {
+  const pending = referralCode?.trim() || (await loadPendingReferralCode());
   const fb = getFirebase();
-  if (!fb) return mockResult({ ...MOCK_USER, email, displayName }, 'MOCK Auth — inscription locale');
+  if (!fb) {
+    const local = await ensureUserReferralCode({
+      ...MOCK_USER,
+      uid: `mock-${Date.now()}`,
+      email,
+      displayName,
+      referralCode: undefined,
+    });
+    const applied = await applyReferralOnSignup(local, pending);
+    return mockResult(applied.data, applied.stubLabel ?? 'MOCK Auth — inscription locale');
+  }
 
   try {
     const cred = await createUserWithEmailAndPassword(fb.auth, email, password);
@@ -124,10 +150,13 @@ export async function signUpEmail(
     } catch {
       // Account created — verification email may still be resent from Compte / Multi-IA
     }
-    const profile = await ensureUserDoc(cred.user.uid, email, displayName);
+    let profile = await ensureUserDoc(cred.user.uid, email, displayName);
+    profile = await ensureUserReferralCode(profile);
+    const applied = await applyReferralOnSignup(profile, pending);
     return liveResult(
-      profile,
-      'Compte créé — vérifie ton email (lien envoyé) avant le Multi-IA LIVE',
+      applied.data,
+      applied.stubLabel ??
+        'Compte créé — vérifie ton email (lien envoyé) avant le Multi-IA LIVE',
     );
   } catch (e) {
     return failResult(null, authErrorMessage(e));
@@ -220,7 +249,10 @@ export function watchAuth(cb: (user: User | null) => void): () => void {
 }
 
 export async function getCurrentUserProfile(): Promise<ServiceResult<UserDoc | null>> {
-  if (!isFirebaseConfigured()) return mockResult(MOCK_USER, 'MOCK Auth — profil local');
+  if (!isFirebaseConfigured()) {
+    const mock = await hydrateReferralFields(MOCK_USER);
+    return mockResult(mock, 'MOCK Auth — profil local');
+  }
   const fb = getFirebase()!;
   const u = fb.auth.currentUser;
   if (!u) return liveResult(null);
@@ -230,10 +262,10 @@ export async function getCurrentUserProfile(): Promise<ServiceResult<UserDoc | n
   } catch (e) {
     // Soft-fail: keep UI usable when rules deny users/{uid} (deploy pending).
     if (isPermissionDenied(e) || isDevSoftAuth()) {
-      return mockResult(
+      const soft = await hydrateReferralFields(
         profileFromAuth(u.uid, u.email ?? '', u.displayName),
-        'SOFT Auth — profil mémoire (Firestore permission / DEV)',
       );
+      return mockResult(soft, 'SOFT Auth — profil mémoire (Firestore permission / DEV)');
     }
     return failResult(null, authErrorMessage(e));
   }

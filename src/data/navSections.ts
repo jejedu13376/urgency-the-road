@@ -96,6 +96,12 @@ export const NAV_SECTIONS: NavSection[] = [
         moduleTag: 'M15',
       },
       {
+        id: 'set-parrainage',
+        title: 'Parrainage',
+        short: 'Code · partage · 12 $/mois × 3 mois',
+        href: '/modules/parrainage',
+      },
+      {
         id: 'set-support',
         title: 'Support',
         short: 'Email support entreprise',

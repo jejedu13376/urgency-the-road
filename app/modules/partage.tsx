@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Linking, Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { Link, Stack } from 'expo-router';
 import { Card } from '../../src/components/Card';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
@@ -135,6 +135,19 @@ export default function PartageScreen() {
             </PressScale>
           </View>
         </FadeInBlock>
+
+        <Card title={t('referral.partageCardTitle')}>
+          <Text style={styles.meta}>{t('referral.partageCardHint')}</Text>
+          <Link href="/modules/parrainage" asChild>
+            <Pressable
+              style={styles.btn}
+              accessibilityRole="button"
+              accessibilityLabel={t('referral.openShareA11y')}
+            >
+              <Text style={styles.btnTxt}>{t('referral.openShare')}</Text>
+            </Pressable>
+          </Link>
+        </Card>
 
         <Card title="Lien d’installation">
           <Text style={styles.meta}>Source : {install.source} · configuré : {install.configured ? 'oui' : 'non'}</Text>

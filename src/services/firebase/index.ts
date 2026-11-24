@@ -15,5 +15,6 @@ export * from './appointmentsService';
 export * from './youtubeService';
 export * from './feedService';
 export * from './learnedFailuresService';
+export * from '../referral/referralService';
 
 export { firebaseStatusLabel, isFirebaseConfigured, getFirebase } from '../../firebase/config';

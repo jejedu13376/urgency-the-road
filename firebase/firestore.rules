@@ -67,6 +67,31 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    /** Public code → uid index for signup attribution (no PHI). */
+    match /referralCodes/{code} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.uid == uid()
+        && request.resource.data.code == code;
+      allow update: if signedIn() && resource.data.uid == uid();
+      allow delete: if isAdmin();
+    }
+
+    /** Referred user creates; referrer reads/claims own events. */
+    match /referralEvents/{id} {
+      allow read: if signedIn()
+        && (resource.data.referredUid == uid() || resource.data.referrerUid == uid() || isAdmin());
+      allow create: if signedIn()
+        && request.resource.data.referredUid == uid()
+        && request.resource.data.claimed == false;
+      allow update: if signedIn()
+        && resource.data.referrerUid == uid()
+        && request.resource.data.referrerUid == resource.data.referrerUid
+        && request.resource.data.referredUid == resource.data.referredUid
+        && request.resource.data.code == resource.data.code;
+      allow delete: if isAdmin();
+    }
+
     match /vehicles/{id} {
       allow read: if signedIn() && (resource.data.ownerUid == uid() || isAdmin());
       allow create: if signedIn() && request.resource.data.ownerUid == uid();

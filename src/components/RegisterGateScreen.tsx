@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -9,10 +10,16 @@ import {
   View,
 } from 'react-native';
 import { BRAND_NAME } from '../brand';
+import { PREMIUM_PRICE_MONTHLY_USD } from '../constants/subscription';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../context/I18nContext';
 import { useRegisterGate } from '../context/RegisterGateContext';
 import { signInEmail, signUpEmail } from '../services/firebase/authService';
+import {
+  captureReferralFromUrl,
+  loadPendingReferralCode,
+  savePendingReferralCode,
+} from '../services/referral/referralService';
 import {
   isValidDisplayName,
   isValidEmail,
@@ -30,6 +37,7 @@ export function RegisterGateScreen() {
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [pw, setPw] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   const [pwMsg, setPwMsg] = useState<string | null>(null);
   const [pwOk, setPwOk] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -43,9 +51,26 @@ export function RegisterGateScreen() {
       const seed = mergeAutofill(local, profile);
       setEmail(seed.email);
       setDisplayName(seed.displayName);
+      const pending = await loadPendingReferralCode();
+      if (!cancelled && pending) setReferralCode(pending);
+      try {
+        const initial = await Linking.getInitialURL();
+        if (initial && !cancelled) {
+          const captured = await captureReferralFromUrl(initial);
+          if (captured) setReferralCode(captured);
+        }
+      } catch {
+        // soft-fail deep link
+      }
     })();
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      void captureReferralFromUrl(url).then((c) => {
+        if (c) setReferralCode(c);
+      });
+    });
     return () => {
       cancelled = true;
+      sub.remove();
     };
   }, [profile]);
 
@@ -68,7 +93,8 @@ export function RegisterGateScreen() {
     setBusy(true);
     setMsg(null);
     try {
-      const r = await signUpEmail(email, pw, displayName.trim());
+      if (referralCode.trim()) await savePendingReferralCode(referralCode.trim());
+      const r = await signUpEmail(email, pw, displayName.trim(), referralCode.trim() || null);
       if (r.ok === false) {
         setMsg(r.stubLabel ?? t('registerGate.signUpFail'));
         return;
@@ -163,6 +189,21 @@ export function RegisterGateScreen() {
         ) : (
           <Text style={styles.hint}>{t('registerGate.pwRule')}</Text>
         )}
+
+        <TextInput
+          value={referralCode}
+          onChangeText={setReferralCode}
+          placeholder={t('referral.codePlaceholder')}
+          placeholderTextColor={colors.muted}
+          style={styles.input}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          testID="register-gate-referral"
+          accessibilityLabel={t('referral.codePlaceholder')}
+        />
+        <Text style={styles.hint}>
+          {t('referral.signupHint', { price: PREMIUM_PRICE_MONTHLY_USD })}
+        </Text>
 
         <Pressable
           style={[styles.btn, busy && styles.disabled]}
