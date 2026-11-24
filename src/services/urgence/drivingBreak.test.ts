@@ -48,7 +48,7 @@ describe('drivingBreak', () => {
     assert.equal(shouldCountAsDriving(2), true);
   });
 
-  it('accumulates motion time and crosses exactly at 4h', () => {
+  it('accumulates motion time and crosses exactly at 2h', () => {
     let state = createInitialDrivingBreakState();
     const near = accumulateDrivingTime(state, {
       deltaSec: DRIVING_BREAK_THRESHOLD_SEC - 10,

@@ -1,6 +1,6 @@
 /**
  * Self-contained Leaflet map HTML for WebView.
- * Map-type menu (+): Default roads · Satellite · Terrain · Transit · Traffic · 3D · AQI.
+ * Right-side icon rail: Roads · Satellite · Terrain · Traffic · Transit · 3D · AQI · Street View.
  * Extends Esri/#47 basemap work (Esri imagery + Carto/OSM roads) with Terrain + overlays.
  * Vehicle DivIcon = LIVE GPS — not a canned polyline demo.
  */
@@ -140,13 +140,16 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   }
   .chip-row{display:flex;gap:6px;pointer-events:auto}
   .chip{
-    flex:1;border:0;border-radius:11px;padding:9px 10px;font:650 12px/1.15 system-ui,sans-serif;
-    background:rgba(255,255,255,.94);color:var(--ink);box-shadow:0 1px 8px rgba(0,0,0,.16);
+    flex:1;border:0;border-radius:14px;padding:10px 12px;font:650 12px/1.15 system-ui,sans-serif;
+    background:rgba(255,255,255,.96);color:var(--ink);
+    box-shadow:0 2px 10px rgba(16,24,32,.14),0 1px 2px rgba(16,24,32,.06);
     transition:background .2s ease,color .2s ease,transform .15s ease;
   }
   .chip.on{background:var(--signal);color:#fff}
   .chip.on.truck{background:var(--garage)}
   .chip small{display:block;font-weight:550;opacity:.72;margin-top:2px;font-size:10px;letter-spacing:.01em}
+  .chip .chip-ico{display:inline-flex;vertical-align:-1px;margin-right:5px;opacity:.9}
+  .chip .chip-ico svg{display:block}
   .status{
     align-self:flex-start;max-width:94%;
     background:rgba(27,36,48,.9);color:#fff;border-radius:9px;padding:7px 10px;
@@ -156,59 +159,102 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     position:absolute;z-index:1000;
     left:calc(10px + var(--pad-left));right:auto;
     bottom:calc(14px + var(--pad-bottom));
-    display:flex;flex-direction:row;align-items:center;gap:8px;pointer-events:none;
+    display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none;
   }
   .bottom > *{pointer-events:auto}
+  .bottom-actions{display:flex;flex-direction:row;align-items:center;gap:8px}
   .go{
-    border:0;border-radius:13px;padding:12px 16px;font:750 13px system-ui,sans-serif;
-    background:var(--signal);color:#fff;box-shadow:0 3px 12px rgba(196,92,38,.38);
-    transition:opacity .2s ease,transform .15s ease;
+    border:0;border-radius:16px;padding:13px 18px;font:750 13px system-ui,sans-serif;
+    background:var(--signal);color:#fff;box-shadow:0 4px 14px rgba(196,92,38,.32);
+    transition:opacity .2s ease,transform .15s ease,box-shadow .2s ease;
     letter-spacing:.01em;
   }
-  .go:disabled{opacity:.4}
+  .go:disabled{opacity:.4;box-shadow:none}
+  .go:active:not(:disabled){transform:scale(.97)}
   .ghost{
-    border:0;border-radius:13px;padding:12px 11px;font:650 11px system-ui,sans-serif;
-    background:rgba(255,255,255,.94);color:var(--ink);
+    border:0;border-radius:16px;padding:13px 14px;font:650 12px system-ui,sans-serif;
+    background:rgba(255,255,255,.96);color:var(--ink);
+    box-shadow:0 2px 10px rgba(16,24,32,.14);
   }
-  /* Google Maps-style small + map-type control (extends Esri Sat/Routes). */
-  .maptype-wrap{
+  .ghost:active{transform:scale(.97)}
+  /* Google Maps-style trip summary under Itinéraire: time + distance. */
+  .eta-bar{
+    display:none;align-self:flex-start;max-width:min(280px,78vw);
+    background:rgba(255,255,255,.97);color:var(--ink);
+    border-radius:12px;padding:10px 14px;
+    font:750 14px/1.25 system-ui,-apple-system,sans-serif;
+    letter-spacing:.01em;
+    box-shadow:0 2px 10px rgba(0,0,0,.18);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .eta-bar.on{display:block}
+  .eta-bar .eta-time{font-weight:800}
+  .eta-bar .eta-dist{font-weight:600;opacity:.78}
+  @media (prefers-color-scheme: dark){
+    .eta-bar{
+      background:rgba(32,33,36,.96);color:#E8EAED;
+      box-shadow:0 2px 12px rgba(0,0,0,.45);
+    }
+    .eta-bar .eta-dist{opacity:.72}
+  }
+  /* Right-side map control rail — icon FABs, rounded cards, light shadows. */
+  .map-rail{
     position:absolute;z-index:1100;
     right:calc(10px + var(--pad-right));
-    bottom:calc(14px + var(--pad-bottom));
-    display:flex;flex-direction:column;align-items:flex-end;gap:6px;
+    top:50%;
+    transform:translateY(-42%);
+    display:flex;flex-direction:column;align-items:flex-end;gap:10px;
     pointer-events:none;
   }
-  .maptype-wrap > *{pointer-events:auto}
-  .maptype-plus{
-    width:44px;height:44px;border:0;border-radius:13px;
-    font:800 22px/1 system-ui,sans-serif;background:rgba(255,255,255,.96);color:var(--ink);
-    box-shadow:0 2px 10px rgba(0,0,0,.22);
+  .map-rail-card{
+    pointer-events:auto;
+    display:flex;flex-direction:column;gap:2px;
+    padding:4px;
+    background:rgba(255,255,255,.96);
+    border-radius:16px;
+    box-shadow:0 2px 12px rgba(16,24,32,.16),0 1px 3px rgba(16,24,32,.08);
+    border:1px solid rgba(255,255,255,.7);
   }
-  .maptype-menu{
-    display:none;flex-direction:column;gap:2px;min-width:168px;
-    background:rgba(255,255,255,.97);border-radius:12px;padding:6px;
-    box-shadow:0 4px 18px rgba(0,0,0,.28);
+  .map-fab{
+    width:42px;height:42px;border:0;border-radius:12px;
+    display:flex;align-items:center;justify-content:center;
+    background:transparent;color:var(--slate);
+    transition:background .18s ease,color .18s ease,transform .12s ease;
+    -webkit-appearance:none;appearance:none;
   }
-  .maptype-menu.open{display:flex}
-  .maptype-menu button{
-    border:0;background:transparent;text-align:left;padding:9px 10px;border-radius:8px;
-    font:650 12px/1.2 system-ui,sans-serif;color:var(--ink);
+  .map-fab svg{width:20px;height:20px;display:block;pointer-events:none}
+  .map-fab:active{transform:scale(.94)}
+  .map-fab.on{
+    background:rgba(196,92,38,.14);color:var(--signal);
   }
-  .maptype-menu button.on{background:rgba(196,92,38,.14);color:var(--signal);font-weight:800}
-  .maptype-menu button:disabled{opacity:.45}
-  .maptype-menu .sep{height:1px;background:rgba(0,0,0,.08);margin:4px 2px}
+  .map-fab.on[data-tog]{
+    background:rgba(31,107,74,.12);color:var(--garage);
+  }
+  .map-fab:disabled{opacity:.38}
+  .map-fab.locked{color:var(--muted)}
+  .map-fab[data-act="streetview"]{color:var(--ink)}
+  .map-rail-hint{
+    pointer-events:none;
+    font:600 9px/1 system-ui,sans-serif;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--muted);text-align:center;padding:2px 0 4px;
+  }
   .vehicle-wrap{
     width:42px;height:42px;display:flex;align-items:center;justify-content:center;
     transition:transform .18s linear;will-change:transform;
   }
+  .vehicle-wrap.camion{width:52px;height:40px}
   .vehicle-icon{
     width:36px;height:36px;border-radius:18px;background:#fff;border:2.5px solid var(--signal);
     display:flex;align-items:center;justify-content:center;
     box-shadow:0 2px 10px rgba(0,0,0,.35);
     transition:border-color .25s ease,box-shadow .25s ease;
   }
-  .vehicle-icon.camion{border-color:var(--garage);box-shadow:0 2px 10px rgba(31,107,74,.35)}
+  .vehicle-icon.camion{
+    width:46px;height:32px;border-radius:10px;
+    border-color:var(--garage);box-shadow:0 2px 10px rgba(31,107,74,.35);
+  }
   .vehicle-icon svg{width:24px;height:24px;display:block}
+  .vehicle-icon.camion svg{width:38px;height:22px;display:block}
   .dest-pin{
     width:28px;height:36px;display:flex;align-items:flex-end;justify-content:center;
     filter:drop-shadow(0 2px 4px rgba(0,0,0,.35));
@@ -245,28 +291,48 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
 <div class="hud">
   <div class="chip-row">
     <button type="button" class="chip" id="btnCar"><span>Voiture</span><small>Profil auto</small></button>
-    <button type="button" class="chip" id="btnTruck"><span>Camion</span><small>Profil truck</small></button>
+    <button type="button" class="chip" id="btnTruck"><span class="chip-ico" aria-hidden="true"><svg viewBox="0 0 96 48" width="22" height="11"><rect x="1" y="9" width="56" height="23" rx="2" fill="currentColor" opacity=".92"/><path d="M71 12.5 H83.5 L91 26.5 H71 Z" fill="currentColor"/><rect x="58" y="11" width="13" height="16.5" rx="2" fill="currentColor"/><rect x="71" y="12.5" width="13" height="14.5" rx="1.4" fill="currentColor"/><rect x="58" y="26.5" width="35" height="5.5" rx="1.2" fill="currentColor" opacity=".75"/><circle cx="11" cy="38.5" r="5.2" fill="currentColor"/><circle cx="21" cy="38.5" r="5.2" fill="currentColor"/><circle cx="65" cy="38.5" r="5.2" fill="currentColor"/><circle cx="75" cy="38.5" r="5.2" fill="currentColor"/><circle cx="88" cy="38.5" r="4.8" fill="currentColor"/></svg></span><span>Camion</span><small>Semi / fret</small></button>
   </div>
   <div class="status" id="status">Choisissez Voiture ou Camion en haut, puis touchez / cherchez une destination</div>
 </div>
 <div class="bottom">
-  <button type="button" class="go" id="btnGo" disabled>itinéraire</button>
-  <button type="button" class="ghost" id="btnRecenter">GPS</button>
-</div>
-<div class="maptype-wrap">
-  <div class="maptype-menu" id="mapTypeMenu" role="menu">
-    <button type="button" data-base="roads" class="on">Default · routes</button>
-    <button type="button" data-base="satellite">Satellite</button>
-    <button type="button" data-base="terrain">Terrain</button>
-    <div class="sep"></div>
-    <button type="button" data-tog="transit">Transport en commun</button>
-    <button type="button" data-tog="traffic" id="btnTraffic">Trafic temps réel</button>
-    <button type="button" data-tog="buildings3d">Bâtiments 3D</button>
-    <button type="button" data-tog="aqi">Qualité de l’air</button>
-    <div class="sep"></div>
-    <button type="button" data-act="streetview">Street View (pin)</button>
+  <div class="bottom-actions">
+    <button type="button" class="go" id="btnGo" disabled>itinéraire</button>
+    <button type="button" class="ghost" id="btnRecenter">GPS</button>
   </div>
-  <button type="button" class="maptype-plus" id="btnMapType" aria-label="Types de carte" aria-expanded="false">+</button>
+  <div class="eta-bar" id="etaBar" aria-live="polite" hidden></div>
+</div>
+<div class="map-rail" id="mapTypeMenu" role="toolbar" aria-label="Contrôles carte">
+  <div class="map-rail-card" aria-label="Fonds de carte">
+    <button type="button" class="map-fab on" data-base="roads" title="Routes" aria-label="Routes" aria-pressed="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4l-3 16"/><path d="M15 4l3 16"/><path d="M4 9h16"/><path d="M3 15h18"/></svg>
+    </button>
+    <button type="button" class="map-fab" data-base="satellite" title="Satellite" aria-label="Satellite" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M3 12h18"/><path d="M12 4a14 14 0 0 1 0 16"/><path d="M12 4a14 14 0 0 0 0 16"/></svg>
+    </button>
+    <button type="button" class="map-fab" data-base="terrain" title="Terrain" aria-label="Terrain" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18l6-9 4 5 3-4 5 8H3z"/><path d="M14 10l2-3 3 3"/></svg>
+    </button>
+  </div>
+  <div class="map-rail-card" aria-label="Couches">
+    <button type="button" class="map-fab" data-tog="traffic" id="btnTraffic" title="Trafic temps réel" aria-label="Trafic temps réel" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 19V9a4 4 0 0 1 8 0v10"/><path d="M8 13h8"/><circle cx="9.5" cy="17" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="17" r="1.2" fill="currentColor" stroke="none"/><path d="M10 6h4"/></svg>
+    </button>
+    <button type="button" class="map-fab" data-tog="transit" title="Transport en commun" aria-label="Transport en commun" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="12" height="14" rx="3"/><path d="M6 10h12"/><path d="M9 18v2"/><path d="M15 18v2"/><circle cx="9" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1" fill="currentColor" stroke="none"/></svg>
+    </button>
+    <button type="button" class="map-fab" data-tog="buildings3d" title="Bâtiments 3D" aria-label="Bâtiments 3D" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V9l8-4 8 4v11"/><path d="M9 20v-6h6v6"/><path d="M4 12h16"/></svg>
+    </button>
+    <button type="button" class="map-fab" data-tog="aqi" title="Qualité de l’air" aria-label="Qualité de l’air" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14c2-1 3-1 5 0s3 1 5 0 3-1 5 0"/><path d="M4 10c2-1 3-1 5 0s3 1 5 0 3-1 5 0"/><path d="M4 18c2-1 3-1 5 0s3 1 5 0 3-1 5 0"/></svg>
+    </button>
+  </div>
+  <div class="map-rail-card">
+    <button type="button" class="map-fab" data-act="streetview" title="Street View (pin)" aria-label="Street View">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="3"/><path d="M6 20c1.5-4 4-6 6-6s4.5 2 6 6"/><path d="M12 10v3"/></svg>
+    </button>
+  </div>
 </div>
 <script>
 (function(){
@@ -282,6 +348,8 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   var routeCoords = [];
   var vehicleMarker = null;
   var routeLine = null;
+  var altRouteLines = [];
+  var stopMarkers = [];
   var destMarker = null;
   var followLive = false;
   /** True only after startNavigation — not mere recenter / followLive. */
@@ -350,23 +418,62 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   function carSvg(){
     return '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M12 30 L20 18 H44 L52 30 Z" fill="#C45C26"/><rect x="10" y="30" width="44" height="14" rx="5" fill="#2C3A47"/><circle cx="20" cy="46" r="5.5" fill="#101820"/><circle cx="44" cy="46" r="5.5" fill="#101820"/><rect x="16" y="33" width="10" height="6" rx="1.5" fill="#E8EEF2"/><rect x="38" y="33" width="10" height="6" rx="1.5" fill="#E8EEF2"/></svg>';
   }
+  /** Side-view freight semi (tractor + dry-van) — map GPS marker in camion mode. */
   function truckSvg(){
-    return '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="20" width="32" height="22" rx="3" fill="#1F6B4A"/><rect x="36" y="26" width="22" height="16" rx="3" fill="#C45C26"/><rect x="40" y="29" width="10" height="7" rx="1.5" fill="#F3D9C8"/><circle cx="16" cy="46" r="5.5" fill="#101820"/><circle cx="48" cy="46" r="5.5" fill="#101820"/><rect x="8" y="24" width="12" height="8" rx="1" fill="#D7EDE3"/></svg>';
+    return '<svg viewBox="0 0 96 48" aria-hidden="true">' +
+      /* dry-van trailer — long body, roof rail, panel seams */
+      '<rect x="1" y="9" width="56" height="23" rx="2" fill="#1F6B4A"/>' +
+      '<rect x="1" y="9" width="56" height="4" rx="1.5" fill="#256F4D"/>' +
+      '<path d="M9 9 V32 M17 9 V32 M25 9 V32 M33 9 V32 M41 9 V32 M49 9 V32" stroke="#0F2F22" stroke-width="1.1" opacity=".5"/>' +
+      '<rect x="1" y="29" width="56" height="3.5" fill="#0F2F22"/>' +
+      /* rear underride + lights */
+      '<rect x="1" y="25" width="3.5" height="4.5" rx=".5" fill="#C0392B"/>' +
+      '<rect x="1" y="13" width="3.5" height="4.5" rx=".5" fill="#C0392B"/>' +
+      '<rect x="1" y="32.5" width="8" height="2" rx=".4" fill="#101820"/>' +
+      /* landing gear */
+      '<rect x="22" y="32" width="1.8" height="5.5" fill="#2C3A47"/><rect x="30" y="32" width="1.8" height="5.5" fill="#2C3A47"/>' +
+      /* fifth-wheel plate */
+      '<rect x="55" y="24" width="5" height="5.5" rx="1" fill="#2C3A47"/>' +
+      /* tractor frame */
+      '<rect x="58" y="26.5" width="35" height="5.5" rx="1.2" fill="#2C3A47"/>' +
+      /* sleeper */
+      '<rect x="58" y="11" width="13" height="16.5" rx="2" fill="#C45C26"/>' +
+      '<rect x="60" y="13.5" width="8" height="7" rx="1" fill="#F0D5C4"/>' +
+      /* day cab + hood */
+      '<path d="M71 12.5 H83.5 L91 26.5 H71 Z" fill="#B34E1F"/>' +
+      '<rect x="71" y="12.5" width="13" height="14.5" rx="1.4" fill="#C45C26"/>' +
+      '<path d="M73.5 14.5 H83 L86.5 24.5 H73.5 Z" fill="#E8EEF2"/>' +
+      /* grille + bumper + headlight */
+      '<rect x="86" y="20" width="5" height="7" rx=".8" fill="#3A4652"/>' +
+      '<rect x="89.5" y="26.5" width="5" height="5" rx="1" fill="#101820"/>' +
+      '<circle cx="91.5" cy="24" r="1.4" fill="#F7E27A"/>' +
+      /* fuel tank */
+      '<ellipse cx="68.5" cy="30" rx="4.2" ry="2.3" fill="#101820"/>' +
+      /* wheels: trailer tandem (rear) + drive tandem + steer */
+      '<circle cx="11" cy="38.5" r="5.2" fill="#101820"/><circle cx="11" cy="38.5" r="2.1" fill="#8A9199"/>' +
+      '<circle cx="21" cy="38.5" r="5.2" fill="#101820"/><circle cx="21" cy="38.5" r="2.1" fill="#8A9199"/>' +
+      '<circle cx="65" cy="38.5" r="5.2" fill="#101820"/><circle cx="65" cy="38.5" r="2.1" fill="#8A9199"/>' +
+      '<circle cx="75" cy="38.5" r="5.2" fill="#101820"/><circle cx="75" cy="38.5" r="2.1" fill="#8A9199"/>' +
+      '<circle cx="88" cy="38.5" r="4.8" fill="#101820"/><circle cx="88" cy="38.5" r="1.9" fill="#8A9199"/>' +
+      '</svg>';
   }
 
   function vehicleHtml(){
-    var cls = mode === 'camion' ? 'vehicle-icon camion' : 'vehicle-icon';
+    var truck = mode === 'camion';
+    var wrapCls = truck ? 'vehicle-wrap camion' : 'vehicle-wrap';
+    var cls = truck ? 'vehicle-icon camion' : 'vehicle-icon';
     var rot = (headingDeg != null && isFinite(headingDeg)) ? headingDeg : 0;
-    return '<div class="vehicle-wrap" style="transform:rotate(' + rot + 'deg)"><div class="' + cls + '">' +
-      (mode === 'camion' ? truckSvg() : carSvg()) + '</div></div>';
+    return '<div class="' + wrapCls + '" style="transform:rotate(' + rot + 'deg)"><div class="' + cls + '">' +
+      (truck ? truckSvg() : carSvg()) + '</div></div>';
   }
 
   function vehicleDivIcon(){
+    var truck = mode === 'camion';
     return L.divIcon({
       className: '',
       html: vehicleHtml(),
-      iconSize: [42, 42],
-      iconAnchor: [21, 21],
+      iconSize: truck ? [52, 40] : [42, 42],
+      iconAnchor: truck ? [26, 20] : [21, 21],
     });
   }
 
@@ -420,8 +527,9 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     if (!btn) return;
     if (!trafficLayer) {
       btn.disabled = true;
-      btn.title = 'Clé requise: EXPO_PUBLIC_TOMTOM_API_KEY (préf.) ou EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN';
-      btn.textContent = 'Trafic (clé requise)';
+      btn.classList.add('locked');
+      btn.title = 'Trafic — clé requise (TomTom ou Mapbox)';
+      btn.setAttribute('aria-label', 'Trafic indisponible — clé requise');
     }
   })();
 
@@ -455,16 +563,20 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     var buttons = menu.querySelectorAll('button[data-base]');
     for (var i = 0; i < buttons.length; i++) {
       var b = buttons[i];
-      b.classList.toggle('on', b.getAttribute('data-base') === baseKind);
+      var active = b.getAttribute('data-base') === baseKind;
+      b.classList.toggle('on', active);
+      b.setAttribute('aria-pressed', active ? 'true' : 'false');
     }
-    var togTransit = menu.querySelector('button[data-tog="transit"]');
-    var togTraffic = menu.querySelector('button[data-tog="traffic"]');
-    var tog3d = menu.querySelector('button[data-tog="buildings3d"]');
-    var togAqi = menu.querySelector('button[data-tog="aqi"]');
-    if (togTransit) togTransit.classList.toggle('on', transitOn);
-    if (togTraffic) togTraffic.classList.toggle('on', trafficOn);
-    if (tog3d) tog3d.classList.toggle('on', buildingsOn);
-    if (togAqi) togAqi.classList.toggle('on', aqiOn);
+    function syncTog(sel, on){
+      var el = menu.querySelector(sel);
+      if (!el) return;
+      el.classList.toggle('on', !!on);
+      el.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    syncTog('button[data-tog="transit"]', transitOn);
+    syncTog('button[data-tog="traffic"]', trafficOn);
+    syncTog('button[data-tog="buildings3d"]', buildingsOn);
+    syncTog('button[data-tog="aqi"]', aqiOn);
   }
 
   function maptypePayload(){
@@ -662,10 +774,53 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       : 'GPS live · mode voiture — touchez / cherchez une destination');
   }
 
+  function setEtaBar(distanceKm, durationMin){
+    var el = document.getElementById('etaBar');
+    if (!el) return;
+    var mins = typeof durationMin === 'number' && isFinite(durationMin) ? Math.round(durationMin) : null;
+    var km = typeof distanceKm === 'number' && isFinite(distanceKm) ? distanceKm : null;
+    if (mins == null || km == null) {
+      el.classList.remove('on');
+      el.setAttribute('hidden', 'hidden');
+      el.textContent = '';
+      el.removeAttribute('aria-label');
+      return;
+    }
+    var kmTxt = (Math.round(km * 10) / 10).toLocaleString('fr-FR');
+    var label = '~' + mins + ' min · ' + kmTxt + ' km';
+    el.textContent = '';
+    var timeSpan = document.createElement('span');
+    timeSpan.className = 'eta-time';
+    timeSpan.textContent = '~' + mins + ' min';
+    var distSpan = document.createElement('span');
+    distSpan.className = 'eta-dist';
+    distSpan.textContent = ' · ' + kmTxt + ' km';
+    el.appendChild(timeSpan);
+    el.appendChild(distSpan);
+    el.setAttribute('aria-label', 'Temps de trajet ' + label);
+    el.classList.add('on');
+    el.removeAttribute('hidden');
+  }
+
+  function clearAltRoutes(){
+    for (var i = 0; i < altRouteLines.length; i++) {
+      try { map.removeLayer(altRouteLines[i]); } catch (e) {}
+    }
+    altRouteLines = [];
+  }
+  function clearStopMarkers(){
+    for (var j = 0; j < stopMarkers.length; j++) {
+      try { map.removeLayer(stopMarkers[j]); } catch (e) {}
+    }
+    stopMarkers = [];
+  }
   function clearRouteGraphics(){
     if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+    clearAltRoutes();
+    clearStopMarkers();
     routeCoords = [];
     document.getElementById('btnGo').disabled = true;
+    setEtaBar(null, null);
     followLive = false;
     navTripActive = false;
   }
@@ -707,6 +862,8 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
       return;
     }
     setStatus('Calcul itinéraire ' + (mode === 'camion' ? 'camion' : 'voiture') + '…');
+    setEtaBar(null, null);
+    document.getElementById('btnGo').disabled = true;
     post({
       type: 'route',
       mode: mode,
@@ -728,20 +885,52 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
         return;
       }
       if (routeLine) map.removeLayer(routeLine);
+      clearAltRoutes();
+      clearStopMarkers();
       routeCoords = payload.coords;
+      var primaryColor = mode === 'camion' ? '#1F6B4A' : '#C45C26';
+      // Alt routes under primary (lighter).
+      var alts = payload.alternatives || [];
+      for (var ai = 0; ai < alts.length; ai++) {
+        var ac = alts[ai] && alts[ai].coords;
+        if (!ac || ac.length < 2) continue;
+        altRouteLines.push(L.polyline(ac, {
+          color: '#6B7785',
+          weight: 4,
+          opacity: 0.45,
+          dashArray: '8 10',
+          className: 'route-line',
+        }).addTo(map));
+      }
       routeLine = L.polyline(routeCoords, {
-        color: mode === 'camion' ? '#1F6B4A' : '#C45C26',
+        color: primaryColor,
         weight: 5,
-        opacity: 0.88,
+        opacity: 0.92,
         className: 'route-line',
       }).addTo(map);
+      var stops = payload.waypoints || [];
+      for (var si = 0; si < stops.length; si++) {
+        var sp = stops[si];
+        if (!sp || !isFinite(sp.lat) || !isFinite(sp.lon)) continue;
+        stopMarkers.push(L.marker([sp.lat, sp.lon], {
+          icon: L.divIcon({
+            className: '',
+            html: '<div class="layer-pin report">' + (si + 1) + '</div>',
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+          }),
+          zIndexOffset: 650,
+        }).addTo(map));
+      }
       map.fitBounds(routeLine.getBounds(), { padding: [52, 52], animate: true, duration: 0.45 });
       ensureVehicleMarker();
       document.getElementById('btnGo').disabled = false;
+      setEtaBar(payload.distanceKm, payload.durationMin);
       setStatus(payload.label || 'Itinéraire prêt — tapez itinéraire pour le suivi live');
       post({ type: 'routed', mode: mode, distanceKm: payload.distanceKm, durationMin: payload.durationMin, label: payload.label });
     } catch (e) {
       setStatus('Affichage itinéraire KO');
+      setEtaBar(null, null);
     }
   };
 
@@ -955,7 +1144,128 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     else if (msg.cmd === 'setMapType') window.__gpsSetMapType(msg);
   });
 
+  /* Mouse: single click places pin (unchanged).
+     Touch: long-press ~2s OR double-tap places pin — pan/zoom must not count as a press. */
+  var LONG_PRESS_MS = 2000;
+  var TOUCH_MOVE_PX = 12;
+  var DOUBLE_TAP_MS = 350;
+  var DOUBLE_TAP_PX = 36;
+  var touchPressTimer = null;
+  var touchStartPt = null;
+  var touchStartLL = null;
+  var touchMoved = false;
+  var longPressPlaced = false;
+  var suppressClickUntil = 0;
+  var lastTapAt = 0;
+  var lastTapPt = null;
+  var mapEl = map.getContainer();
+
+  function clearTouchPressTimer(){
+    if (touchPressTimer) {
+      clearTimeout(touchPressTimer);
+      touchPressTimer = null;
+    }
+  }
+
+  function touchPoint(t){
+    return L.point(t.clientX, t.clientY);
+  }
+
+  function latLngFromTouch(t){
+    return map.mouseEventToLatLng(t);
+  }
+
+  function placePinFromTouch(ll){
+    if (!ll) return;
+    /* Block Leaflet/browser ghost clicks after touch pin placement. */
+    suppressClickUntil = Date.now() + 500;
+    setDestination(ll);
+  }
+
+  mapEl.addEventListener('touchstart', function(ev){
+    /* Any finger contact: ignore following synthetic click (mouse stays intact). */
+    suppressClickUntil = Date.now() + 700;
+    if (ev.touches.length !== 1) {
+      clearTouchPressTimer();
+      touchMoved = true;
+      longPressPlaced = false;
+      touchStartPt = null;
+      touchStartLL = null;
+      lastTapAt = 0;
+      lastTapPt = null;
+      return;
+    }
+    var t = ev.touches[0];
+    touchStartPt = touchPoint(t);
+    touchStartLL = latLngFromTouch(t);
+    touchMoved = false;
+    longPressPlaced = false;
+    clearTouchPressTimer();
+    touchPressTimer = setTimeout(function(){
+      touchPressTimer = null;
+      if (!touchMoved && touchStartLL) {
+        longPressPlaced = true;
+        placePinFromTouch(touchStartLL);
+      }
+    }, LONG_PRESS_MS);
+  }, { passive: true });
+
+  mapEl.addEventListener('touchmove', function(ev){
+    if (!touchStartPt || !ev.touches.length) return;
+    var t = ev.touches[0];
+    if (touchStartPt.distanceTo(touchPoint(t)) > TOUCH_MOVE_PX) {
+      touchMoved = true;
+      clearTouchPressTimer();
+    }
+  }, { passive: true });
+
+  mapEl.addEventListener('touchend', function(ev){
+    clearTouchPressTimer();
+    if (longPressPlaced) {
+      longPressPlaced = false;
+      touchStartPt = null;
+      touchStartLL = null;
+      lastTapAt = 0;
+      lastTapPt = null;
+      return;
+    }
+    if (touchMoved || !touchStartPt || !ev.changedTouches || !ev.changedTouches.length) {
+      touchStartPt = null;
+      touchStartLL = null;
+      return;
+    }
+    var t = ev.changedTouches[0];
+    var pt = touchPoint(t);
+    var now = Date.now();
+    if (
+      lastTapAt &&
+      (now - lastTapAt) <= DOUBLE_TAP_MS &&
+      lastTapPt &&
+      lastTapPt.distanceTo(pt) <= DOUBLE_TAP_PX
+    ) {
+      lastTapAt = 0;
+      lastTapPt = null;
+      placePinFromTouch(latLngFromTouch(t));
+      /* Prefer pin over Leaflet double-tap zoom for this gesture. */
+      if (ev.cancelable && ev.preventDefault) ev.preventDefault();
+    } else {
+      lastTapAt = now;
+      lastTapPt = pt;
+    }
+    touchStartPt = null;
+    touchStartLL = null;
+  }, { passive: false });
+
+  mapEl.addEventListener('touchcancel', function(){
+    clearTouchPressTimer();
+    touchMoved = true;
+    longPressPlaced = false;
+    touchStartPt = null;
+    touchStartLL = null;
+  }, { passive: true });
+
   map.on('click', function(e){
+    if (Date.now() < suppressClickUntil) return;
     setDestination(e.latlng);
   });
 
@@ -980,16 +1290,14 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   };
 
   var menu = document.getElementById('mapTypeMenu');
-  var btnMapType = document.getElementById('btnMapType');
-  btnMapType.onclick = function(ev){
-    if (ev && ev.stopPropagation) ev.stopPropagation();
-    var open = menu.classList.toggle('open');
-    btnMapType.setAttribute('aria-expanded', open ? 'true' : 'false');
-  };
   menu.onclick = function(ev){
     if (ev && ev.stopPropagation) ev.stopPropagation();
     var t = ev.target;
-    if (!t || t.tagName !== 'BUTTON') return;
+    if (t && t.closest) t = t.closest('button');
+    else {
+      while (t && t.tagName !== 'BUTTON' && t !== menu) t = t.parentNode;
+    }
+    if (!t || t.tagName !== 'BUTTON' || t.disabled) return;
     var base = t.getAttribute('data-base');
     var tog = t.getAttribute('data-tog');
     var act = t.getAttribute('data-act');
@@ -1001,8 +1309,6 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     else if (act === 'streetview') {
       var focus = dest || origin;
       post({ type: 'streetview', lat: focus.lat, lon: focus.lon });
-      menu.classList.remove('open');
-      btnMapType.setAttribute('aria-expanded', 'false');
     }
   };
 
