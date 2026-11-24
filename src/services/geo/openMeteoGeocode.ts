@@ -7,6 +7,8 @@ export type GeocodeHit = {
   name: string;
   lat: number;
   lon: number;
+  /** Locality / town when the API provides it (Photon city, etc.). */
+  city?: string;
   country?: string;
   admin1?: string;
   label: string;
@@ -59,6 +61,7 @@ async function photonGeocode(q: string, limit: number): Promise<GeocodeResult> {
         name,
         lat,
         lon,
+        city: p.city,
         country: p.country,
         admin1: p.state,
         label: parts.join(', '),

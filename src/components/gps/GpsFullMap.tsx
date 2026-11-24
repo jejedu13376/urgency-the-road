@@ -2237,18 +2237,17 @@ export function GpsFullMap() {
                 void (async () => {
                   const q = stopQ.trim();
                   if (!q) return;
+                  // Always resolve against current stopQ — never reuse a stale stopHits[0].
+                  stopReqIdRef.current += 1;
                   setStopBusy(true);
                   try {
-                    let hit = stopHits[0];
+                    const r = await fetchAddressSuggestions(q, placesSessionRef.current, {
+                      limit: 6,
+                    });
+                    setStopHits(r.suggestions);
+                    const hit = r.suggestions[0];
                     if (!hit) {
-                      const r = await fetchAddressSuggestions(q, placesSessionRef.current, {
-                        limit: 6,
-                      });
-                      setStopHits(r.suggestions);
-                      hit = r.suggestions[0];
-                    }
-                    if (!hit) {
-                      setHudNote('Étape introuvable');
+                      setHudNote(r.error ?? 'Étape introuvable');
                       return;
                     }
                     const ok = await commitStopFromHit(hit);

@@ -45,7 +45,20 @@ function fromPlaces(s: PlacesSuggestion): AddressSuggestion {
 }
 
 function fromGeocode(hit: GeocodeHit, source: 'open-meteo' | 'photon'): AddressSuggestion {
-  const secondary = [hit.admin1, hit.country].filter(Boolean).join(', ');
+  // Prefer city in the subtitle so same street in different towns is distinguishable.
+  const city =
+    hit.city && hit.city.trim().toLowerCase() !== hit.name.trim().toLowerCase()
+      ? hit.city.trim()
+      : undefined;
+  const secondaryParts = [city, hit.admin1, hit.country].filter(Boolean) as string[];
+  let secondary = secondaryParts.join(', ');
+  // If APIs omitted city but label has "name, city, …", use the label tail.
+  if (!city && hit.label) {
+    const prefix = `${hit.name}, `;
+    if (hit.label.startsWith(prefix) && hit.label.length > prefix.length) {
+      secondary = hit.label.slice(prefix.length);
+    }
+  }
   return {
     id: `geo:${hit.lat.toFixed(5)},${hit.lon.toFixed(5)}:${hit.label}`,
     mainText: hit.name,
