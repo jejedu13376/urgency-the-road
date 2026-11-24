@@ -1,53 +1,78 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Link, useFocusEffect } from 'expo-router';
 import { BackendStatusBanner } from '../../src/components/BackendStatusBanner';
 import { Card } from '../../src/components/Card';
+import { FormChoice } from '../../src/components/FormChoice';
 import { ProgressHero } from '../../src/components/ProgressHero';
 import { Screen } from '../../src/components/Screen';
 import { StubBanner } from '../../src/components/StubBanner';
 import { VinCameraScanner } from '../../src/components/VinCameraScanner';
 import { useAuth } from '../../src/context/AuthContext';
 import { useFleet } from '../../src/context/FleetContext';
-import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { useI18n } from '../../src/context/I18nContext';
+import { CASCADE } from '../../src/data/mocks';
+import { useModuleVisit } from '../../src/hooks/useModuleVisit';
 import { loadCarnet } from '../../src/services/carnet/carnetStorage';
 import { decodeVinRemote } from '../../src/services/firebase';
 import { fetchRecallsByVehicle, type RecallHit } from '../../src/services/recalls/nhtsaRecalls';
+import { estimateLocalFluids } from '../../src/services/vehicle/localFluids';
 import { colors } from '../../src/theme/colors';
 import type { MaintenanceItem } from '../../src/types/modules';
-import type { VehicleProfile } from '../../src/types/vehicle';
+import type { ContinentCode, VehicleClass, VehicleProfile } from '../../src/types/vehicle';
 
-const POWERTRAIN_FR: Record<string, string> = {
-  essence: 'Essence',
-  diesel: 'Diesel',
-  hybride: 'Hybride',
-  electrique: 'Électrique',
-  gpl: 'GPL',
-  poids_lourd_diesel: 'Diesel poids lourd',
-};
 
-const CLASS_FR: Record<string, string> = {
-  voiture: 'Voiture',
-  suv: 'SUV',
-  pickup: 'Pick-up',
-  poids_lourd: 'Poids lourd',
-};
+type KindChoice = 'voiture' | 'camion';
 
-const CONTINENT_FR: Record<string, string> = {
-  EU: 'Europe',
-  NA: 'Amérique du Nord',
-  AU: 'Australie',
-  AS: 'Asie',
-};
+/** Prefer i18n label; fall back to raw code when key is missing (e.g. VIN GB/MX). */
+function tOrRaw(tFn: (key: string) => string, key: string, fallback: string): string {
+  const out = tFn(key);
+  if (!out || out === key || out.startsWith('[missing')) return fallback;
+  return out;
+}
 
-const SEV_FR: Record<string, string> = {
-  faible: 'faible',
-  moyen: 'moyen',
-  eleve: 'élevé',
-};
+function kindFromClass(vc?: VehicleClass): KindChoice {
+  return vc === 'poids_lourd' ? 'camion' : 'voiture';
+}
 
-/** Module 1 — onglet obligatoire « Mon véhicule » (CDC). */
+/** Keep pickup/SUV when staying on the light-vehicle side; only switch to PL when kind=camion. */
+function resolveVehicleClass(kind: KindChoice, current?: VehicleClass): VehicleClass {
+  if (kind === 'camion') return 'poids_lourd';
+  if (current === 'pickup' || current === 'suv' || current === 'voiture') return current;
+  return 'voiture';
+}
+
+function currencyFor(continent: ContinentCode, country: string): VehicleProfile['currency'] {
+  if (country === 'CA') return 'CAD';
+  if (country === 'US') return 'USD';
+  if (country === 'AU' || continent === 'AU') return 'AUD';
+  return 'EUR';
+}
+
+/** Minimum required maintenance rows (oil / vidange first). */
+function buildMinMaintenance(
+  active: VehicleProfile | null,
+  open: MaintenanceItem[],
+  oilTitle: string,
+): MaintenanceItem[] {
+  const fromCarnet = open.filter((m) => /vidange|huile|oil/i.test(m.title));
+  const base: MaintenanceItem[] = fromCarnet.length
+    ? fromCarnet
+    : [
+        {
+          id: 'min-oil',
+          title: oilTitle,
+          dueKm: active ? active.odometerKm + 10000 : 10000,
+          status: 'a_faire',
+        },
+      ];
+  const extras = open
+    .filter((m) => !/vidange|huile|oil/i.test(m.title))
+    .slice(0, 2);
+  return [...base, ...extras].slice(0, 4);
+}
+
+/** Module 1 — onglet primaire « Mon véhicule » = identification claire. */
 export default function MonVehiculeScreen() {
   const { t } = useI18n();
   useModuleVisit(1);
@@ -65,18 +90,27 @@ export default function MonVehiculeScreen() {
   const [reminders, setReminders] = useState<MaintenanceItem[]>([]);
   const [remindersLabel, setRemindersLabel] = useState<string | null>(null);
 
+  const [kind, setKind] = useState<KindChoice>(kindFromClass(active?.vehicleClass));
+  const [continent, setContinent] = useState<ContinentCode | null>(active?.continent ?? null);
+  const [country, setCountry] = useState<string | null>(active?.country ?? null);
+
+  const countries = useMemo(
+    () => (continent ? CASCADE.countries[continent] ?? [] : []),
+    [continent],
+  );
+
   useEffect(() => {
-    const t = setTimeout(() => {
-      // Sync drafts only when stable vehicle fields change — not on every
-      // new `active` object identity from cloud pull / storage hydrate.
+    const tmr = setTimeout(() => {
       if (active?.vin) setVin(active.vin);
       if (active) setOdoDraft(String(active.odometerKm));
+      if (active?.vehicleClass) setKind(kindFromClass(active.vehicleClass));
+      if (active?.continent) setContinent(active.continent);
+      if (active?.country) setCountry(active.country);
     }, 0);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: id/vin/odo only
-  }, [active?.id, active?.vin, active?.odometerKm]);
+    return () => clearTimeout(tmr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: id/vin/odo/class/zone only
+  }, [active?.id, active?.vin, active?.odometerKm, active?.vehicleClass, active?.continent, active?.country]);
 
-  // Reload on focus so returning from Entretien (M10) refreshes AsyncStorage rappels.
   useFocusEffect(
     useCallback(() => {
       const vehicleKey = active?.id ?? active?.vin ?? 'default';
@@ -84,25 +118,25 @@ export default function MonVehiculeScreen() {
       void (async () => {
         const stored = await loadCarnet(vehicleKey);
         if (cancelled) return;
-        const open = (stored?.maintenance ?? []).filter((m) => m.status !== 'fait').slice(0, 3);
+        const open = (stored?.maintenance ?? []).filter((m) => m.status !== 'fait').slice(0, 6);
         setReminders(open);
         setRemindersLabel(
           stored
             ? open.length
               ? null
-              : 'Carnet local — aucun rappel ouvert'
-            : 'Aucun carnet local — ouvrez Entretien (M10) pour en créer un',
+              : t('monVehicule.carnetEmpty')
+            : t('monVehicule.carnetNone'),
         );
       })();
       return () => {
         cancelled = true;
       };
-    }, [active?.id, active?.vin]),
+    }, [active?.id, active?.vin, t]),
   );
 
   useEffect(() => {
     let cancelled = false;
-    const t = setTimeout(() => {
+    const tmr = setTimeout(() => {
       if (!active?.make || !active?.model || !active?.year) {
         setRecalls([]);
         setRecallLabel(null);
@@ -126,9 +160,21 @@ export default function MonVehiculeScreen() {
     }, 0);
     return () => {
       cancelled = true;
-      clearTimeout(t);
+      clearTimeout(tmr);
     };
   }, [active?.make, active?.model, active?.year]);
+
+  const oilTitle = useMemo(() => {
+    const oilL = active?.fluids.engineOilL;
+    return oilL != null
+      ? t('monVehicule.maintOilLiters', { liters: oilL })
+      : t('monVehicule.maintOil');
+  }, [active?.fluids.engineOilL, t]);
+
+  const minMaint = useMemo(
+    () => buildMinMaintenance(active, reminders, oilTitle),
+    [active, reminders, oilTitle],
+  );
 
   const applyDecoded = async (decoded: VehicleProfile, stub?: string) => {
     const sameVin = Boolean(active && active.vin && active.vin === decoded.vin);
@@ -137,8 +183,10 @@ export default function MonVehiculeScreen() {
       label: sameVin && active?.label ? active.label : decoded.label,
       odometerKm: sameVin && active ? active.odometerKm : decoded.odometerKm,
     };
-    // FleetContext syncs to Firestore when Auth — avoid double addDoc for cascade-/decoded- ids
     upsertVehicle(merged);
+    setKind(kindFromClass(merged.vehicleClass));
+    setContinent(merged.continent);
+    setCountry(merged.country);
     setSourceLabel(
       stub ??
         syncLabel ??
@@ -162,7 +210,7 @@ export default function MonVehiculeScreen() {
       const res = await decodeVinRemote(vin);
       setSourceLabel(res.stubLabel);
       if (!res.data) {
-        setMsg(res.stubLabel ?? 'VIN trop court ou non reconnu. Saisissez au moins 11 caractères.');
+        setMsg(res.stubLabel ?? t('monVehicule.vinShort'));
         return;
       }
       await applyDecoded(res.data, res.stubLabel);
@@ -179,22 +227,77 @@ export default function MonVehiculeScreen() {
       const res = await decodeVinRemote(scanned);
       setSourceLabel(res.stubLabel ?? 'Scan caméra + NHTSA');
       if (res.data) await applyDecoded(res.data, res.stubLabel ?? 'Scan caméra + NHTSA');
-      else setMsg(res.stubLabel ?? 'VIN scanné non décodé');
+      else setMsg(res.stubLabel ?? t('monVehicule.vinScanFail'));
     } finally {
       setBusy(false);
     }
+  };
+
+  const saveIdentification = () => {
+    if (!continent || !country) {
+      setMsg(t('monVehicule.idNeedZone'));
+      return;
+    }
+    const vehicleClass = resolveVehicleClass(kind, active?.vehicleClass);
+    const powertrain =
+      kind === 'camion'
+        ? 'poids_lourd_diesel'
+        : active?.powertrain && active.powertrain !== 'poids_lourd_diesel'
+          ? active.powertrain
+          : 'essence';
+    const fluids = estimateLocalFluids({
+      vehicleClass,
+      powertrain,
+      make: active?.make,
+    });
+    const year = active?.year ?? new Date().getFullYear();
+    const make =
+      active?.make && active.make !== '—'
+        ? active.make
+        : kind === 'camion'
+          ? t('monVehicule.kindTruck')
+          : t('monVehicule.kindCar');
+    const model = active?.model && active.model !== '—' ? active.model : t('monVehicule.idDraftModel');
+    const next: VehicleProfile = {
+      id: active?.id ?? `id-${Date.now()}`,
+      label: active?.label ?? `${make} ${model}`,
+      vin: active?.vin,
+      continent,
+      country,
+      make,
+      model,
+      year,
+      powertrain: active?.powertrain && kind === kindFromClass(active.vehicleClass) ? active.powertrain : powertrain,
+      vehicleClass,
+      fluids: active?.fluids && kind === kindFromClass(active.vehicleClass) ? active.fluids : fluids.fluids,
+      fluidsSource:
+        active?.fluidsSource && kind === kindFromClass(active.vehicleClass)
+          ? active.fluidsSource
+          : fluids.source,
+      commonFailures: active?.commonFailures ?? [],
+      odometerKm: active?.odometerKm ?? 0,
+      unitSystem: continent === 'NA' ? 'imperial' : 'metric',
+      currency: currencyFor(continent, country),
+      techNotes: active?.techNotes,
+      clientLocalId: active?.clientLocalId,
+    };
+    upsertVehicle(next);
+    setMsg(
+      t('monVehicule.idSaved', {
+        kind: kind === 'camion' ? t('monVehicule.kindTruck') : t('monVehicule.kindCar'),
+        country,
+      }),
+    );
   };
 
   const saveOdometer = () => {
     if (!active) return;
     const n = parseInt(odoDraft.replace(/\s/g, ''), 10);
     if (!Number.isFinite(n) || n < 0) {
-      setMsg('Kilométrage invalide');
+      setMsg(t('monVehicule.odoInvalid'));
       return;
     }
-    const next = { ...active, odometerKm: n };
-    // FleetContext syncs Firestore when Auth — no direct upsertVehicleRemote
-    upsertVehicle(next);
+    upsertVehicle({ ...active, odometerKm: n });
     setMsg(
       profile?.uid
         ? `Kilométrage sync flotte : ${n.toLocaleString('fr-FR')} km`
@@ -202,17 +305,20 @@ export default function MonVehiculeScreen() {
     );
   };
 
+  const onContinent = (c: ContinentCode) => {
+    setContinent(c);
+    const list = CASCADE.countries[c] ?? [];
+    setCountry((cur) => (cur && list.includes(cur) ? cur : list[0] ?? null));
+  };
+
   return (
-    <Screen
-      title={t('tabs.monVehicule')}
-      subtitle={t('monVehicule.subtitle')}
-    >
+    <Screen title={t('tabs.monVehicule')} subtitle={t('monVehicule.subtitle')}>
       <BackendStatusBanner />
       <ProgressHero />
       <StubBanner
         text={
           sourceLabel ??
-          'VIN : NHTSA vPIC live · fallback WMI · fluides locaux · recalls NHTSA · pas d’API fluides OEM.'
+          t('monVehicule.stubHint')
         }
       />
       <VinCameraScanner
@@ -221,19 +327,67 @@ export default function MonVehiculeScreen() {
         onVin={(v) => void onVinFromCamera(v)}
       />
 
+      {/* 1) Identification — dyslexia-friendly opaque form */}
+      <Card title={t('monVehicule.idTitle')}>
+        <Text style={styles.lead}>{t('monVehicule.idLead')}</Text>
+
+        <FormChoice
+          label={t('monVehicule.kindLabel')}
+          value={kind}
+          onChange={setKind}
+          options={[
+            { value: 'voiture', label: t('monVehicule.kindCar'), hint: t('monVehicule.kindCarHint') },
+            { value: 'camion', label: t('monVehicule.kindTruck'), hint: t('monVehicule.kindTruckHint') },
+          ]}
+        />
+
+        <FormChoice
+          label={t('monVehicule.continentLabel')}
+          value={continent}
+          onChange={onContinent}
+          options={CASCADE.continents.map((c) => ({
+            value: c.id as ContinentCode,
+            label: tOrRaw(t, `monVehicule.continent.${c.id}`, c.label),
+          }))}
+        />
+
+        {continent ? (
+          <FormChoice
+            label={t('monVehicule.countryLabel')}
+            value={country}
+            onChange={setCountry}
+            options={countries.map((code) => ({
+              value: code,
+              label: tOrRaw(t, `monVehicule.country.${code}`, code),
+              hint: code,
+            }))}
+          />
+        ) : null}
+
+        <Pressable
+          style={styles.primary}
+          onPress={saveIdentification}
+          accessibilityRole="button"
+          accessibilityLabel={t('monVehicule.idSave')}
+        >
+          <Text style={styles.primaryTxt}>{t('monVehicule.idSave')}</Text>
+        </Pressable>
+        {msg ? <Text style={styles.msg}>{msg}</Text> : null}
+      </Card>
+
+      {/* VIN */}
       <Card title={t('monVehicule.searchTitle')}>
-        <Text style={styles.hint}>
-          Europe · Amérique du Nord · Australie · Asie — voitures, pick-up et poids lourds.
-        </Text>
+        <Text style={styles.hint}>{t('monVehicule.vinHint')}</Text>
+        <Text style={styles.fieldLabel}>{t('monVehicule.vinLabel')}</Text>
         <TextInput
           value={vin}
           onChangeText={setVin}
           autoCapitalize="characters"
           autoCorrect={false}
-          placeholder="Saisie manuelle du VIN (ex. VF1RJA00067000001)"
+          placeholder="VF1RJA00067000001"
           placeholderTextColor={colors.muted}
           style={styles.input}
-          accessibilityLabel="Numéro de série VIN"
+          accessibilityLabel={t('monVehicule.vinLabel')}
         />
         <View style={styles.row}>
           <Pressable
@@ -241,12 +395,12 @@ export default function MonVehiculeScreen() {
             onPress={() => void onDecode()}
             disabled={busy}
             accessibilityRole="button"
-            accessibilityLabel="Décoder VIN"
+            accessibilityLabel={t('monVehicule.vinDecode')}
           >
             {busy ? (
               <ActivityIndicator color={colors.white} />
             ) : (
-              <Text style={styles.primaryTxt}>Décoder VIN</Text>
+              <Text style={styles.primaryTxt}>{t('monVehicule.vinDecode')}</Text>
             )}
           </Pressable>
           <Pressable
@@ -254,31 +408,100 @@ export default function MonVehiculeScreen() {
             onPress={() => setScannerOpen(true)}
             disabled={busy}
             accessibilityRole="button"
-            accessibilityLabel="Scanner le VIN avec la caméra"
+            accessibilityLabel={t('monVehicule.vinScan')}
           >
-            <Text style={styles.secondaryTxt}>Scan caméra</Text>
+            <Text style={styles.secondaryTxt}>{t('monVehicule.vinScan')}</Text>
           </Pressable>
         </View>
-        {msg ? <Text style={styles.msg}>{msg}</Text> : null}
+      </Card>
+
+      {/* Carfax / historique */}
+      <Card title={t('monVehicule.carfaxTitle')}>
+        <Text style={styles.lead}>{t('monVehicule.carfaxLead')}</Text>
+        {!active?.make || !active?.model || !active?.year ? (
+          <Text style={styles.hint}>{t('monVehicule.carfaxNeedFiche')}</Text>
+        ) : recallsLoading ? (
+          <Text style={styles.hint}>{t('monVehicule.carfaxLoading')}</Text>
+        ) : (
+          <>
+            <Text style={styles.hint}>{recallLabel ?? t('monVehicule.carfaxSource')}</Text>
+            {recalls.length === 0 ? (
+              <Text style={styles.hint}>{t('monVehicule.carfaxEmpty')}</Text>
+            ) : (
+              recalls.slice(0, 6).map((r) => (
+                <View key={r.id} style={styles.block}>
+                  <Text style={styles.blockTitle}>{r.title}</Text>
+                  <Text style={styles.blockBody}>
+                    {r.component ? `${r.component} · ` : ''}
+                    {r.source} · {r.severity}
+                  </Text>
+                </View>
+              ))
+            )}
+            {active.commonFailures.length > 0 ? (
+              <>
+                <Text style={styles.section}>{t('monVehicule.carfaxFailures')}</Text>
+                {active.commonFailures.map((f) => (
+                  <View key={f.id} style={styles.block}>
+                    <Text style={styles.blockTitle}>{f.title}</Text>
+                    <Text style={styles.blockBody}>
+                      {f.symptoms.join(' · ')} ·{' '}
+                      {tOrRaw(t, `monVehicule.sev.${f.severity}`, f.severity)}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            ) : null}
+          </>
+        )}
+      </Card>
+
+      {/* Minimum maintenance */}
+      <Card title={t('monVehicule.maintTitle')}>
+        <Text style={styles.lead}>{t('monVehicule.maintLead')}</Text>
+        {remindersLabel ? <Text style={styles.hint}>{remindersLabel}</Text> : null}
+        {minMaint.map((m) => (
+          <View key={m.id} style={styles.maintRow}>
+            <Text style={styles.maintTitle}>{m.title}</Text>
+            <Text style={styles.blockBody}>
+              {m.dueDateIso
+                ? t('monVehicule.maintDueDate', { date: m.dueDateIso })
+                : t('monVehicule.maintDueKm', { km: (m.dueKm ?? 0).toLocaleString('fr-FR') })}
+              {' · '}
+              {m.status === 'a_faire' ? t('monVehicule.maintTodo') : t('monVehicule.maintPlanned')}
+            </Text>
+          </View>
+        ))}
+        {active?.fluids ? (
+          <View style={styles.fluids}>
+            <FluidChip label={t('monVehicule.fluidOil')} value={`${active.fluids.engineOilL} L`} />
+            <FluidChip label={t('monVehicule.fluidCoolant')} value={`${active.fluids.coolantL} L`} />
+          </View>
+        ) : null}
+        <Link href="/modules/entretien" asChild>
+          <Pressable style={styles.linkBtn}>
+            <Text style={styles.linkTxt}>{t('monVehicule.maintLink')}</Text>
+          </Pressable>
+        </Link>
       </Card>
 
       {active ? (
         <Card title={t('monVehicule.ficheTitle')}>
-          <Field label="Libellé" value={active.label} />
+          <Field label={t('monVehicule.fieldLabel')} value={active.label} />
           <Field label="VIN" value={active.vin ?? '—'} />
-          <Field label="Marque" value={active.make} />
-          <Field label="Modèle" value={active.model} />
-          <Field label="Année" value={String(active.year)} />
+          <Field label={t('monVehicule.fieldMake')} value={active.make} />
+          <Field label={t('monVehicule.fieldModel')} value={active.model} />
+          <Field label={t('monVehicule.fieldYear')} value={String(active.year)} />
           <Field
-            label="Motorisation"
-            value={`${POWERTRAIN_FR[active.powertrain] ?? active.powertrain} · ${CLASS_FR[active.vehicleClass] ?? active.vehicleClass}`}
+            label={t('monVehicule.fieldPower')}
+            value={`${tOrRaw(t, `monVehicule.power.${active.powertrain}`, active.powertrain)} · ${tOrRaw(t, `monVehicule.class.${active.vehicleClass}`, active.vehicleClass)}`}
           />
           <Field
-            label="Zone"
-            value={`${CONTINENT_FR[active.continent] ?? active.continent} / ${active.country} · ${active.currency} · ${active.unitSystem === 'metric' ? 'métrique' : 'impérial'}`}
+            label={t('monVehicule.fieldZone')}
+            value={`${tOrRaw(t, `monVehicule.continent.${active.continent}`, active.continent)} / ${tOrRaw(t, `monVehicule.country.${active.country}`, active.country)} · ${active.currency}`}
           />
 
-          <Text style={styles.section}>Kilométrage (local)</Text>
+          <Text style={styles.section}>{t('monVehicule.odoTitle')}</Text>
           <View style={styles.row}>
             <TextInput
               value={odoDraft}
@@ -287,59 +510,16 @@ export default function MonVehiculeScreen() {
               placeholder="km"
               placeholderTextColor={colors.muted}
               style={[styles.input, { flex: 1 }]}
-              accessibilityLabel="Kilométrage"
+              accessibilityLabel={t('monVehicule.odoTitle')}
             />
             <Pressable style={styles.secondary} onPress={saveOdometer}>
-              <Text style={styles.secondaryTxt}>Sauver</Text>
+              <Text style={styles.secondaryTxt}>{t('save')}</Text>
             </Pressable>
           </View>
-
-          <Text style={styles.section}>Capacité des fluides</Text>
-          <Text style={styles.hint}>
-            {active.fluidsSource === 'oem_api'
-              ? 'Source OEM API'
-              : 'Estimation locale (classe / motorisation / cylindrée NHTSA) — API fluides OEM non branchée.'}
-          </Text>
-          <View style={styles.fluids}>
-            <FluidChip label="Huile moteur" value={`${active.fluids.engineOilL} L`} />
-            <FluidChip label="Liquide refroid." value={`${active.fluids.coolantL} L`} />
-            <FluidChip label="Lave-glace" value={`${active.fluids.washerL} L`} />
-            {active.fluids.fuelL != null ? (
-              <FluidChip label="Réservoir" value={`${active.fluids.fuelL} L`} />
-            ) : null}
-          </View>
-
-          {active.techNotes && active.techNotes.length > 0 ? (
-            <>
-              <Text style={styles.section}>Notes techniques (NHTSA / local)</Text>
-              {active.techNotes.map((n) => (
-                <Text key={n} style={styles.hint}>
-                  · {n}
-                </Text>
-              ))}
-            </>
-          ) : null}
-
-          <Text style={styles.section}>Pannes fréquentes (catalogue local)</Text>
-          {active.commonFailures.length === 0 ? (
-            <Text style={styles.hint}>Aucune panne fréquente en base pour ce véhicule.</Text>
-          ) : (
-            active.commonFailures.map((f) => (
-              <View key={f.id} style={styles.fail}>
-                <Text style={styles.failTitle}>{f.title}</Text>
-                <Text style={styles.failBody}>
-                  Symptômes : {f.symptoms.join(' · ')}
-                </Text>
-                <Text style={styles.failSev}>
-                  Sévérité : {SEV_FR[f.severity] ?? f.severity}
-                </Text>
-              </View>
-            ))
-          )}
         </Card>
       ) : (
         <Card title={t('monVehicule.noneTitle')}>
-          <Text style={styles.hint}>Décodez un VIN ou ouvrez la flotte (Module 2).</Text>
+          <Text style={styles.hint}>{t('monVehicule.noneHint')}</Text>
         </Card>
       )}
 
@@ -366,32 +546,6 @@ export default function MonVehiculeScreen() {
         </View>
       ) : null}
 
-      {active ? (
-        <Card title={t('monVehicule.recallsTitle')}>
-          {recallsLoading ? (
-            <Text style={styles.hint}>Chargement NHTSA recallsByVehicle…</Text>
-          ) : (
-            <>
-              <Text style={styles.hint}>
-                {recallLabel ?? 'NHTSA recallsByVehicle (API publique gratuite)'}
-              </Text>
-              {recalls.length === 0 ? (
-                <Text style={styles.hint}>Aucun rappel listé pour cette fiche (ou hors couverture NA).</Text>
-              ) : (
-                recalls.map((r) => (
-                  <View key={r.id} style={styles.fail}>
-                    <Text style={styles.failTitle}>{r.title}</Text>
-                    <Text style={styles.failBody}>
-                      {r.component ? `${r.component} · ` : ''}
-                      {r.source} · {r.severity}
-                    </Text>
-                  </View>
-                ))
-              )}
-            </>
-          )}
-        </Card>
-      ) : null}
 
       {vehicles.length > 1 ? (
         <Card title={t('monVehicule.switchTitle')}>
@@ -412,55 +566,22 @@ export default function MonVehiculeScreen() {
       ) : null}
 
       <Card title={t('monVehicule.docsTitle')}>
-        <Text style={styles.hint}>
-          Section Mon véhicule — rappels depuis le carnet local (AsyncStorage), pas un mock
-          silencieux.
-        </Text>
-        {remindersLabel ? <Text style={styles.hint}>{remindersLabel}</Text> : null}
-        {reminders.map((m) => (
-          <View key={m.id} style={styles.fail}>
-            <Text style={styles.failTitle}>{m.title}</Text>
-            <Text style={styles.failBody}>
-              {m.dueDateIso
-                ? `Échéance ${m.dueDateIso}`
-                : `À ${(m.dueKm ?? 0).toLocaleString('fr-FR')} km`}
-              {' · '}
-              {m.status === 'a_faire' ? 'à faire' : 'planifié'}
-            </Text>
-          </View>
-        ))}
         <Link href="/modules/entretien" asChild>
           <Pressable style={styles.linkBtn}>
-            <Text style={styles.linkTxt}>M10 — entretien, documents & carnet PDF →</Text>
+            <Text style={styles.linkTxt}>{t('monVehicule.linkEntretien')}</Text>
           </Pressable>
         </Link>
         <Link href="/modules/flotte" asChild>
           <Pressable style={styles.linkBtn}>
-            <Text style={styles.linkTxt}>M2 — sélecteur cascade & multi-flotte →</Text>
+            <Text style={styles.linkTxt}>{t('monVehicule.linkFlotte')}</Text>
           </Pressable>
         </Link>
         <Link href="/modules/profil-camion" asChild>
           <Pressable style={styles.linkBtn}>
-            <Text style={styles.linkTxt}>Profil camion — trek · remorque · routes autorisées / restreintes →</Text>
-          </Pressable>
-        </Link>
-        <Link href="/modules/parametres" asChild>
-          <Pressable style={styles.linkBtn}>
-            <Text style={styles.linkTxt}>Paramètres (préférences · compte) →</Text>
-          </Pressable>
-        </Link>
-        <Link href="/modules/fournitures" asChild>
-          <Pressable style={styles.linkBtn}>
-            <Text style={styles.linkTxt}>Je fournis / L’app fournit →</Text>
+            <Text style={styles.linkTxt}>{t('monVehicule.linkProfil')}</Text>
           </Pressable>
         </Link>
       </Card>
-
-      <Link href="/modules/pieces" asChild>
-        <Pressable style={styles.linkBtn}>
-          <Text style={styles.linkTxt}>Module 3 — pièces & devis pour ce VIN →</Text>
-        </Pressable>
-      </Link>
     </Screen>
   );
 }
@@ -484,72 +605,113 @@ function FluidChip({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  hint: { color: colors.muted, fontSize: 12, lineHeight: 17 },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+  lead: {
+    color: colors.slate,
     fontSize: 16,
-    color: colors.ink,
-    backgroundColor: colors.mist,
+    lineHeight: 24,
+    fontWeight: '600',
   },
-  row: { flexDirection: 'row', gap: 8 },
+  hint: { color: colors.muted, fontSize: 14, lineHeight: 22 },
+  fieldLabel: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '800',
+    color: colors.ink,
+    marginTop: 4,
+  },
+  input: {
+    borderWidth: 2,
+    borderColor: colors.line,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    fontSize: 18,
+    lineHeight: 26,
+    color: colors.ink,
+    backgroundColor: colors.white,
+    minHeight: 52,
+  },
+  row: { flexDirection: 'row', gap: 10 },
   primary: {
     flex: 1,
     backgroundColor: colors.signal,
-    borderRadius: 10,
-    paddingVertical: 12,
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: 52,
   },
-  primaryTxt: { color: colors.white, fontWeight: '800' },
+  primaryTxt: { color: colors.white, fontWeight: '800', fontSize: 16 },
   secondary: {
     flex: 1,
     backgroundColor: colors.mist,
-    borderRadius: 10,
-    paddingVertical: 12,
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.line,
+    minHeight: 52,
+  },
+  secondaryTxt: { color: colors.slate, fontWeight: '800', fontSize: 16 },
+  disabled: { opacity: 0.6 },
+  msg: { color: colors.garage, fontSize: 15, fontWeight: '700', lineHeight: 22 },
+  line: { color: colors.slate, fontSize: 15, lineHeight: 24 },
+  k: { fontWeight: '800', color: colors.ink },
+  section: {
+    marginTop: 10,
+    marginBottom: 6,
+    fontWeight: '800',
+    color: colors.ink,
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  fluids: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  fluidChip: {
+    backgroundColor: colors.garageSoft,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minWidth: '45%',
+    flexGrow: 1,
     borderWidth: 1,
     borderColor: colors.line,
   },
-  secondaryTxt: { color: colors.slate, fontWeight: '700' },
-  disabled: { opacity: 0.6 },
-  msg: { color: colors.garage, fontSize: 13, fontWeight: '600' },
-  line: { color: colors.slate, fontSize: 14, lineHeight: 21 },
-  k: { fontWeight: '700', color: colors.ink },
-  section: { marginTop: 8, marginBottom: 4, fontWeight: '800', color: colors.ink },
-  fluids: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  fluidChip: {
-    backgroundColor: colors.garageSoft,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    minWidth: '45%',
-    flexGrow: 1,
-  },
-  fluidLabel: { color: colors.muted, fontSize: 11, fontWeight: '600' },
-  fluidVal: { color: colors.ink, fontWeight: '800', fontSize: 15 },
-  fail: { backgroundColor: colors.signalSoft, borderRadius: 8, padding: 10, gap: 2 },
-  failTitle: { fontWeight: '700', color: colors.ink },
-  failBody: { color: colors.slate, fontSize: 12 },
-  failSev: { color: colors.signal, fontSize: 11, fontWeight: '700' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
+  fluidLabel: { color: colors.muted, fontSize: 13, fontWeight: '700' },
+  fluidVal: { color: colors.ink, fontWeight: '800', fontSize: 18 },
+  block: {
     backgroundColor: colors.mist,
+    borderRadius: 12,
+    padding: 12,
+    gap: 4,
     borderWidth: 1,
+    borderColor: colors.line,
+  },
+  blockTitle: { fontWeight: '800', color: colors.ink, fontSize: 15, lineHeight: 22 },
+  blockBody: { color: colors.slate, fontSize: 14, lineHeight: 20 },
+  maintRow: {
+    backgroundColor: colors.signalSoft,
+    borderRadius: 12,
+    padding: 12,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  maintTitle: { fontWeight: '800', color: colors.ink, fontSize: 17, lineHeight: 24 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: colors.mist,
+    borderWidth: 2,
     borderColor: colors.line,
   },
   chipOn: { backgroundColor: colors.asphalt, borderColor: colors.asphalt },
-  chipTxt: { color: colors.slate, fontSize: 12, fontWeight: '600' },
+  chipTxt: { color: colors.slate, fontSize: 14, fontWeight: '700' },
   chipTxtOn: { color: colors.white },
-  linkBtn: { paddingVertical: 8 },
-  linkTxt: { color: colors.signal, fontWeight: '700' },
+  linkBtn: { paddingVertical: 10 },
+  linkTxt: { color: colors.signal, fontWeight: '800', fontSize: 15 },
   obdPanel: {
     backgroundColor: colors.asphalt,
     borderRadius: 14,
