@@ -889,7 +889,7 @@ export function GpsFullMap() {
               const dest = navDestRef.current;
               if (dest) {
                 const toDestKm = haversineKm(pos.lat, pos.lon, dest.lat, dest.lon);
-                // ~60 m arrival radius — complete trip history + stop nav TTS/alerts.
+                // ~60 m arrival radius — log trip complete for Chronologie + stop nav TTS/alerts.
                 if (toDestKm <= 0.06) {
                   // Sync clear before any async — HTML may also post `arrived`.
                   navigatingRef.current = false;
@@ -898,6 +898,12 @@ export function GpsFullMap() {
                   shownAlertIdsRef.current = new Set();
                   highlightedWeighIdRef.current = null;
                   injectHighlightWeigh(null);
+                  setTripEnded({
+                    lat: dest.lat,
+                    lon: dest.lon,
+                    mode: lastRouteRef.current?.mode === 'camion' ? 'camion' : 'voiture',
+                    label: destLabelRef.current,
+                  });
                   setHudNote('Arrivée — GPS live toujours actif');
                   speakArrival(
                     lastRouteRef.current?.durationMin,
@@ -1971,14 +1977,16 @@ export function GpsFullMap() {
             <Pressable
               style={styles.sideFab}
               onPress={() => {
+                // Left-rail Chrono (= kept “store” / trip control) → Chronologie sheet.
                 void loadTripHistory().then((rows) => {
                   setTripHistory(rows);
                   setHistoryOpen(true);
                 });
               }}
-              accessibilityLabel="Voir l'historique"
+              accessibilityLabel="Ouvrir la chronologie des trajets"
+              testID="gps-chrono-button"
             >
-              <Text style={styles.sideFabTxtDark}>Histo</Text>
+              <Text style={styles.sideFabTxtDark}>Chrono</Text>
             </Pressable>
             <Pressable
               style={[styles.sideFab, voiceMuted && styles.sideFabMuted]}
@@ -2156,12 +2164,12 @@ export function GpsFullMap() {
           setDestSelection({
             lat: trip.destination.lat,
             lon: trip.destination.lon,
-            label: trip.destination.label ?? 'Destination historique',
+            label: trip.destination.label ?? 'Destination chronologie',
           });
           proposeDestination(
             trip.destination.lat,
             trip.destination.lon,
-            trip.destination.label ?? 'Historique',
+            trip.destination.label ?? 'Chronologie',
           );
           if (trip.coords.length >= 2) {
             const replay: VehicleRouteResult = {
@@ -2171,7 +2179,7 @@ export function GpsFullMap() {
               distanceKm: trip.distanceKm,
               durationMin: trip.durationMin,
               source: trip.mode === 'camion' ? 'valhalla-truck' : 'valhalla-auto',
-              label: `Historique · ${trip.distanceKm} km · ~${trip.durationMin} min · ${trip.startedAt}`,
+              label: `Chronologie · ${trip.distanceKm} km · ~${trip.durationMin} min · ${trip.startedAt}`,
             };
             setLastRoute(replay);
             lastRouteRef.current = replay;

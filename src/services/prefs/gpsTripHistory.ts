@@ -1,6 +1,7 @@
 /**
- * GPS trip history — AsyncStorage only.
- * Recorded when navigation starts; timeline UI can reopen routes on the map.
+ * GPS trip Chronologie — AsyncStorage only.
+ * Recorded when navigation starts; marked complete on arrival (nav complete).
+ * Chronologie UI lists completed trips (route, date, destination).
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { GpsVehicleMode } from './gpsNavPrefs';
@@ -209,4 +210,25 @@ export function formatTripSummaryLine(trip: GpsTripRecord): string {
     trip.destination.label ??
     `${trip.destination.lat.toFixed(3)}, ${trip.destination.lon.toFixed(3)}`;
   return `${from} → ${to} · ${trip.distanceKm} km · ~${trip.durationMin} min`;
+}
+
+/** Origin → destination only (Chronologie route line). */
+export function formatTripRouteLine(trip: GpsTripRecord): string {
+  const from = trip.origin.label ?? `${trip.origin.lat.toFixed(3)}, ${trip.origin.lon.toFixed(3)}`;
+  const to =
+    trip.destination.label ??
+    `${trip.destination.lat.toFixed(3)}, ${trip.destination.lon.toFixed(3)}`;
+  return `${from} → ${to}`;
+}
+
+/** Completed trips only, chronological (oldest → newest by endedAt). */
+export async function loadCompletedTripChronologie(): Promise<GpsTripRecord[]> {
+  const all = await loadTripHistory();
+  return all
+    .filter((t) => Boolean(t.endedAt))
+    .sort((a, b) => {
+      const aKey = a.endedAt ?? a.startedAt;
+      const bKey = b.endedAt ?? b.startedAt;
+      return aKey < bKey ? -1 : aKey > bKey ? 1 : 0;
+    });
 }

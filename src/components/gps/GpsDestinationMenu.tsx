@@ -582,7 +582,7 @@ export function GpsDestinationMenu({
                   onPress={() => stubAction('Carte hors ligne')}
                 />
                 <ActionRow
-                  label="Voir l'historique des trajets"
+                  label="Voir la chronologie des trajets"
                   muted
                   onPress={() => {
                     if (onOpenHistory) {
@@ -590,7 +590,7 @@ export function GpsDestinationMenu({
                       onOpenHistory();
                       return;
                     }
-                    stubAction('Historique des trajets');
+                    stubAction('Chronologie des trajets');
                   }}
                 />
                 <ActionRow
