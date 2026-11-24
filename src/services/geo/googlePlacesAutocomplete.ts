@@ -1,8 +1,16 @@
 /**
- * Google Places Autocomplete (New) + Place Details (New) for Module 7 GPS search.
+ * Google Places Autocomplete (New) for Module 7 GPS search.
+ * Place Details coords resolve via shared `googlePlacesDetails` helper.
  * Key from EXPO_PUBLIC_GOOGLE_PLACES_API_KEY only (never hardcode).
  * Session tokens group typing + place pick for billing (UUID per session).
  */
+
+import { fetchPlaceDetails, PLACE_COORDS_FIELD_MASK } from './googlePlacesDetails';
+
+export {
+  isGooglePlacesConfigured,
+  newPlacesSessionToken,
+} from './googlePlacesDetails';
 
 export type PlacesSuggestion = {
   placeId: string;
@@ -37,23 +45,6 @@ function getApiKey(): string {
   return (process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ?? '').trim();
 }
 
-export function isGooglePlacesConfigured(): boolean {
-  return getApiKey().length > 0;
-}
-
-/** Fresh session token (UUID v4) — one per autocomplete → details flow. */
-export function newPlacesSessionToken(): string {
-  const c = globalThis.crypto;
-  if (c && typeof c.randomUUID === 'function') {
-    return c.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
-    const r = (Math.random() * 16) | 0;
-    const v = ch === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
 type AutocompleteBody = {
   suggestions?: {
     placePrediction?: {
@@ -66,14 +57,6 @@ type AutocompleteBody = {
     };
   }[];
   error?: { message?: string; status?: string };
-};
-
-type PlaceDetailsBody = {
-  id?: string;
-  formattedAddress?: string;
-  displayName?: { text?: string };
-  location?: { latitude?: number; longitude?: number };
-  error?: { message?: string };
 };
 
 async function fetchWithTimeout(
@@ -92,7 +75,7 @@ async function fetchWithTimeout(
 
 /**
  * Live address suggestions while the user types.
- * Pass the same `sessionToken` into `resolvePlaceCoords` after a pick.
+ * Pass the same `sessionToken` into `resolvePlaceCoords` / reviews Details after a pick.
  */
 export async function fetchPlacesAutocomplete(
   input: string,
@@ -171,71 +154,32 @@ export async function fetchPlacesAutocomplete(
 
 /**
  * Resolve lat/lon for a selected suggestion. Ends the billing session.
+ * Coords-only field mask — prefer `fetchPlaceDetailsWithReviews` when avis are needed.
  */
 export async function resolvePlaceCoords(
   placeId: string,
   sessionToken: string,
   opts?: { languageCode?: string },
 ): Promise<PlaceCoordsResult> {
-  const id = placeId.trim();
-  if (!id) {
-    return { ok: false, error: 'placeId vide', source: 'none' };
-  }
+  const res = await fetchPlaceDetails(placeId, {
+    fieldMask: PLACE_COORDS_FIELD_MASK,
+    sessionToken,
+    languageCode: opts?.languageCode,
+  });
 
-  const key = getApiKey();
-  if (!key) {
+  if (!res.ok || !res.data) {
     return {
       ok: false,
-      error: 'EXPO_PUBLIC_GOOGLE_PLACES_API_KEY manquant',
-      source: 'none',
+      error: res.error,
+      source: res.source,
     };
   }
 
-  const languageCode = opts?.languageCode ?? 'fr';
-  const bareId = id.startsWith('places/') ? id.slice('places/'.length) : id;
-  const url = new URL(`https://places.googleapis.com/v1/places/${encodeURIComponent(bareId)}`);
-  url.searchParams.set('sessionToken', sessionToken);
-  url.searchParams.set('languageCode', languageCode);
-
-  try {
-    const res = await fetchWithTimeout(url.toString(), {
-      method: 'GET',
-      headers: {
-        'X-Goog-Api-Key': key,
-        'X-Goog-FieldMask': 'id,formattedAddress,displayName,location',
-      },
-    });
-
-    const body = (await res.json()) as PlaceDetailsBody;
-    if (!res.ok) {
-      return {
-        ok: false,
-        error: body.error?.message ?? `Place Details HTTP ${res.status}`,
-        source: 'google_places',
-      };
-    }
-
-    const lat = body.location?.latitude;
-    const lon = body.location?.longitude;
-    if (typeof lat !== 'number' || typeof lon !== 'number') {
-      return {
-        ok: false,
-        error: 'Place Details — coordonnées manquantes',
-        source: 'google_places',
-      };
-    }
-
-    const label =
-      body.formattedAddress?.trim() ||
-      body.displayName?.text?.trim() ||
-      id;
-
-    return { ok: true, lat, lon, label, source: 'google_places' };
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : 'Place Details réseau KO',
-      source: 'google_places',
-    };
-  }
+  return {
+    ok: true,
+    lat: res.data.lat,
+    lon: res.data.lon,
+    label: res.data.label,
+    source: 'google_places',
+  };
 }

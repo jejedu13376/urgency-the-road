@@ -174,4 +174,5 @@ Deploy CLI : `--config firebase/firebase.json` · project `urgency-road`.
 | ~13:15 | PR #22 mergée `6d1e127` — tip `main` |
 | ~13:50 | Status tonight + secrets guide (store) ; CI = no Actions ; Expo local OK sans deploy tokens |
 | ~22:50 | UR-89 GPS — PR `itinéraire` + menu destination (Share / AsyncStorage / stubs) ; helpers `gpsSavedPlaces` partagés vs Places reviews sibling |
+| ~22:55 | UR-90 GPS — Place Details avis (`rating`/`userRatingCount`/`reviews`) · helper `googlePlacesDetails` · panel FR · branch `cursor/gps-place-reviews-5c31` (sur #40) |
 | ~23:25 | UR-95 QR hors ligne — generate local SVG, payload AsyncStorage, scan sans réseau (branche `cursor/qr-offline-local-1b29`) |
