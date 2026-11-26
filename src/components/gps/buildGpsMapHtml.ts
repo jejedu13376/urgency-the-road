@@ -398,8 +398,8 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   .report-cancel:active{color:var(--ink)}
   @keyframes weighBlink{from{opacity:.55;box-shadow:0 0 0 0 rgba(231,76,60,.2)}to{opacity:1;box-shadow:0 0 0 10px rgba(231,76,60,.05)}}
   .route-line{transition:opacity .35s ease}
-  /* Smooth live GPS marker — CSS lerp between setLatLng ticks (no snap jitter). */
-  .leaflet-marker-pane .leaflet-marker-icon{
+  /* Smooth live GPS chevron only — do not lerp dest/stops (breaks Leaflet zoom). */
+  .leaflet-marker-pane .leaflet-marker-icon.gps-vehicle-marker{
     transition:transform .22s linear;will-change:transform;
   }
   #mb3d{
@@ -600,11 +600,18 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     }, typeof ms === 'number' ? ms : 360);
   }
 
-  /** User pan/zoom — free explore; camera stops auto-follow until resume. */
+  /** User pan/zoom — pause camera follow; arm idle resume only after gesture ends. */
   function beginExplore(){
     if (programmaticCamera) return;
     if (!followLive && !navTripActive) return;
     userExploring = true;
+    clearExploreResumeTimer();
+  }
+
+  /** Start (or restart) the idle timer once the map is no longer being gestured. */
+  function scheduleExploreResume(){
+    if (!userExploring) return;
+    if (!followLive && !navTripActive) return;
     clearExploreResumeTimer();
     exploreResumeTimer = setTimeout(function(){
       exploreResumeTimer = null;
@@ -635,11 +642,14 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
     clearExploreResumeTimer();
   }
 
-  /** Smooth camera follow — every GPS tick while not exploring (no 700ms lag throttle). */
+  /**
+   * Smooth camera follow — every GPS tick while not exploring.
+   * Do NOT mark programmaticCamera here: that flag blocked dragstart/zoomstart for ~320ms
+   * per tick and prevented free pan (camera kept snapping back).
+   */
   function panFollowCamera(lat, lon){
     if (!followLive || userExploring) return;
     lastPanAt = Date.now();
-    markProgrammaticCamera(320);
     map.panTo([lat, lon], { animate: true, duration: 0.28, easeLinearity: 0.2 });
   }
 
@@ -705,7 +715,7 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
 
   function vehicleDivIcon(){
     return L.divIcon({
-      className: '',
+      className: 'gps-vehicle-marker',
       html: vehicleHtml(),
       iconSize: [40, 40],
       iconAnchor: [20, 20],
@@ -1383,8 +1393,9 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   window.__gpsSetOrigin = function(lat, lon, ok){
     window.__gpsUpdatePosition(lat, lon, ok, headingDeg, null);
     if (ok !== false) {
+      // One-shot pan/zoom only — do not enable live follow (GPS recovery / boot).
+      // Recenter + startNavigation set followLive themselves before calling this.
       endExploreNow();
-      followLive = true;
       markProgrammaticCamera(500);
       map.setView([displayOrigin.lat, displayOrigin.lon], Math.max(map.getZoom(), 14), { animate: true });
       setStatus(mode === 'camion'
@@ -1785,9 +1796,11 @@ ${hasMapbox ? '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.
   /* Free pan/zoom during nav: pause forced follow; resume after idle. Route + ETA stay. */
   map.on('dragstart', function(){ beginExplore(); });
   map.on('zoomstart', function(){
-    /* User pinch/wheel only — programmatic setView/panTo guarded via programmaticCamera. */
+    /* User pinch/wheel only — programmatic setView guarded via programmaticCamera. */
     beginExplore();
   });
+  map.on('dragend', function(){ scheduleExploreResume(); });
+  map.on('zoomend', function(){ scheduleExploreResume(); });
 
   document.getElementById('btnCar').onclick = function(){ applyMode('voiture'); };
   document.getElementById('btnTruck').onclick = function(){ applyMode('camion'); };
