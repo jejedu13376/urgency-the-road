@@ -2348,7 +2348,7 @@ function WebIframe({
       title="Carte GPS"
       srcDoc={html}
       sandbox="allow-scripts"
-      referrerPolicy="no-referrer"
+      referrerPolicy="strict-origin-when-cross-origin"
       style={{ border: 'none', width: '100%', height: '100%', flex: 1 }}
       ref={(node) => {
         onReady((node?.contentWindow as MapWindow | null) ?? null);
